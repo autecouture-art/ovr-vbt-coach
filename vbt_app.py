@@ -46,7 +46,16 @@ class SessionSetupDialog(ctk.CTkToplevel):
         self.resizable(False, False)
         
         self.transient(parent)
-        self.grab_set()
+        
+        # Center dialog on screen
+        self.update_idletasks()
+        x = (self.winfo_screenwidth() // 2) - (400 // 2)
+        y = (self.winfo_screenheight() // 2) - (450 // 2)
+        self.geometry(f"400x450+{x}+{y}")
+        
+        # Grab focus after setup
+        self.after(10, lambda: self.grab_set())
+        self.after(20, lambda: self.focus())
         
         ctk.CTkLabel(self, text="Today's Session", font=ctk.CTkFont(size=24, weight="bold")).pack(pady=20)
         
@@ -76,6 +85,7 @@ class SessionSetupDialog(ctk.CTkToplevel):
                      fg_color="green", height=50, font=ctk.CTkFont(size=18, weight="bold")).pack(pady=30)
         
     def set_readiness(self, value):
+        print(f"[DEBUG] set_readiness called with value: {value}")
         self.readiness_var.set(value)
         labels = {
             1: "1 - Terrible", 2: "2 - Very Bad", 3: "3 - Bad",
@@ -84,15 +94,19 @@ class SessionSetupDialog(ctk.CTkToplevel):
             9: "9 - Excellent", 10: "10 - Peak!"
         }
         self.readiness_label.configure(text=labels.get(value, str(value)))
+        print(f"[DEBUG] Readiness label updated to: {labels.get(value, str(value))}")
         
     def on_start(self):
+        print("[DEBUG] on_start called - Start Training button clicked")
         try:
             body_weight = float(self.weight_var.get())
             readiness = self.readiness_var.get()
             notes = self.notes_var.get()
+            print(f"[DEBUG] Session params - Weight: {body_weight}, Readiness: {readiness}, Notes: {notes}")
             self.callback(body_weight, readiness, notes)
             self.destroy()
-        except ValueError:
+        except ValueError as e:
+            print(f"[DEBUG] ValueError in on_start: {e}")
             pass
 
 
@@ -340,23 +354,37 @@ class VBTApp(ctk.CTk):
         dialog = SessionSetupDialog(self, self.on_session_setup_complete)
         
     def on_session_setup_complete(self, body_weight, readiness, notes):
-        self.body_weight = body_weight
-        self.readiness = readiness
-        
-        self.session_id = self.db.start_session(body_weight=body_weight, readiness=readiness, notes=notes)
-        
-        this_week = self.db.get_weekly_volume(0)
-        last_week = self.db.get_weekly_volume(1)
-        
-        advice = self.ai_coach.get_session_advice(readiness, this_week['total_volume'], last_week['total_volume'])
-        self.ai_advice.set(advice)
-        self.status_message.set(advice)
-        
-        self.audio.speak(f"セッション開始。調子は{readiness}")
-        
-        self.update_history_list()
-        self.update_weekly_summary()
-        self.update_calendar_tab()
+        print(f"[DEBUG] on_session_setup_complete called with: weight={body_weight}, readiness={readiness}, notes={notes}")
+        try:
+            self.body_weight = body_weight
+            self.readiness = readiness
+            
+            print("[DEBUG] Starting session in database...")
+            self.session_id = self.db.start_session(body_weight=body_weight, readiness=readiness, notes=notes)
+            print(f"[DEBUG] Session ID: {self.session_id}")
+            
+            print("[DEBUG] Getting weekly volume...")
+            this_week = self.db.get_weekly_volume(0)
+            last_week = self.db.get_weekly_volume(1)
+            
+            print("[DEBUG] Getting AI advice...")
+            advice = self.ai_coach.get_session_advice(readiness, this_week['total_volume'], last_week['total_volume'])
+            self.ai_advice.set(advice)
+            self.status_message.set(advice)
+            
+            print("[DEBUG] Speaking...")
+            self.audio.speak(f"セッション開始。調子は{readiness}")
+            
+            print("[DEBUG] Updating UI...")
+            self.update_history_list()
+            self.update_weekly_summary()
+            self.update_calendar_tab()
+            
+            print("[DEBUG] on_session_setup_complete completed successfully")
+        except Exception as e:
+            print(f"[ERROR] Exception in on_session_setup_complete: {type(e).__name__}: {e}")
+            import traceback
+            traceback.print_exc()
 
     def _setup_ui(self):
         self.grid_columnconfigure(1, weight=1)
