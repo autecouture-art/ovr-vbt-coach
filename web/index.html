@@ -1,0 +1,529 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>OVR VBT Coach (Web)</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0b1020;
+        --panel: #121a33;
+        --panel2: #0f1630;
+        --text: #e8ecff;
+        --muted: #a8b2d6;
+        --accent: #5cc8ff;
+        --ok: #32d583;
+        --warn: #fdb022;
+        --bad: #f97066;
+        --border: rgba(255, 255, 255, 0.12);
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans JP", "Hiragino Kaku Gothic ProN",
+          "Yu Gothic", "Meiryo", sans-serif;
+        background: radial-gradient(1200px 800px at 10% -10%, rgba(92, 200, 255, 0.25), transparent 60%),
+          radial-gradient(900px 700px at 90% 0%, rgba(50, 213, 131, 0.18), transparent 55%),
+          var(--bg);
+        color: var(--text);
+      }
+      header {
+        padding: 24px 18px 12px;
+        max-width: 1100px;
+        margin: 0 auto;
+      }
+      h1 {
+        margin: 0;
+        font-size: 20px;
+        letter-spacing: 0.2px;
+      }
+      .sub {
+        margin-top: 6px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      main {
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: 12px 18px 28px;
+        display: grid;
+        grid-template-columns: 1.15fr 0.85fr;
+        gap: 14px;
+      }
+      @media (max-width: 980px) {
+        main { grid-template-columns: 1fr; }
+      }
+      .card {
+        border: 1px solid var(--border);
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.02));
+        box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+        border-radius: 14px;
+        padding: 14px;
+        overflow: hidden;
+      }
+      .card h2 {
+        margin: 0 0 10px;
+        font-size: 14px;
+        letter-spacing: 0.2px;
+        color: var(--muted);
+        text-transform: uppercase;
+      }
+      .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+      .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+      @media (max-width: 680px) {
+        .row, .row3 { grid-template-columns: 1fr; }
+      }
+      label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+      input, select, textarea {
+        width: 100%;
+        padding: 10px 11px;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        background: rgba(15, 22, 48, 0.65);
+        color: var(--text);
+        outline: none;
+      }
+      textarea { min-height: 72px; resize: vertical; }
+      button {
+        border: 1px solid var(--border);
+        background: rgba(92, 200, 255, 0.12);
+        color: var(--text);
+        padding: 10px 12px;
+        border-radius: 10px;
+        cursor: pointer;
+        font-weight: 600;
+      }
+      button.primary { background: rgba(50, 213, 131, 0.18); border-color: rgba(50, 213, 131, 0.35); }
+      button.danger { background: rgba(249, 112, 102, 0.18); border-color: rgba(249, 112, 102, 0.35); }
+      button:disabled { opacity: 0.55; cursor: not-allowed; }
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 7px 10px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        background: rgba(255, 255, 255, 0.03);
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); }
+      .dot.ok { background: var(--ok); }
+      .dot.bad { background: var(--bad); }
+      .muted { color: var(--muted); }
+      table { width: 100%; border-collapse: collapse; font-size: 12px; }
+      th, td { padding: 9px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+      th { color: var(--muted); font-weight: 600; text-align: left; }
+      .right { text-align: right; }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+      .split { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+      .grow { flex: 1 1 auto; }
+      .toast {
+        margin-top: 10px;
+        padding: 10px 11px;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        background: rgba(15, 22, 48, 0.55);
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .toast.ok { border-color: rgba(50, 213, 131, 0.35); color: rgba(50, 213, 131, 0.95); }
+      .toast.bad { border-color: rgba(249, 112, 102, 0.35); color: rgba(249, 112, 102, 0.95); }
+      a { color: var(--accent); text-decoration: none; }
+      a:hover { text-decoration: underline; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="split">
+        <div class="grow">
+          <h1>OVR VBT Coach（Web）</h1>
+          <div class="sub">ブラウザから「セッション開始/終了」「手入力の記録」「履歴閲覧」を行えます（VBT/BLEリアルタイムはWeb版の次ステップ）。</div>
+        </div>
+        <div class="pill" id="sessionPill">
+          <span class="dot" id="sessionDot"></span>
+          <span id="sessionText">セッション状態を取得中…</span>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <section class="card">
+        <h2>今日のセッション</h2>
+        <div class="row3">
+          <div>
+            <label>体重 (kg)</label>
+            <input id="bodyWeight" type="number" step="0.1" min="0" placeholder="例: 75.4" />
+          </div>
+          <div>
+            <label>調子 (1-10)</label>
+            <input id="readiness" type="number" min="1" max="10" placeholder="例: 6" />
+          </div>
+          <div>
+            <label>メモ</label>
+            <input id="sessionNotes" type="text" placeholder="任意" />
+          </div>
+        </div>
+        <div class="split" style="margin-top: 10px">
+          <button class="primary" id="btnStart">セッション開始</button>
+          <button class="danger" id="btnEnd">セッション終了</button>
+          <div class="pill">
+            <span class="muted">今日の累計ボリューム</span>
+            <span class="mono" id="todayVolume">-</span>
+            <span class="muted">kg</span>
+          </div>
+        </div>
+        <div id="sessionToast" class="toast" style="display:none"></div>
+
+        <h2 style="margin-top: 16px">手入力（Non-VBT）</h2>
+        <div class="row3">
+          <div>
+            <label>種目</label>
+            <select id="exercise"></select>
+            <div class="sub" style="margin-top:6px">未登録の種目はテキスト入力で追加できます（下）。</div>
+          </div>
+          <div>
+            <label>重量 (kg)</label>
+            <input id="weightKg" type="number" step="0.5" min="0" />
+          </div>
+          <div>
+            <label>レップ数</label>
+            <input id="reps" type="number" min="1" max="100" />
+          </div>
+        </div>
+        <div class="row3" style="margin-top: 10px">
+          <div>
+            <label>RPE（任意）</label>
+            <input id="rpe" type="number" step="0.5" min="0" max="10" />
+          </div>
+          <div>
+            <label>セット種別</label>
+            <select id="setType">
+              <option value="normal">normal</option>
+              <option value="amrap">amrap</option>
+              <option value="drop">drop</option>
+              <option value="superset_a">superset_a</option>
+              <option value="superset_b">superset_b</option>
+            </select>
+          </div>
+          <div>
+            <label>新しい種目名（任意）</label>
+            <input id="newExercise" type="text" placeholder="例: Pull Up" />
+          </div>
+        </div>
+        <div class="split" style="margin-top: 10px">
+          <button id="btnAddManual" class="primary">手入力で保存</button>
+          <div class="sub">保存すると、そのセット分のレップ数だけ「manual」レップが作成されます（速度=0）。</div>
+        </div>
+        <div id="manualToast" class="toast" style="display:none"></div>
+
+        <h2 style="margin-top: 16px">今日のセット一覧</h2>
+        <div class="sub" style="margin-bottom: 8px">※ Web版はまず「手入力/履歴」中心です。BLEのリアルタイム表示はWebSocket化して次段で対応できます。</div>
+        <div style="overflow:auto">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>種目</th>
+                <th class="right">重量</th>
+                <th class="right">レップ</th>
+                <th class="right">RPE</th>
+                <th>種別</th>
+                <th class="right">Avg Vel</th>
+                <th class="right">Max Vel</th>
+                <th>時刻</th>
+              </tr>
+            </thead>
+            <tbody id="todaySetsBody">
+              <tr><td colspan="9" class="muted">読み込み中…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <aside class="card">
+        <h2>週次サマリー</h2>
+        <div class="toast" id="weeklyBox">
+          <div class="muted">読み込み中…</div>
+        </div>
+
+        <h2 style="margin-top: 16px">最近のPR</h2>
+        <div class="toast" id="prsBox">
+          <div class="muted">読み込み中…</div>
+        </div>
+
+        <h2 style="margin-top: 16px">履歴</h2>
+        <div class="sub" style="margin-bottom: 8px">直近セッションの一覧（クリックでセット詳細）</div>
+        <div style="overflow:auto; max-height: 420px">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>日時</th>
+                <th class="right">Set</th>
+                <th class="right">Vol</th>
+              </tr>
+            </thead>
+            <tbody id="sessionsBody">
+              <tr><td colspan="4" class="muted">読み込み中…</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2 style="margin-top: 16px">選択セッションの詳細</h2>
+        <div class="sub" id="selectedSessionTitle">未選択</div>
+        <div style="overflow:auto; max-height: 340px; margin-top: 8px">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>種目</th>
+                <th class="right">重量</th>
+                <th class="right">レップ</th>
+                <th class="right">RPE</th>
+                <th>種別</th>
+                <th class="right">Avg Vel</th>
+              </tr>
+            </thead>
+            <tbody id="sessionSetsBody">
+              <tr><td colspan="7" class="muted">未選択</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="sub" style="margin-top: 12px">
+          Tips: 既存GUI版は `python vbt_app.py`。Web版は `python web_app.py`。
+        </div>
+      </aside>
+    </main>
+
+    <script>
+      const $ = (id) => document.getElementById(id);
+
+      function toast(el, kind, msg) {
+        el.classList.remove("ok", "bad");
+        if (kind) el.classList.add(kind);
+        el.textContent = msg;
+        el.style.display = "block";
+        window.setTimeout(() => (el.style.display = "none"), 3800);
+      }
+
+      async function api(path, options) {
+        const res = await fetch(path, {
+          headers: { "Content-Type": "application/json" },
+          ...options,
+        });
+        if (!res.ok) {
+          let detail = "";
+          try {
+            const j = await res.json();
+            detail = j.detail ? `: ${j.detail}` : "";
+          } catch {}
+          throw new Error(`${res.status} ${res.statusText}${detail}`);
+        }
+        return await res.json();
+      }
+
+      async function refreshState() {
+        const today = await api("/api/today");
+        const active = !!today.current_session_id;
+        $("sessionText").textContent = active
+          ? `セッション進行中 (id=${today.current_session_id})`
+          : "セッション未開始";
+        $("sessionDot").className = "dot" + (active ? " ok" : "");
+
+        $("btnEnd").disabled = !active;
+        $("btnStart").disabled = false;
+
+        $("todayVolume").textContent = (today.today_volume || 0).toFixed(0);
+        renderTodaySets(today.today_sets || []);
+      }
+
+      function renderTodaySets(sets) {
+        const body = $("todaySetsBody");
+        if (!sets.length) {
+          body.innerHTML = `<tr><td colspan="9" class="muted">まだセットがありません。</td></tr>`;
+          return;
+        }
+        body.innerHTML = sets
+          .map((s) => {
+            const rpe = s.rpe == null ? "" : Number(s.rpe).toFixed(1);
+            return `
+              <tr>
+                <td class="mono">${s.set_index}</td>
+                <td>${escapeHtml(s.exercise)}</td>
+                <td class="right mono">${Number(s.weight).toFixed(1)}</td>
+                <td class="right mono">${s.reps ?? 0}</td>
+                <td class="right mono">${rpe}</td>
+                <td class="mono">${escapeHtml(s.type || "")}</td>
+                <td class="right mono">${Number(s.avg_vel || 0).toFixed(2)}</td>
+                <td class="right mono">${Number(s.max_vel || 0).toFixed(2)}</td>
+                <td class="mono">${escapeHtml(s.time || "")}</td>
+              </tr>`;
+          })
+          .join("");
+      }
+
+      async function refreshExercises() {
+        const data = await api("/api/exercises");
+        const select = $("exercise");
+        const opts = (data.exercises || []).map((name) => `<option value="${escapeAttr(name)}">${escapeHtml(name)}</option>`);
+        select.innerHTML = opts.join("") || `<option value="Bench Press">Bench Press</option>`;
+      }
+
+      async function refreshWeekly() {
+        const w = await api("/api/weekly?weeks_ago=0");
+        $("weeklyBox").innerHTML = `
+          <div class="split">
+            <div class="pill"><span class="muted">期間</span> <span class="mono">${w.week_start}</span> <span class="muted">〜</span> <span class="mono">${w.week_end}</span></div>
+          </div>
+          <div style="margin-top:10px" class="split">
+            <div class="pill"><span class="muted">Total Volume</span> <span class="mono">${Number(w.total_volume || 0).toFixed(0)}</span> <span class="muted">kg</span></div>
+            <div class="pill"><span class="muted">Sessions</span> <span class="mono">${w.session_count || 0}</span></div>
+            <div class="pill"><span class="muted">Sets</span> <span class="mono">${w.set_count || 0}</span></div>
+          </div>`;
+      }
+
+      async function refreshPRs() {
+        const p = await api("/api/prs?days=14");
+        const prs = p.prs || [];
+        if (!prs.length) {
+          $("prsBox").innerHTML = `<div class="muted">直近14日ではPRがありません。</div>`;
+          return;
+        }
+        $("prsBox").innerHTML = prs
+          .slice(0, 10)
+          .map((x) => {
+            const w = x.weight == null ? "" : ` @ ${Number(x.weight).toFixed(1)}kg`;
+            return `<div><span class="mono">${escapeHtml(x.date || "")}</span> <b>${escapeHtml(x.exercise || "")}</b> — <span class="mono">${escapeHtml(x.type || "")}</span>: <span class="mono">${Number(x.value || 0).toFixed(2)}</span>${w}</div>`;
+          })
+          .join("");
+      }
+
+      async function refreshSessions() {
+        const data = await api("/api/sessions?limit=80");
+        const rows = data.sessions || [];
+        const body = $("sessionsBody");
+        if (!rows.length) {
+          body.innerHTML = `<tr><td colspan="4" class="muted">まだ履歴がありません。</td></tr>`;
+          return;
+        }
+        body.innerHTML = rows
+          .map((s) => {
+            return `
+              <tr>
+                <td class="mono"><a href="#" data-session="${s.id}">${s.id}</a></td>
+                <td class="mono">${escapeHtml(s.date || "")}</td>
+                <td class="right mono">${s.set_count || 0}</td>
+                <td class="right mono">${Number(s.volume || 0).toFixed(0)}</td>
+              </tr>`;
+          })
+          .join("");
+
+        body.querySelectorAll("a[data-session]").forEach((a) => {
+          a.addEventListener("click", async (ev) => {
+            ev.preventDefault();
+            const id = Number(a.getAttribute("data-session"));
+            await loadSessionSets(id);
+          });
+        });
+      }
+
+      async function loadSessionSets(sessionId) {
+        const data = await api(`/api/sessions/${sessionId}/sets`);
+        $("selectedSessionTitle").textContent = `session_id=${sessionId}`;
+        const body = $("sessionSetsBody");
+        const sets = data.sets || [];
+        if (!sets.length) {
+          body.innerHTML = `<tr><td colspan="7" class="muted">セットがありません。</td></tr>`;
+          return;
+        }
+        body.innerHTML = sets
+          .map((s) => {
+            const rpe = s.rpe == null ? "" : Number(s.rpe).toFixed(1);
+            return `
+              <tr>
+                <td class="mono">${s.set_index}</td>
+                <td>${escapeHtml(s.exercise)}</td>
+                <td class="right mono">${Number(s.weight).toFixed(1)}</td>
+                <td class="right mono">${s.reps ?? 0}</td>
+                <td class="right mono">${rpe}</td>
+                <td class="mono">${escapeHtml(s.type || "")}</td>
+                <td class="right mono">${Number(s.avg_vel || 0).toFixed(2)}</td>
+              </tr>`;
+          })
+          .join("");
+      }
+
+      function escapeHtml(s) {
+        return String(s).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
+      }
+      function escapeAttr(s) {
+        return escapeHtml(s).replaceAll("`", "&#096;");
+      }
+
+      $("btnStart").addEventListener("click", async () => {
+        try {
+          const bodyWeight = $("bodyWeight").value ? Number($("bodyWeight").value) : null;
+          const readiness = $("readiness").value ? Number($("readiness").value) : null;
+          const notes = $("sessionNotes").value || "";
+          const res = await api("/api/session/start", { method: "POST", body: JSON.stringify({ body_weight: bodyWeight, readiness, notes }) });
+          toast($("sessionToast"), "ok", `セッション開始: id=${res.session_id}`);
+          await refreshState();
+          await refreshSessions();
+        } catch (e) {
+          toast($("sessionToast"), "bad", `開始に失敗: ${e.message}`);
+        }
+      });
+
+      $("btnEnd").addEventListener("click", async () => {
+        try {
+          await api("/api/session/end", { method: "POST", body: JSON.stringify({ notes: null }) });
+          toast($("sessionToast"), "ok", "セッションを終了しました");
+          await refreshState();
+          await refreshSessions();
+        } catch (e) {
+          toast($("sessionToast"), "bad", `終了に失敗: ${e.message}`);
+        }
+      });
+
+      $("btnAddManual").addEventListener("click", async () => {
+        try {
+          const newEx = ($("newExercise").value || "").trim();
+          const exercise = newEx || $("exercise").value;
+          const weight = Number($("weightKg").value);
+          const reps = Number($("reps").value);
+          const rpe = $("rpe").value ? Number($("rpe").value) : null;
+          const setType = $("setType").value;
+          if (!exercise) throw new Error("種目が空です");
+          if (!Number.isFinite(weight) || weight < 0) throw new Error("重量が不正です");
+          if (!Number.isFinite(reps) || reps < 1) throw new Error("レップ数が不正です");
+          await api("/api/manual_set", { method: "POST", body: JSON.stringify({ exercise, weight_kg: weight, reps, rpe, set_type: setType }) });
+          toast($("manualToast"), "ok", `保存しました: ${exercise} ${weight}kg x ${reps}`);
+          $("newExercise").value = "";
+          await refreshExercises();
+          await refreshState();
+          await refreshSessions();
+          await refreshWeekly();
+          await refreshPRs();
+        } catch (e) {
+          toast($("manualToast"), "bad", `保存に失敗: ${e.message}`);
+        }
+      });
+
+      (async function init() {
+        try {
+          await refreshExercises();
+          await refreshState();
+          await refreshWeekly();
+          await refreshPRs();
+          await refreshSessions();
+        } catch (e) {
+          console.error(e);
+        }
+      })();
+    </script>
+  </body>
+</html>
+

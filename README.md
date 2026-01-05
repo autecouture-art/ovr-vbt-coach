@@ -65,8 +65,18 @@ pip install -r requirements.txt
 ### Run
 
 ```bash
-python vbt_app.py
+python3 vbt_app.py
 ```
+
+### Run (Web / Browser)
+
+ブラウザで使いたい場合は、Web版を起動します（既存GUI版はそのまま残っています）。
+
+```bash
+python3 web_app.py
+```
+
+起動後にブラウザで `http://localhost:8000/` を開いてください。
 
 Or use the macOS shortcut:
 ```bash
