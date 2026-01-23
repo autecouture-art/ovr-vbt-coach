@@ -99,7 +99,21 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
           style={[styles.button, styles.primaryButton]}
           onPress={handleStartSession}
         >
-          <Text style={styles.buttonText}>セッション開始</Text>
+          <Text style={styles.buttonText}>VBTセッション開始</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.button, styles.secondaryButton]}
+          onPress={() => navigation.navigate('ManualEntry')}
+        >
+          <Text style={styles.buttonText}>手動入力</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.button, styles.tertiaryButton]}
+          onPress={() => navigation.navigate('LVP', { lift: 'Bench Press' })}
+        >
+          <Text style={styles.buttonText}>LVPグラフ</Text>
         </TouchableOpacity>
       </View>
 
@@ -178,6 +192,12 @@ const styles = StyleSheet.create({
   },
   primaryButton: {
     backgroundColor: '#2196F3',
+  },
+  secondaryButton: {
+    backgroundColor: '#FF9800',
+  },
+  tertiaryButton: {
+    backgroundColor: '#9C27B0',
   },
   buttonText: {
     color: '#fff',
