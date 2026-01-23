@@ -1,0 +1,68 @@
+{
+  "expo": {
+    "name": "OVR VBT Coach",
+    "slug": "ovr-vbt-coach",
+    "version": "2.3.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#1a1a1a"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.ovr.vbtcoach",
+      "infoPlist": {
+        "NSBluetoothAlwaysUsageDescription": "This app uses Bluetooth to connect to OVR Velocity sensors for real-time velocity tracking during your workouts.",
+        "NSBluetoothPeripheralUsageDescription": "This app uses Bluetooth to connect to OVR Velocity sensors.",
+        "NSCameraUsageDescription": "This app uses the camera to record your workout videos for form analysis.",
+        "NSMicrophoneUsageDescription": "This app uses the microphone for voice commands during your workouts.",
+        "NSPhotoLibraryUsageDescription": "This app saves workout videos to your photo library."
+      },
+      "buildNumber": "1"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#1a1a1a"
+      },
+      "package": "com.ovr.vbtcoach",
+      "permissions": [
+        "BLUETOOTH",
+        "BLUETOOTH_ADMIN",
+        "BLUETOOTH_SCAN",
+        "BLUETOOTH_CONNECT",
+        "ACCESS_FINE_LOCATION",
+        "CAMERA",
+        "RECORD_AUDIO"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "react-native-ble-plx",
+        {
+          "isBackgroundEnabled": true,
+          "modes": [
+            "peripheral",
+            "central"
+          ],
+          "bluetoothAlwaysPermission": "Allow OVR VBT Coach to connect to OVR Velocity sensors"
+        }
+      ],
+      [
+        "expo-sqlite",
+        {
+          "enableFTS": true
+        }
+      ]
+    ]
+  }
+}
