@@ -192,9 +192,11 @@
 - [x] iOS 権限設定（Bluetooth, Camera, Microphone など）
 - [x] TESTFLIGHT_DEPLOYMENT.md 作成
 - [x] IOS_BUILD_CHECKLIST.md 作成
-- [ ] アプリアイコン生成（1024×1024px）
-- [ ] スプラッシュスクリーン生成（200×200px）
-- [ ] README.md 更新
+- [x] アプリアイコン生成（1024×1024px）
+- [x] スプラッシュスクリーン生成（200×200px）
+- [x] README.md 更新
+- [x] Android アダプティブアイコン生成
+- [x] app.config.ts ブランディング設定完了
 
 ### Manus AI ビルド
 - [ ] Manus アカウント準備
