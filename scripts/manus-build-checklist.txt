@@ -1,0 +1,99 @@
+# OVR VBT Coach - Manus ビルド実行チェックリスト
+
+## 前提条件
+
+- [ ] Manus アカウント持有
+- [ ] OVR VBT Coach プロジェクトが初期化済み
+- [ ] app.config.ts が正しく設定済み
+- [ ] すべての依存関係がインストール済み
+- [ ] App Store Connect でアプリが登録済み
+
+## ビルド前準備
+
+- [ ] Manus UI（https://app.manus.im）にアクセス
+- [ ] Manus アカウントでログイン
+- [ ] OVR VBT Coach プロジェクトを選択
+- [ ] Management UI で Dev Server が Running 状態を確認
+- [ ] Management UI で Secrets を確認
+
+## ビルド設定確認
+
+- [ ] Platform: iOS
+- [ ] Build Type: Release
+- [ ] Deployment Target: TestFlight
+- [ ] App Name: OVR VBT Coach
+- [ ] Bundle ID: space.manus.ovr.vbt.coach.app.t20260125053732
+- [ ] Version: 2.3.0
+- [ ] Build Number: 1
+
+## ビルド実行
+
+- [ ] Management UI の Publish ボタンをクリック
+- [ ] Build for iOS を選択
+- [ ] ビルド設定を確認
+- [ ] Start Build をクリック
+- [ ] ビルド開始確認メッセージを確認
+
+## ビルド監視（30～60 分）
+
+### ビルドステージ
+
+- [ ] 依存関係チェック（2～3 分）
+- [ ] TypeScript コンパイル（3～5 分）
+- [ ] Expo ビルド準備（2～3 分）
+- [ ] iOS ビルド実行（15～20 分）
+- [ ] IPA ファイル生成（3～5 分）
+- [ ] App Store Connect アップロード（3～5 分）
+
+### ログ確認
+
+- [ ] Dependencies installed
+- [ ] TypeScript compiled successfully
+- [ ] Expo build configured
+- [ ] iOS build completed
+- [ ] IPA generated
+- [ ] Uploaded to App Store Connect
+
+## ビルド完了
+
+- [ ] Manus からビルド完了メール受信
+- [ ] Management UI で完了ステータス表示
+- [ ] App Store Connect にログイン
+- [ ] OVR VBT Coach を選択
+- [ ] TestFlight → Builds をクリック
+- [ ] 新しいビルドが表示される
+- [ ] Build Version: 2.3.0
+- [ ] Build Number: 1
+- [ ] Status: Processing → Ready to Test
+
+## トラブルシューティング
+
+### ビルド失敗時
+
+- [ ] Build Logs でエラーメッセージを確認
+- [ ] ローカルで npm run check を実行
+- [ ] エラーを修正
+- [ ] webdev_save_checkpoint で新しいチェックポイント作成
+- [ ] ビルドを再実行
+
+### ビルドが遅い場合
+
+- [ ] 通常 30～60 分
+- [ ] 1 時間以上かかる場合は Manus サポートに連絡
+
+### App Store Connect に表示されない
+
+- [ ] App Store Connect を更新
+- [ ] 5～10 分待機
+- [ ] それでも表示されない場合は Manus サポートに連絡
+
+## 完了
+
+- [ ] ビルド完了
+- [ ] App Store Connect でビルド表示
+- [ ] ステータス: Ready to Test
+
+---
+
+完了日時: ________________
+完了者: ________________
