@@ -16,7 +16,7 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.ovr.vbtcoach",
+      "bundleIdentifier": "com.yourname.ovrvbtcoach",
       "infoPlist": {
         "NSBluetoothAlwaysUsageDescription": "This app uses Bluetooth to connect to OVR Velocity sensors for real-time velocity tracking during your workouts.",
         "NSBluetoothPeripheralUsageDescription": "This app uses Bluetooth to connect to OVR Velocity sensors.",
