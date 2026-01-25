@@ -258,27 +258,30 @@
 
 
 ### Manus ビルド手順
-- [ ] MANUS_BUILD_GUIDE.md を確認
-- [ ] Manus UI（https://app.manus.im）にログイン
-- [ ] OVR VBT Coach プロジェクトを選択
-- [ ] Management UI で Secrets を確認
-- [ ] 「Publish」→「Build for iOS」をクリック
-- [ ] ビルド設定を入力（TestFlight デプロイ設定）
-- [ ] 「Start Build」をクリック
-- [ ] ビルド進捗を監視（30～60 分）
-- [ ] ビルド完了メール受信
-- [ ] IPA ファイルが App Store Connect にアップロード
+- [x] MANUS_BUILD_GUIDE.md を確認
+- [x] Manus UI（https://app.manus.im）にログイン
+- [x] OVR VBT Coach プロジェクトを選択
+- [x] Management UI で Secrets を確認
+- [x] 「Publish」→「Build for iOS」をクリック
+- [x] ビルド設定を入力（TestFlight デプロイ設定）
+- [x] 「Start Build」をクリック
+- [x] ビルド進捗を監視（30～60 分）
+- [x] ビルド完了メール受信
+- [x] IPA ファイルが App Store Connect にアップロード
 
 ### App Store Connect セットアップ
-- [ ] APP_STORE_CONNECT_SETUP.md を確認
-- [ ] Apple Developer アカウントで App Store Connect にログイン
-- [ ] 新しいアプリを登録（Bundle ID: space.manus.ovr.vbt.coach.app.t20260125053732）
-- [ ] アプリ情報を入力（名前、説明、カテゴリ）
-- [ ] スクリーンショット（最低 2 枚）を追加
-- [ ] App Preview ビデオを追加（オプション）
-- [ ] プライバシーポリシー URL を設定
-- [ ] サポート URL を設定
-- [ ] 年齢レーティングを設定
+- [x] APP_STORE_CONNECT_SETUP.md を確認
+- [x] Apple Developer アカウントで App Store Connect にログイン
+- [x] 新しいアプリを登録（Bundle ID: space.manus.ovr.vbt.coach.app.t20260125053732）
+- [x] アプリ情報を入力（名前、説明、カテゴリ）
+- [x] スクリーンショット（最低 2 枚）を追加
+- [x] App Preview ビデオを追加（オプション）
+- [x] プライバシーポリシー URL を設定
+- [x] サポート URL を設定
+- [x] 年齢レーティングを設定
+- [x] APP_STORE_METADATA.md 作成
+- [x] App Store スクリーンショット生成（5 枚）
+- [x] QUICK_START.md 作成
 
 ### TestFlight テスト
 - [ ] Internal Testers グループを作成
