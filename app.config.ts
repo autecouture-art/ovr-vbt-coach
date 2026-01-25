@@ -41,18 +41,31 @@ const env = {
 const config: ExpoConfig = {
   name: env.appName,
   slug: env.appSlug,
-  version: "1.0.0",
+  version: "2.3.0",
   orientation: "portrait",
   icon: "./assets/images/icon.png",
   scheme: env.scheme,
-  userInterfaceStyle: "automatic",
+  userInterfaceStyle: "dark",
   newArchEnabled: true,
   ios: {
     supportsTablet: true,
     bundleIdentifier: env.iosBundleId,
-    "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
-      }
+    buildNumber: "1",
+    infoPlist: {
+      ITSAppUsesNonExemptEncryption: false,
+      NSBluetoothAlwaysUsageDescription:
+        "This app uses Bluetooth to connect to OVR Velocity sensors for real-time velocity tracking during your workouts.",
+      NSBluetoothPeripheralUsageDescription:
+        "This app uses Bluetooth to connect to OVR Velocity sensors.",
+      NSCameraUsageDescription:
+        "This app uses the camera to record your workout videos for form analysis.",
+      NSMicrophoneUsageDescription:
+        "This app uses the microphone for voice commands during your workouts.",
+      NSPhotoLibraryUsageDescription:
+        "This app saves workout videos to your photo library.",
+      NSLocationWhenInUseUsageDescription:
+        "This app may use location services for enhanced training features.",
+    },
   },
   android: {
     adaptiveIcon: {
@@ -64,7 +77,16 @@ const config: ExpoConfig = {
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
     package: env.androidPackage,
-    permissions: ["POST_NOTIFICATIONS"],
+    permissions: [
+      "POST_NOTIFICATIONS",
+      "BLUETOOTH",
+      "BLUETOOTH_ADMIN",
+      "BLUETOOTH_SCAN",
+      "BLUETOOTH_CONNECT",
+      "ACCESS_FINE_LOCATION",
+      "CAMERA",
+      "RECORD_AUDIO",
+    ],
     intentFilters: [
       {
         action: "VIEW",
@@ -105,19 +127,31 @@ const config: ExpoConfig = {
         image: "./assets/images/splash-icon.png",
         imageWidth: 200,
         resizeMode: "contain",
-        backgroundColor: "#ffffff",
+        backgroundColor: "#1a1a1a",
         dark: {
-          backgroundColor: "#000000",
+          backgroundColor: "#1a1a1a",
         },
       },
     ],
     [
       "expo-build-properties",
       {
+        ios: {
+          deploymentTarget: "13.0",
+        },
         android: {
           buildArchs: ["armeabi-v7a", "arm64-v8a"],
           minSdkVersion: 24,
         },
+      },
+    ],
+    [
+      "react-native-ble-plx",
+      {
+        isBackgroundEnabled: true,
+        modes: ["peripheral", "central"],
+        bluetoothAlwaysPermission:
+          "Allow OVR VBT Coach to connect to OVR Velocity sensors",
       },
     ],
   ],

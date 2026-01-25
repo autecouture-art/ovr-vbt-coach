@@ -181,3 +181,75 @@
 - [ ] ソーシャル機能
 - [ ] 月間レポート自動生成
 - [ ] 技術スコア算出
+
+
+---
+
+## TestFlight & Deployment
+
+### Pre-Deployment
+- [x] app.config.ts 最終設定（v2.3.0）
+- [x] iOS 権限設定（Bluetooth, Camera, Microphone など）
+- [x] TESTFLIGHT_DEPLOYMENT.md 作成
+- [x] IOS_BUILD_CHECKLIST.md 作成
+- [ ] アプリアイコン生成（1024×1024px）
+- [ ] スプラッシュスクリーン生成（200×200px）
+- [ ] README.md 更新
+
+### Manus AI ビルド
+- [ ] Manus アカウント準備
+- [ ] GitHub リポジトリ接続
+- [ ] iOS ビルド開始
+- [ ] ビルド完了待機（30-60分）
+- [ ] ビルドエラー対応（必要に応じて）
+
+### App Store Connect
+- [ ] Bundle ID 登録
+- [ ] Provisioning Profile 作成
+- [ ] Code Signing Certificate 作成
+- [ ] ビルドが App Store Connect に表示されるまで待機
+- [ ] ビルド処理完了確認（10-30分）
+
+### TestFlight テスト
+- [ ] 内部テスター招待
+- [ ] テスターがアプリをインストール
+- [ ] 主要機能テスト
+- [ ] BLE デバイス互換性確認
+- [ ] バッテリー消費テスト
+- [ ] クラッシュレポート確認
+- [ ] フィードバック収集
+
+### バグ修正
+- [ ] 報告されたバグを修正
+- [ ] 新しいビルドをアップロード
+- [ ] 再度テスト実施
+
+### App Store 申請準備
+- [ ] アプリ説明文作成
+- [ ] キーワード設定
+- [ ] スクリーンショット準備（5-10枚）
+- [ ] プレビュー動画準備（オプション）
+- [ ] プライバシーポリシー作成
+- [ ] 利用規約作成
+- [ ] サポート URL 設定
+- [ ] Content Rating 完了
+- [ ] 年齢制限設定
+
+### App Store 申請
+- [ ] 最終レビュー
+- [ ] App Store に申請
+- [ ] Apple レビュー待機（1-3日）
+- [ ] 承認後、App Store で公開
+
+---
+
+## Future Enhancements
+
+- [ ] Vision-VBT（カメラ速度推定）
+- [ ] Apple Watch 連携
+- [ ] クラウド同期
+- [ ] ソーシャル機能
+- [ ] 月間レポート自動生成
+- [ ] 技術スコア算出
+- [ ] 音声入力コマンド
+- [ ] 動画記録機能
