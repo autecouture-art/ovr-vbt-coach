@@ -1,0 +1,95 @@
+# OVR VBT Coach - App Store Connect 登録チェックリスト
+
+## 前提条件
+- [ ] Apple Developer アカウント持有
+- [ ] App Store Connect へのアクセス権限
+- [ ] アプリアイコン（1024×1024px）
+- [ ] スクリーンショット 5 枚（1242×2208px）
+
+## アプリ登録情報
+
+アプリ名: OVR VBT Coach
+Bundle ID: space.manus.ovr.vbt.coach.app.t20260125053732
+SKU: ovr-vbt-coach-001
+カテゴリ: Health & Fitness
+年齢レーティング: 4+
+価格: Free
+
+## ステップ 1: 新しいアプリ作成
+
+- [ ] App Store Connect にログイン
+- [ ] My Apps をクリック
+- [ ] + ボタンをクリック
+- [ ] New App を選択
+- [ ] Platform: iOS を選択
+- [ ] Name: OVR VBT Coach を入力
+- [ ] Primary Language: English を選択
+- [ ] Bundle ID: space.manus.ovr.vbt.coach.app.t20260125053732 を入力
+- [ ] SKU: ovr-vbt-coach-001 を入力
+- [ ] User Access: Full Access を選択
+- [ ] Create をクリック
+
+## ステップ 2: App Information タブ
+
+- [ ] App Information タブをクリック
+- [ ] App Name: OVR VBT Coach を入力
+- [ ] Subtitle: Real-Time Velocity Training Analytics を入力
+- [ ] Category: Health & Fitness を選択
+- [ ] Privacy Policy URL を入力
+- [ ] Support URL を入力
+- [ ] Support Email を入力
+
+## ステップ 3: App Store タブ
+
+- [ ] App Store タブをクリック
+- [ ] Description を入力（APP_STORE_METADATA.md から）
+- [ ] Keywords を入力（APP_STORE_METADATA.md から）
+- [ ] Support URL を入力
+- [ ] Support Email を入力
+
+## ステップ 4: スクリーンショット
+
+- [ ] Screenshots セクションで iPhone 6.7-inch を選択
+- [ ] screenshot-1-home.png をアップロード
+- [ ] screenshot-2-ble.png をアップロード
+- [ ] screenshot-3-monitoring.png をアップロード
+- [ ] screenshot-4-pr.png をアップロード
+- [ ] screenshot-5-summary.png をアップロード
+
+## ステップ 5: Pricing and Availability
+
+- [ ] Pricing and Availability をクリック
+- [ ] Price Tier: Free を選択
+- [ ] Availability: All countries を選択
+- [ ] Save をクリック
+
+## ステップ 6: App Information（年齢レーティング）
+
+- [ ] App Information タブをクリック
+- [ ] Age Rating をクリック
+- [ ] すべてのカテゴリで「No」を選択
+- [ ] Age Rating: 4+ を確認
+
+## ステップ 7: 確認
+
+- [ ] アプリ名: OVR VBT Coach
+- [ ] Bundle ID: space.manus.ovr.vbt.coach.app.t20260125053732
+- [ ] SKU: ovr-vbt-coach-001
+- [ ] カテゴリ: Health & Fitness
+- [ ] 説明: 入力済み
+- [ ] キーワード: 入力済み
+- [ ] スクリーンショット: 5 枚
+- [ ] 価格: Free
+- [ ] 年齢レーティング: 4+
+- [ ] プライバシーポリシー URL: 設定済み
+- [ ] サポート URL: 設定済み
+
+## 完了
+
+- [ ] App Store Connect でアプリが表示される
+- [ ] ステータス: Ready to Submit
+
+---
+
+完了日時: ________________
+完了者: ________________
