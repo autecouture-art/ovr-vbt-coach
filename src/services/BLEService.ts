@@ -3,7 +3,7 @@
  * Handles Bluetooth Low Energy communication with OVR Velocity sensor
  */
 
-import { BleManager, Device, Characteristic } from 'react-native-ble-plx';
+import { BleManager, Device, Characteristic, Service } from 'react-native-ble-plx';
 import { Platform } from 'react-native';
 import { OVRData } from '../types/index';
 
@@ -46,7 +46,8 @@ export interface BLEServiceCallbacks {
   onConnectionStatusChanged?: (isConnected: boolean) => void;
   onError?: (error: string) => void;
   onDeviceFound?: (device: Device) => void;
-  onDevicesDiscovered?: (devices: Device[]) => void;  // 全デバイス通知（デバッグ用）
+  onDevicesDiscovered?: (devices: Device[]) => void;
+  onDebugInfo?: (info: string) => void;
 }
 
 class BLEService {
@@ -54,10 +55,20 @@ class BLEService {
   private device: Device | null = null;
   private isScanning: boolean = false;
   private callbacks: BLEServiceCallbacks = {};
-  private discoveredDevices: Device[] = [];  // 発見したデバイスを記録
+  private discoveredDevices: Device[] = [];
+  private notificationMonitor: any = null;
+  private discoveredServices: Service[] = [];
 
   constructor() {
     this.manager = new BleManager();
+  }
+
+  /**
+   * Log debug info
+   */
+  private debug(message: string) {
+    console.log('[BLE]', message);
+    this.callbacks.onDebugInfo?.(message);
   }
 
   /**
@@ -139,10 +150,9 @@ class BLEService {
     this.discoveredDevices = [];
 
     // iOSではUUIDフィルターなしでスキャン（より多くのデバイスを検出）
-    // AndroidではUUIDフィルター使用（効率的）
     const serviceUUIDs = Platform.OS === 'ios' ? [] : [SERVICE_UUID];
 
-    console.log('Starting BLE scan...', Platform.OS, serviceUUIDs);
+    this.debug('Starting BLE scan...');
 
     this.manager.startDeviceScan(
       serviceUUIDs,
@@ -156,34 +166,29 @@ class BLEService {
         }
 
         if (device) {
-          // 全デバイスを記録
           const existingIndex = this.discoveredDevices.findIndex(d => d.id === device.id);
           if (existingIndex === -1) {
             this.discoveredDevices.push(device);
-            console.log('Device discovered:', device.name || '(unnamed)', device.id);
+            this.debug(`Device found: ${device.name || '(unnamed)'} (${device.id})`);
 
-            // OVRデバイスを検出
             if (device.name && this.isOVRDevice(device.name)) {
-              console.log('OVR Velocity device found!', device.name);
+              this.debug(`OVR Velocity device found!`);
               this.callbacks.onDeviceFound?.(device);
             }
           }
 
-          // 定期的に発見したデバイスを通知（デバッグ用）
           this.callbacks.onDevicesDiscovered?.(this.discoveredDevices);
         }
       }
     );
 
-    // スキャン期間を延長（iOSでデバイスを見つけやすくするため）
     const scanDuration = Platform.OS === 'ios' ? 10000 : SCAN_DURATION;
     setTimeout(() => {
-      // OVRデバイスが見つからない場合の通知
       const ovrDevice = this.discoveredDevices.find(d =>
         d.name && this.isOVRDevice(d.name)
       );
       if (!ovrDevice) {
-        console.log('Scan complete. No OVR device found. Total devices:', this.discoveredDevices.length);
+        this.debug(`Scan complete. Found ${this.discoveredDevices.length} devices, no OVR device.`);
       }
       this.stopScan();
     }, scanDuration);
@@ -204,8 +209,82 @@ class BLEService {
     if (this.isScanning) {
       this.manager.stopDeviceScan();
       this.isScanning = false;
-      console.log('Scan stopped');
+      this.debug('Scan stopped');
     }
+  }
+
+  /**
+   * Discover and log all services and characteristics
+   */
+  private async discoverServices(device: Device): Promise<Service[]> {
+    try {
+      this.debug('Discovering services...');
+      const services = await device.services();
+      this.discoveredServices = services;
+
+      this.debug(`Found ${services.length} services:`);
+      for (const service of services) {
+        this.debug(`  Service: ${service.uuid}`);
+
+        const characteristics = await service.characteristics();
+        for (const char of characteristics) {
+          const props = [];
+          if (char.isReadable) props.push('readable');
+          if (char.isNotifiable) props.push('notifiable');
+          if (char.isIndicatable) props.push('indicatable');
+          this.debug(`    Characteristic: ${char.uuid} [${props.join(', ')}]`);
+        }
+      }
+
+      return services;
+    } catch (error) {
+      this.debug(`Error discovering services: ${error}`);
+      return [];
+    }
+  }
+
+  /**
+   * Find a readable characteristic for data
+   */
+  private async findReadableCharacteristic(): Promise<Characteristic | null> {
+    if (!this.device) return null;
+
+    try {
+      for (const service of this.discoveredServices) {
+        const characteristics = await service.characteristics();
+        for (const char of characteristics) {
+          if (char.isReadable) {
+            this.debug(`Found readable characteristic: ${char.uuid}`);
+            return char;
+          }
+        }
+      }
+    } catch (error) {
+      this.debug(`Error finding readable characteristic: ${error}`);
+    }
+    return null;
+  }
+
+  /**
+   * Find a notifiable characteristic
+   */
+  private async findNotifiableCharacteristic(): Promise<Characteristic | null> {
+    if (!this.device) return null;
+
+    try {
+      for (const service of this.discoveredServices) {
+        const characteristics = await service.characteristics();
+        for (const char of characteristics) {
+          if (char.isNotifiable || char.isIndicatable) {
+            this.debug(`Found notifiable characteristic: ${char.uuid}`);
+            return char;
+          }
+        }
+      }
+    } catch (error) {
+      this.debug(`Error finding notifiable characteristic: ${error}`);
+    }
+    return null;
   }
 
   /**
@@ -213,18 +292,21 @@ class BLEService {
    */
   async connectToDevice(device: Device): Promise<boolean> {
     try {
-      console.log('Connecting to device:', device.name);
-
-      // Stop scanning before connecting
+      this.debug(`Connecting to ${device.name}...`);
       this.stopScan();
 
       const connectedDevice = await device.connect();
+      this.debug('Device connected, discovering services...');
+
       await connectedDevice.discoverAllServicesAndCharacteristics();
-
       this.device = connectedDevice;
-      this.callbacks.onConnectionStatusChanged?.(true);
 
-      console.log('Connected successfully');
+      // Discover and log all services for debugging
+      await this.discoverServices(connectedDevice);
+
+      this.callbacks.onConnectionStatusChanged?.(true);
+      this.debug('Connected successfully');
+
       return true;
     } catch (error) {
       console.error('Connection failed:', error);
@@ -236,6 +318,7 @@ class BLEService {
 
   /**
    * Start listening for notifications
+   * Tries multiple approaches to get data
    */
   async startNotifications(): Promise<boolean> {
     if (!this.device) {
@@ -243,32 +326,92 @@ class BLEService {
       return false;
     }
 
-    try {
-      console.log('Starting notifications');
+    this.debug('Starting data reception...');
 
-      this.device.monitorCharacteristicForService(
-        SERVICE_UUID,
-        NOTIFY_CHARACTERISTIC_UUID,
-        (error: any, characteristic: any) => {
-          if (error) {
-            console.error('Notification error:', error);
-            this.callbacks.onError?.(`Notification error: ${error.message}`);
-            return;
-          }
+    // First, try to find and monitor a notifiable characteristic
+    const notifiableChar = await this.findNotifiableCharacteristic();
 
-          if (characteristic?.value) {
-            this.handleNotification(characteristic);
+    if (notifiableChar) {
+      this.debug(`Setting up monitor for: ${notifiableChar.uuid}`);
+
+      try {
+        this.notificationMonitor = this.device.monitorCharacteristicForService(
+          notifiableChar.serviceUUID,
+          notifiableChar.uuid,
+          (error: any, characteristic: any) => {
+            if (error) {
+              this.debug(`Notification error: ${error.message}`);
+              this.callbacks.onError?.(`Notification error: ${error.message}`);
+              return;
+            }
+
+            if (characteristic?.value) {
+              this.debug(`Received data: ${characteristic.value}`);
+              this.handleNotification(characteristic);
+            } else {
+              this.debug('Received notification without value');
+            }
           }
+        );
+
+        // Also try to read once to get initial data
+        try {
+          const readValue = await notifiableChar.read();
+          if (readValue?.value) {
+            this.debug(`Initial read: ${readValue.value}`);
+            this.handleNotification(readValue);
+          }
+        } catch (readError) {
+          this.debug(`Initial read failed: ${readError}`);
         }
-      );
 
-      console.log('Notifications started');
-      return true;
-    } catch (error) {
-      console.error('Failed to start notifications:', error);
-      this.callbacks.onError?.(`Failed to start notifications: ${error}`);
-      return false;
+        this.debug('Monitoring started');
+        return true;
+
+      } catch (error) {
+        this.debug(`Monitor setup failed: ${error}`);
+      }
     }
+
+    // Fallback: try to find a readable characteristic and poll it
+    this.debug('No notifiable characteristic found, trying readable...');
+    const readableChar = await this.findReadableCharacteristic();
+
+    if (readableChar) {
+      this.debug(`Polling readable characteristic: ${readableChar.uuid}`);
+
+      // Read once immediately
+      try {
+        const value = await readableChar.read();
+        if (value?.value) {
+          this.handleNotification(value);
+        }
+      } catch (error) {
+        this.debug(`Read failed: ${error}`);
+      }
+
+      // Set up polling
+      if (this.notificationMonitor) {
+        clearInterval(this.notificationMonitor);
+      }
+
+      this.notificationMonitor = setInterval(async () => {
+        try {
+          const value = await readableChar!.read();
+          if (value?.value) {
+            this.handleNotification(value);
+          }
+        } catch (error) {
+          // Ignore read errors during polling
+        }
+      }, 500); // Poll every 500ms
+
+      this.debug('Polling started (500ms interval)');
+      return true;
+    }
+
+    this.callbacks.onError?.('No readable or notifiable characteristic found');
+    return false;
   }
 
   /**
@@ -277,49 +420,57 @@ class BLEService {
   private handleNotification(characteristic: Characteristic) {
     try {
       const base64Data = characteristic.value;
-      if (!base64Data) return;
+      if (!base64Data) {
+        this.debug('No value in characteristic');
+        return;
+      }
 
-      // Decode base64 to byte array (React Native compatible)
+      // Decode base64 to byte array
       const bytes = base64ToBytes(base64Data);
+      this.debug(`Data received: ${bytes.length} bytes`);
 
       if (bytes.length !== EXPECTED_DATA_SIZE) {
-        console.warn(`Unexpected data size: ${bytes.length} bytes`);
-        return;
+        this.debug(`Warning: Expected ${EXPECTED_DATA_SIZE} bytes, got ${bytes.length}`);
+        // Don't return - try to parse anyway
       }
 
       // Parse OVR velocity data
       const parsedData = this.parseVelocityData(bytes);
 
       if (parsedData) {
+        this.debug(`Parsed: v=${parsedData.mean_velocity.toFixed(2)} m/s`);
         this.callbacks.onDataReceived?.(parsedData);
+      } else {
+        this.debug('Failed to parse data');
       }
     } catch (error) {
-      console.error('Error handling notification:', error);
+      this.debug(`Error handling notification: ${error}`);
     }
   }
 
   /**
    * Parse velocity data from byte array
-   * Based on the Python parser implementation
    */
   private parseVelocityData(bytes: Uint8Array): OVRData | null {
     try {
-      // Parse 16-byte data structure from OVR device
-      // Format: 4 bytes float for each value (little-endian)
-      // [mean_velocity, peak_velocity, rom_cm, rep_duration_ms]
+      if (bytes.length < 16) {
+        this.debug(`Data too short: ${bytes.length} bytes`);
+        return null;
+      }
 
       const mean_velocity = readFloatLE(bytes, 0);
       const peak_velocity = readFloatLE(bytes, 4);
       const rom_cm = readFloatLE(bytes, 8);
       const rep_duration_ms = readFloatLE(bytes, 12);
 
-      // Validation: check for reasonable values
+      // Validation
       if (
         isNaN(mean_velocity) ||
         isNaN(peak_velocity) ||
         isNaN(rom_cm) ||
         isNaN(rep_duration_ms)
       ) {
+        this.debug('Data contains NaN values');
         return null;
       }
 
@@ -331,7 +482,7 @@ class BLEService {
         timestamp: Date.now(),
       };
     } catch (error) {
-      console.error('Error parsing velocity data:', error);
+      this.debug(`Error parsing velocity data: ${error}`);
       return null;
     }
   }
@@ -340,30 +491,33 @@ class BLEService {
    * Stop notifications
    */
   async stopNotifications(): Promise<void> {
-    if (!this.device) return;
-
-    try {
-      // BLE PLX automatically stops monitoring when disconnecting
-      console.log('Notifications stopped');
-    } catch (error) {
-      console.error('Error stopping notifications:', error);
+    if (this.notificationMonitor) {
+      if (typeof this.notificationMonitor === 'function') {
+        // It's a monitor callback, can't cancel it directly
+      } else {
+        clearInterval(this.notificationMonitor);
+      }
+      this.notificationMonitor = null;
     }
+    this.debug('Notifications stopped');
   }
 
   /**
    * Disconnect from device
    */
   async disconnect(): Promise<void> {
-    if (!this.device) return;
+    await this.stopNotifications();
 
-    try {
-      await this.device.cancelConnection();
-      this.device = null;
-      this.callbacks.onConnectionStatusChanged?.(false);
-      console.log('Disconnected');
-    } catch (error) {
-      console.error('Disconnect error:', error);
-      this.callbacks.onError?.(`Disconnect error: ${error}`);
+    if (this.device) {
+      try {
+        await this.device.cancelConnection();
+        this.device = null;
+        this.callbacks.onConnectionStatusChanged?.(false);
+        this.debug('Disconnected');
+      } catch (error) {
+        this.debug(`Disconnect error: ${error}`);
+        this.callbacks.onError?.(`Disconnect error: ${error}`);
+      }
     }
   }
 
@@ -382,10 +536,18 @@ class BLEService {
   }
 
   /**
+   * Get discovered services for debugging
+   */
+  getDiscoveredServices(): Service[] {
+    return this.discoveredServices;
+  }
+
+  /**
    * Clean up resources
    */
   destroy() {
     this.stopScan();
+    this.stopNotifications();
     if (this.device) {
       this.disconnect();
     }

@@ -34,12 +34,14 @@ export default function SessionScreen() {
   }>>([]);
   const [currentSetNumber, setCurrentSetNumber] = useState(1);
   const [isRecording, setIsRecording] = useState(false);
+  const [debugLogs, setDebugLogs] = useState<string[]>([]);
 
   useEffect(() => {
     // BLEコールバック設定
     BLEService.setCallbacks({
       onDataReceived: (data: OVRData) => {
         setLiveData(data);
+        addDebugLog(`データ受信: ${data.mean_velocity.toFixed(2)} m/s`);
       },
       onConnectionStatusChanged: (connected) => {
         setIsConnected(connected);
@@ -48,7 +50,10 @@ export default function SessionScreen() {
         }
       },
       onError: (error) => {
-        console.error('BLE Error:', error);
+        addDebugLog(`エラー: ${error}`);
+      },
+      onDebugInfo: (info: string) => {
+        addDebugLog(info);
       },
     });
 
@@ -56,13 +61,30 @@ export default function SessionScreen() {
     BLEService.isConnected().then(setIsConnected);
   }, []);
 
-  const startRecording = () => {
+  const addDebugLog = (log: string) => {
+    const timestamp = new Date().toLocaleTimeString();
+    setDebugLogs(prev => [`[${timestamp}] ${log}`, ...prev].slice(0, 10));
+  };
+
+  const startRecording = async () => {
     if (!isConnected) {
       Alert.alert('エラー', 'BLEデバイスに接続してください');
       return;
     }
+
+    addDebugLog('計測開始...');
     setIsRecording(true);
     setLiveData(null);
+
+    // 通知監視を開始
+    const started = await BLEService.startNotifications();
+    if (!started) {
+      addDebugLog('通知開始失敗');
+      Alert.alert('エラー', 'データ受信を開始できませんでした');
+      setIsRecording(false);
+    } else {
+      addDebugLog('通知監視開始成功');
+    }
   };
 
   const stopRecording = () => {
@@ -185,6 +207,23 @@ export default function SessionScreen() {
           <View style={styles.dataRow}>
             <Text style={styles.dataLabel}>ROM</Text>
             <Text style={styles.dataValue}>{liveData.rom_cm.toFixed(0)} cm</Text>
+          </View>
+        </View>
+      )}
+
+      {/* デバッグログ */}
+      {debugLogs.length > 0 && (
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>デバッグログ</Text>
+            <TouchableOpacity onPress={() => setDebugLogs([])}>
+              <Text style={styles.clearButton}>クリア</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.debugLogContainer}>
+            {debugLogs.map((log, index) => (
+              <Text key={index} style={styles.debugLogText}>{log}</Text>
+            ))}
           </View>
         </View>
       )}
@@ -397,5 +436,27 @@ const styles = StyleSheet.create({
   setVelocity: {
     fontSize: 14,
     color: '#4CAF50',
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  clearButton: {
+    color: '#2196F3',
+    fontSize: 14,
+  },
+  debugLogContainer: {
+    backgroundColor: '#2a2a2a',
+    borderRadius: 8,
+    padding: 12,
+    maxHeight: 200,
+  },
+  debugLogText: {
+    fontSize: 11,
+    color: '#999',
+    fontFamily: 'monospace',
+    marginBottom: 2,
   },
 });
