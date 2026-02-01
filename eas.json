@@ -29,6 +29,7 @@
     "production": {
       "ios": {
         "appleId": "autecouture@gmail.com",
+        "ascAppId": "6758436241",
         "appleTeamId": "NN9FMT4BC9"
       }
     }
