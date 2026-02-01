@@ -46,6 +46,7 @@ export interface BLEServiceCallbacks {
   onConnectionStatusChanged?: (isConnected: boolean) => void;
   onError?: (error: string) => void;
   onDeviceFound?: (device: Device) => void;
+  onDevicesDiscovered?: (devices: Device[]) => void;  // 全デバイス通知（デバッグ用）
 }
 
 class BLEService {
@@ -53,6 +54,7 @@ class BLEService {
   private device: Device | null = null;
   private isScanning: boolean = false;
   private callbacks: BLEServiceCallbacks = {};
+  private discoveredDevices: Device[] = [];  // 発見したデバイスを記録
 
   constructor() {
     this.manager = new BleManager();
@@ -119,6 +121,7 @@ class BLEService {
 
   /**
    * Scan for OVR Velocity devices
+   * iOSではUUIDフィルターなしでスキャン（iOSの制限対応）
    */
   async scanForDevices(): Promise<void> {
     if (this.isScanning) {
@@ -133,9 +136,16 @@ class BLEService {
     }
 
     this.isScanning = true;
+    this.discoveredDevices = [];
+
+    // iOSではUUIDフィルターなしでスキャン（より多くのデバイスを検出）
+    // AndroidではUUIDフィルター使用（効率的）
+    const serviceUUIDs = Platform.OS === 'ios' ? [] : [SERVICE_UUID];
+
+    console.log('Starting BLE scan...', Platform.OS, serviceUUIDs);
 
     this.manager.startDeviceScan(
-      [SERVICE_UUID],
+      serviceUUIDs,
       { allowDuplicates: false },
       (error, device) => {
         if (error) {
@@ -145,17 +155,46 @@ class BLEService {
           return;
         }
 
-        if (device && device.name && device.name.includes(DEVICE_NAME_PREFIX)) {
-          console.log('Device found:', device.name, device.id);
-          this.callbacks.onDeviceFound?.(device);
+        if (device) {
+          // 全デバイスを記録
+          const existingIndex = this.discoveredDevices.findIndex(d => d.id === device.id);
+          if (existingIndex === -1) {
+            this.discoveredDevices.push(device);
+            console.log('Device discovered:', device.name || '(unnamed)', device.id);
+
+            // OVRデバイスを検出
+            if (device.name && this.isOVRDevice(device.name)) {
+              console.log('OVR Velocity device found!', device.name);
+              this.callbacks.onDeviceFound?.(device);
+            }
+          }
+
+          // 定期的に発見したデバイスを通知（デバッグ用）
+          this.callbacks.onDevicesDiscovered?.(this.discoveredDevices);
         }
       }
     );
 
-    // Auto-stop scan after SCAN_DURATION
+    // スキャン期間を延長（iOSでデバイスを見つけやすくするため）
+    const scanDuration = Platform.OS === 'ios' ? 10000 : SCAN_DURATION;
     setTimeout(() => {
+      // OVRデバイスが見つからない場合の通知
+      const ovrDevice = this.discoveredDevices.find(d =>
+        d.name && this.isOVRDevice(d.name)
+      );
+      if (!ovrDevice) {
+        console.log('Scan complete. No OVR device found. Total devices:', this.discoveredDevices.length);
+      }
       this.stopScan();
-    }, SCAN_DURATION);
+    }, scanDuration);
+  }
+
+  /**
+   * Check if device name matches OVR Velocity
+   */
+  private isOVRDevice(name: string): boolean {
+    const ovrKeywords = ['OVR', 'Velocity', 'velocity', 'ovr'];
+    return ovrKeywords.some(keyword => name.toLowerCase().includes(keyword.toLowerCase()));
   }
 
   /**

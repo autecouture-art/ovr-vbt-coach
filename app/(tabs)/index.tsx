@@ -25,6 +25,7 @@ export default function HomeScreen() {
   const [isScanning, setIsScanning] = useState(false);
   const [recentSessions, setRecentSessions] = useState<SessionData[]>([]);
   const [foundDevice, setFoundDevice] = useState<any>(null);
+  const [discoveredDevices, setDiscoveredDevices] = useState<Device[]>([]);
 
   useEffect(() => {
     initializeApp();
@@ -49,14 +50,18 @@ export default function HomeScreen() {
           }
         },
         onError: (error) => {
-          Alert.alert('エラー', error);
+          console.error('BLE Error:', error);
         },
         onDeviceFound: (device: Device) => {
-          console.log('Device found:', device.name, device.id);
+          console.log('OVR Device found:', device.name, device.id);
           setFoundDevice(device);
           setIsScanning(false);
           // 自動接続
           connectToDevice(device);
+        },
+        onDevicesDiscovered: (devices: Device[]) => {
+          console.log('Discovered devices:', devices.length);
+          setDiscoveredDevices(devices);
         },
       });
     } catch (error) {
@@ -88,22 +93,19 @@ export default function HomeScreen() {
   const handleConnectBLE = async () => {
     setIsScanning(true);
     setFoundDevice(null);
+    setDiscoveredDevices([]);
     try {
       await BLEService.scanForDevices();
-      // スキャン開始後、デバイスが見つからない場合のタイムアウト処理
-      setTimeout(() => {
-        setIsScanning(false);
-        if (!foundDevice) {
-          Alert.alert(
-            'デバイスが見つかりません',
-            'OVR Velocityセンサーが近くにあることを確認してください'
-          );
-        }
-      }, 6000);
     } catch (error) {
       setIsScanning(false);
       Alert.alert('BLE接続エラー', 'デバイスのスキャンに失敗しました');
     }
+  };
+
+  const handleSelectDevice = async (device: Device) => {
+    setIsScanning(false);
+    setDiscoveredDevices([]);
+    await connectToDevice(device);
   };
 
   const handleDisconnect = async () => {
@@ -162,6 +164,47 @@ export default function HomeScreen() {
           </TouchableOpacity>
         )}
       </View>
+
+      {/* 発見したデバイス一覧（デバッグ用） */}
+      {isScanning && discoveredDevices.length > 0 && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>
+            発見したデバイス ({discoveredDevices.length})
+          </Text>
+          {discoveredDevices.map((device) => (
+            <TouchableOpacity
+              key={device.id}
+              style={styles.deviceCard}
+              onPress={() => handleSelectDevice(device)}
+            >
+              <Text style={styles.deviceCardName}>
+                {device.name || '(名前なし)'}
+              </Text>
+              <Text style={styles.deviceCardId}>{device.id}</Text>
+              <Text style={styles.deviceCardRssi}>RSSI: {device.rssi || 'N/A'}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+
+      {/* スキャン完了でデバイスなし */}
+      {!isScanning && discoveredDevices.length > 0 && !isConnected && !foundDevice && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>デバイスを選択してください</Text>
+          {discoveredDevices.map((device) => (
+            <TouchableOpacity
+              key={device.id}
+              style={styles.deviceCard}
+              onPress={() => handleSelectDevice(device)}
+            >
+              <Text style={styles.deviceCardName}>
+                {device.name || '(名前なし)'}
+              </Text>
+              <Text style={styles.deviceCardId}>{device.id}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
 
       {/* メインメニュー */}
       <View style={styles.section}>
@@ -342,6 +385,29 @@ const styles = StyleSheet.create({
   },
   sessionInfo: {
     fontSize: 14,
+    color: '#999',
+  },
+  deviceCard: {
+    backgroundColor: '#2a2a2a',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#444',
+  },
+  deviceCardName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#2196F3',
+    marginBottom: 4,
+  },
+  deviceCardId: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 2,
+  },
+  deviceCardRssi: {
+    fontSize: 12,
     color: '#999',
   },
 });
