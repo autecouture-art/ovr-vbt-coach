@@ -116,6 +116,7 @@ export interface Exercise {
 }
 
 export interface TrainingSession {
+  session_id: string;  // DBとの整合性のためのセッションID
   id: string;
   date: string;
   exercises: Exercise[];

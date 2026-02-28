@@ -18,11 +18,12 @@ import { useRouter } from 'expo-router';
 import { useTrainingStore } from '@/src/store/trainingStore';
 import { useSessionLogic } from '@/src/hooks/useSessionLogic';
 import { ExerciseSelectModal } from '@/src/components/ExerciseSelectModal';
+import DatabaseService from '@/src/services/DatabaseService';
 import type { Exercise } from '@/src/types/index';
 
 export default function SessionScreen() {
   const router = useRouter();
-  
+
   // Custom Hook for Logic
   const { finishSet } = useSessionLogic();
 
@@ -35,8 +36,13 @@ export default function SessionScreen() {
     currentLoad,
     currentReps,
     setHistory,
+    currentSession,
+    isSessionActive,
+    sessionStartTime,
     updateLoad,
     setCurrentExercise,
+    startSession,
+    endSession,
   } = useTrainingStore();
 
   const [showExerciseModal, setShowExerciseModal] = useState(false);
@@ -57,25 +63,77 @@ export default function SessionScreen() {
     setCurrentExercise(exercise);
   };
 
-  const handleFinishSet = () => {
+  // セッション開始処理
+  const handleStartSession = async () => {
     if (!isConnected) {
-        Alert.alert('Device Not Connected', 'Please connect a VBT sensor first.');
-        return;
+      Alert.alert('センサー未接続', 'BLEセンサーを接続してからセッションを開始してください。');
+      return;
+    }
+    // UUID風のセッションIDを生成
+    const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    startSession(sessionId);
+    // DBにセッションレコードを作成
+    try {
+      await DatabaseService.insertSession({
+        session_id: sessionId,
+        date: new Date().toISOString().split('T')[0],
+        total_volume: 0,
+        total_sets: 0,
+        lifts: [],
+      });
+    } catch (e) {
+      console.error('セッション作成失敗:', e);
+    }
+  };
+
+  const handleFinishSet = () => {
+    if (!isSessionActive) {
+      Alert.alert('セッション未開始', 'まずセッションを開始してください。');
+      return;
     }
     finishSet();
   };
 
-  const handleFinishSession = () => {
+  // セッション終了 & DBへの集計保存
+  const handleFinishSession = async () => {
     if (setHistory.length === 0) {
-      Alert.alert('End Session?', 'No sets recorded. End anyway?', [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'End', style: 'destructive', onPress: () => router.back() },
+      Alert.alert('セッション終了', 'セットが記録されていません。終了しますか？', [
+        { text: 'キャンセル', style: 'cancel' },
+        {
+          text: '終了', style: 'destructive', onPress: () => {
+            endSession();
+            router.back();
+          }
+        },
       ]);
-    } else {
-        Alert.alert('Session Complete', `Saved ${setHistory.length} sets.`, [
-            { text: 'OK', onPress: () => router.back() }
-        ]);
+      return;
     }
+
+    // セッション集計をDBに更新
+    if (currentSession?.session_id) {
+      try {
+        const totalVolume = setHistory.reduce((sum, s) => sum + (s.load_kg * s.reps), 0);
+        const durationMs = sessionStartTime ? Date.now() - sessionStartTime : 0;
+        const durationMin = Math.round(durationMs / 60000);
+        const lifts = [...new Set(setHistory.map(s => s.lift))];
+
+        await DatabaseService.insertSession({
+          session_id: currentSession.session_id + '_summary',
+          date: new Date().toISOString().split('T')[0],
+          total_volume: totalVolume,
+          total_sets: setHistory.length,
+          duration_minutes: durationMin,
+          lifts,
+        });
+      } catch (e) {
+        console.error('セッション集計の保存に失敗:', e);
+      }
+    }
+
+    endSession();
+    Alert.alert('セッション完了', `${setHistory.length}セットを保存しました。`, [
+      { text: 'OK', onPress: () => router.back() }
+    ]);
   };
 
   return (
@@ -98,10 +156,29 @@ export default function SessionScreen() {
             ]}
           />
           <Text style={styles.statusText}>
-            {isConnected ? 'Sensor Connected' : 'Sensor Disconnected'}
+            {isConnected ? 'センサー接続中' : 'センサー未接続'}
           </Text>
         </View>
       </View>
+
+      {/* セッション開始バナー */}
+      {!isSessionActive ? (
+        <View style={styles.sessionStartBanner}>
+          <Text style={styles.sessionStartText}>セッションを開始してください</Text>
+          <TouchableOpacity
+            style={[styles.button, styles.startSessionButton]}
+            onPress={handleStartSession}
+          >
+            <Text style={styles.buttonText}>🏋️ セッション開始</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <View style={styles.sessionActiveBanner}>
+          <Text style={styles.sessionActiveText}>
+            ✅ セット {currentSetIndex} 記録中
+          </Text>
+        </View>
+      )}
 
       {/* Exercise Selection */}
       <View style={styles.exerciseCard}>
@@ -148,37 +225,37 @@ export default function SessionScreen() {
       <View style={styles.dataCard}>
         <Text style={styles.dataTitle}>Live Data</Text>
         {liveData ? (
-            <>
-                <View style={styles.dataRow}>
-                    <Text style={styles.dataLabel}>Mean Velocity</Text>
-                    <Text style={styles.dataValue}>
-                    {liveData.mean_velocity.toFixed(2)} m/s
-                    </Text>
-                </View>
-                <View style={styles.dataRow}>
-                    <Text style={styles.dataLabel}>Peak Velocity</Text>
-                    <Text style={styles.dataValue}>
-                    {liveData.peak_velocity.toFixed(2)} m/s
-                    </Text>
-                </View>
-                <View style={styles.dataRow}>
-                    <Text style={styles.dataLabel}>ROM</Text>
-                    <Text style={styles.dataValue}>{liveData.rom_cm.toFixed(0)} cm</Text>
-                </View>
-            </>
+          <>
+            <View style={styles.dataRow}>
+              <Text style={styles.dataLabel}>Mean Velocity</Text>
+              <Text style={styles.dataValue}>
+                {liveData.mean_velocity.toFixed(2)} m/s
+              </Text>
+            </View>
+            <View style={styles.dataRow}>
+              <Text style={styles.dataLabel}>Peak Velocity</Text>
+              <Text style={styles.dataValue}>
+                {liveData.peak_velocity.toFixed(2)} m/s
+              </Text>
+            </View>
+            <View style={styles.dataRow}>
+              <Text style={styles.dataLabel}>ROM</Text>
+              <Text style={styles.dataValue}>{liveData.rom_cm.toFixed(0)} cm</Text>
+            </View>
+          </>
         ) : (
-            <Text style={styles.noDataText}>Waiting for rep...</Text>
+          <Text style={styles.noDataText}>Waiting for rep...</Text>
         )}
       </View>
 
       {/* Action Buttons */}
       <View style={styles.buttonContainer}>
-         <TouchableOpacity
-            style={[styles.button, styles.recordButton]}
-            onPress={handleFinishSet}
-         >
-            <Text style={styles.buttonText}>Finish Set</Text>
-         </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.button, styles.recordButton]}
+          onPress={handleFinishSet}
+        >
+          <Text style={styles.buttonText}>Finish Set</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Detailed Set History */}
@@ -428,4 +505,41 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#4CAF50',
   },
+  // セッション開始/アクティブバナー
+  sessionStartBanner: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+    padding: 20,
+    backgroundColor: '#1a2a1a',
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#FF9800',
+    alignItems: 'center',
+  },
+  sessionStartText: {
+    fontSize: 16,
+    color: '#FF9800',
+    marginBottom: 12,
+    fontWeight: '600',
+  },
+  startSessionButton: {
+    backgroundColor: '#FF9800',
+    width: '100%',
+  },
+  sessionActiveBanner: {
+    marginHorizontal: 16,
+    marginBottom: 8,
+    padding: 12,
+    backgroundColor: '#1a2a1a',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#4CAF50',
+    alignItems: 'center',
+  },
+  sessionActiveText: {
+    fontSize: 16,
+    color: '#4CAF50',
+    fontWeight: '600',
+  },
 });
+

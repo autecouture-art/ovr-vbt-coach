@@ -195,48 +195,48 @@ export default function HomeScreen() {
           {/* BLE操作ボタン */}
           <View style={styles.buttonContainer}>
             {isScanning ? (
-          <View style={styles.button}>
-            <ActivityIndicator color="#fff" />
-            <Text style={styles.buttonText}>スキャン中...</Text>
-          </View>
-        ) : !isConnected ? (
-          <>
-            {/* 前回のデバイスがある場合は再接続ボタンを表示 */}
-            {lastDeviceInfo.id && !foundDevice && (
-              <TouchableOpacity
-                style={[styles.button, styles.reconnectButton]}
-                onPress={handleReconnect}
-              >
-                <Text style={styles.buttonText}>
-                  再接続: {lastDeviceInfo.name || '前回のデバイス'}
-                </Text>
-              </TouchableOpacity>
+              <View style={styles.button}>
+                <ActivityIndicator color="#fff" />
+                <Text style={styles.buttonText}>スキャン中...</Text>
+              </View>
+            ) : !isConnected ? (
+              <>
+                {/* 前回のデバイスがある場合は再接続ボタンを表示 */}
+                {lastDeviceInfo.id && !foundDevice && (
+                  <TouchableOpacity
+                    style={[styles.button, styles.reconnectButton]}
+                    onPress={handleReconnect}
+                  >
+                    <Text style={styles.buttonText}>
+                      再接続: {lastDeviceInfo.name || '前回のデバイス'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity style={styles.button} onPress={handleConnectBLE}>
+                  <Text style={styles.buttonText}>BLEデバイスに接続</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <View style={styles.connectedButtonsRow}>
+                <TouchableOpacity
+                  style={[styles.button, styles.halfButton, styles.secondaryButton]}
+                  onPress={handleDisconnect}
+                >
+                  <Text style={styles.buttonText}>切断</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.button, styles.halfButton, styles.disconnectButton]}
+                  onPress={handleFullDisconnect}
+                >
+                  <Text style={styles.buttonText}>完全切断</Text>
+                </TouchableOpacity>
+              </View>
             )}
-            <TouchableOpacity style={styles.button} onPress={handleConnectBLE}>
-              <Text style={styles.buttonText}>BLEデバイスに接続</Text>
-            </TouchableOpacity>
-          </>
-        ) : (
-          <View style={styles.connectedButtonsRow}>
-            <TouchableOpacity
-              style={[styles.button, styles.halfButton, styles.secondaryButton]}
-              onPress={handleDisconnect}
-            >
-              <Text style={styles.buttonText}>切断</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.button, styles.halfButton, styles.disconnectButton]}
-              onPress={handleFullDisconnect}
-            >
-              <Text style={styles.buttonText}>完全切断</Text>
-            </TouchableOpacity>
           </View>
-        )}
-      </View>
         </>
       )}
 
-      {/* 接続中のデバイス情報 */}
+      {/* 接続済みデバイス情報 */}
       {isConnected && foundDevice && (
         <View style={styles.deviceInfoCard}>
           <Text style={styles.deviceInfoLabel}>接続中のデバイス</Text>
@@ -245,8 +245,8 @@ export default function HomeScreen() {
         </View>
       )}
 
-      {/* 発見したデバイス一覧（デバッグ用） */}
-      {isScanning && discoveredDevices.length > 0 && (
+      {/* 開発時のみ：発見したデバイス一覧（デバッグ用） */}
+      {__DEV__ && isScanning && discoveredDevices.length > 0 && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>
             発見したデバイス ({discoveredDevices.length})
@@ -267,7 +267,7 @@ export default function HomeScreen() {
         </View>
       )}
 
-      {/* スキャン完了でデバイスなし */}
+      {/* デバイス選択（スキャン完了後・開発・本番共通） */}
       {!isScanning && discoveredDevices.length > 0 && !isConnected && !foundDevice && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>デバイスを選択してください</Text>

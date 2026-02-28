@@ -3,7 +3,7 @@
  * Real-time VBT monitoring during workout
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -15,6 +15,7 @@ import {
 import BLEService from '../services/BLEService';
 import DatabaseService from '../services/DatabaseService';
 import VBTCalculations from '../utils/VBTCalculations';
+import { useTrainingStore } from '../store/trainingStore';
 import { RepVeloData, RepData } from '../types/index';
 
 interface MonitorScreenProps {
@@ -22,12 +23,16 @@ interface MonitorScreenProps {
 }
 
 const MonitorScreen: React.FC<MonitorScreenProps> = ({ navigation }) => {
+  const { currentSession, currentExercise, currentLoad, settings } = useTrainingStore();
+
   const [currentSet, setCurrentSet] = useState(1);
   const [currentRep, setCurrentRep] = useState(0);
   const [liveData, setLiveData] = useState<RepVeloData | null>(null);
   const [repData, setRepData] = useState<RepData[]>([]);
   const [velocityLoss, setVelocityLoss] = useState<number | null>(null);
   const [isRecording, setIsRecording] = useState(false);
+  // stale closureバグを防ぐためuseRefで最新の値を保持
+  const isRecordingRef = useRef(false);
 
   useEffect(() => {
     setupBLECallbacks();
@@ -47,8 +52,8 @@ const MonitorScreen: React.FC<MonitorScreenProps> = ({ navigation }) => {
     BLEService.setCallbacks({
       onDataReceived: (data: RepVeloData) => {
         setLiveData(data);
-
-        if (isRecording) {
+        // useRefで最新値を参照してstale closureバグを回避
+        if (isRecordingRef.current) {
           handleNewRep(data);
         }
       },
@@ -59,12 +64,16 @@ const MonitorScreen: React.FC<MonitorScreenProps> = ({ navigation }) => {
   };
 
   const handleNewRep = (data: RepVeloData) => {
+    const sessionId = currentSession?.session_id || 'offline';
+    const liftName = currentExercise?.name || 'Unknown';
+    const loadKg = currentLoad || 0;
+
     const newRep: RepData = {
-      session_id: new Date().toISOString().split('T')[0],
-      lift: 'Bench Press', // TODO: Make dynamic
+      session_id: sessionId,
+      lift: liftName,
       set_index: currentSet,
       rep_index: currentRep + 1,
-      load_kg: 80, // TODO: Make dynamic
+      load_kg: loadKg,
       device_type: 'VBT',
       mean_velocity: data.mean_velocity,
       peak_velocity: data.peak_velocity,
@@ -89,6 +98,7 @@ const MonitorScreen: React.FC<MonitorScreenProps> = ({ navigation }) => {
       }
 
       await BLEService.startNotifications();
+      isRecordingRef.current = true;  // refも更新
       setIsRecording(true);
       setRepData([]);
       setCurrentRep(0);
@@ -98,6 +108,7 @@ const MonitorScreen: React.FC<MonitorScreenProps> = ({ navigation }) => {
   };
 
   const handleStopRecording = () => {
+    isRecordingRef.current = false;  // refも更新
     setIsRecording(false);
   };
 
@@ -181,13 +192,15 @@ const MonitorScreen: React.FC<MonitorScreenProps> = ({ navigation }) => {
           <Text
             style={[
               styles.vlValue,
-              { color: velocityLoss > 20 ? '#F44336' : '#4CAF50' },
+              { color: velocityLoss > settings.velocity_loss_threshold ? '#F44336' : '#4CAF50' },
             ]}
           >
             {velocityLoss.toFixed(1)}%
           </Text>
-          {velocityLoss > 20 && (
-            <Text style={styles.vlWarning}>セットを終了することをお勧めします</Text>
+          {velocityLoss > settings.velocity_loss_threshold && (
+            <Text style={styles.vlWarning}>
+              閾値({settings.velocity_loss_threshold}%)超過 — セットを終了することをお勧めします
+            </Text>
           )}
         </View>
       )}

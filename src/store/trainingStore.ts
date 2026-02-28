@@ -21,23 +21,23 @@ interface TrainingState {
   currentSession: TrainingSession | null;
   isSessionActive: boolean;
   sessionStartTime: number | null;
-  
+
   // Current Set State
   currentSetIndex: number; // 1-based
   currentLift: string | null;
   currentLoad: number;
   currentReps: number;
   setHistory: SetData[];
-  
+
   // Live Data State
   isConnected: boolean;
   liveData: RepVeloData | null;
   repHistory: RepData[]; // Current set reps
-  
+
   // Settings & Metadata
   currentExercise: Exercise | null;
   settings: AppSettings;
-  
+
   // Actions
   startSession: (sessionId: string) => void;
   endSession: () => void;
@@ -55,17 +55,17 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
   currentSession: null,
   isSessionActive: false,
   sessionStartTime: null,
-  
+
   currentSetIndex: 1,
   currentLift: null,
   currentLoad: 0,
   currentReps: 5,
   setHistory: [],
-  
+
   isConnected: false,
   liveData: null,
   repHistory: [],
-  
+
   currentExercise: null,
   settings: {
     use_metric: true,
@@ -81,10 +81,11 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
     set({
       currentSession: {
         session_id: sessionId,
+        id: sessionId,
         date: new Date().toISOString(),
+        exercises: [],
+        sets: [],
         total_volume: 0,
-        total_sets: 0,
-        duration_minutes: 0,
       },
       isSessionActive: true,
       sessionStartTime: Date.now(),
