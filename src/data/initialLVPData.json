@@ -1,0 +1,21 @@
+[
+  {
+    "lift": "Larsen Bench Press",
+    "vmax": 1.374,
+    "v1rm": 0.17,
+    "slope": -0.0143,
+    "intercept": 1.374,
+    "r_squared": 0.978,
+    "last_updated": "2026-02-24T05:39:35.595210",
+    "data_points": 5,
+    "load_range": {
+      "min_kg": 20.0,
+      "max_kg": 70.0
+    },
+    "velocity_range": {
+      "min_m_s": 0.34002777777777776,
+      "max_m_s": 1.1155555555555556
+    },
+    "estimated_1rm_kg": 84.2
+  }
+]

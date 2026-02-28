@@ -1,0 +1,37 @@
+{
+  "cli": {
+    "version": ">= 5.0.0",
+    "appVersionSource": "local"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "ios": {
+        "simulator": false
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "ios": {
+        "simulator": false
+      }
+    },
+    "production": {
+      "ios": {
+        "buildConfiguration": "Release",
+        "credentialsSource": "remote",
+        "autoIncrement": false
+      }
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "appleId": "autecouture@gmail.com",
+        "ascAppId": "6758436241",
+        "appleTeamId": "NN9FMT4BC9"
+      }
+    }
+  }
+}

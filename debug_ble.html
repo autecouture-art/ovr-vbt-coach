@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OVR BLE キャリブレーション</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      min-height: 100vh;
+      padding: 16px;
+    }
+
+    h1 {
+      font-size: 1.2em;
+      color: #60a5fa;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .status-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: #1e2533;
+      border-radius: 8px;
+      padding: 10px 14px;
+      margin-bottom: 16px;
+      font-size: 0.85em;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #374151;
+      flex-shrink: 0;
+    }
+
+    .dot.ok {
+      background: #4ade80;
+      box-shadow: 0 0 8px #4ade80;
+    }
+
+    #statusText {
+      flex: 1;
+    }
+
+    button {
+      padding: 8px 18px;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.9em;
+      cursor: pointer;
+      font-weight: 600;
+      transition: opacity 0.2s;
+    }
+
+    button:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    #connectBtn {
+      background: #3b82f6;
+      color: white;
+    }
+
+    #disconnectBtn {
+      background: #ef4444;
+      color: white;
+    }
+
+    /* ===== 2カラムレイアウト ===== */
+    .main-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    @media (max-width: 700px) {
+      .main-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .panel {
+      background: #1a2030;
+      border-radius: 12px;
+      padding: 16px;
+      border: 1px solid #2d3748;
+    }
+
+    .panel h2 {
+      font-size: 0.85em;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #2d3748;
+    }
+
+    /* ===== RAW値テーブル ===== */
+    .raw-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85em;
+    }
+
+    .raw-table td {
+      padding: 5px 8px;
+      border-bottom: 1px solid #2d3748;
+    }
+
+    .raw-table td:first-child {
+      color: #64748b;
+      font-size: 0.8em;
+    }
+
+    .raw-table td:nth-child(2) {
+      color: #cbd5e1;
+    }
+
+    .raw-table .raw-val {
+      color: #fbbf24;
+      font-family: monospace;
+      font-size: 1.05em;
+      font-weight: 700;
+      text-align: right;
+    }
+
+    #bytes {
+      font-family: monospace;
+      font-size: 0.75em;
+      color: #64748b;
+      margin-top: 8px;
+      word-break: break-all;
+    }
+
+    /* ===== センサー入力 ===== */
+    .input-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .input-field label {
+      display: block;
+      font-size: 0.78em;
+      color: #94a3b8;
+      margin-bottom: 4px;
+    }
+
+    .input-field input {
+      width: 100%;
+      background: #0f1117;
+      border: 1.5px solid #374151;
+      border-radius: 8px;
+      color: #f1f5f9;
+      font-size: 1.2em;
+      font-weight: 700;
+      padding: 10px 12px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .input-field input:focus {
+      border-color: #3b82f6;
+    }
+
+    .input-field input::placeholder {
+      color: #4b5563;
+      font-weight: 400;
+      font-size: 0.75em;
+    }
+
+    .unit {
+      font-size: 0.75em;
+      color: #64748b;
+      margin-top: 3px;
+    }
+
+    /* ===== 計算結果 ===== */
+    .result-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .result-card {
+      background: #0f1117;
+      border-radius: 10px;
+      padding: 12px;
+      border: 1.5px solid #2d3748;
+      text-align: center;
+    }
+
+    .result-card.match {
+      border-color: #22c55e;
+      background: #052e16;
+    }
+
+    .result-card .field-name {
+      font-size: 0.72em;
+      color: #94a3b8;
+      margin-bottom: 4px;
+    }
+
+    .result-card .factor {
+      font-size: 1.4em;
+      font-weight: 800;
+      color: #fbbf24;
+      font-family: monospace;
+    }
+
+    .result-card.match .factor {
+      color: #4ade80;
+    }
+
+    .result-card .detail {
+      font-size: 0.72em;
+      color: #64748b;
+      margin-top: 3px;
+    }
+
+    .result-card .calc-val {
+      font-size: 0.9em;
+      color: #94a3b8;
+      margin-top: 2px;
+    }
+
+    /* ===== 現在値表示 ===== */
+    .live-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+
+    .live-card {
+      background: #0f1117;
+      border-radius: 10px;
+      padding: 12px 8px;
+      text-align: center;
+      border: 1px solid #2d3748;
+    }
+
+    .live-card .lc-label {
+      font-size: 0.7em;
+      color: #64748b;
+      margin-bottom: 4px;
+    }
+
+    .live-card .lc-value {
+      font-size: 1.5em;
+      font-weight: 800;
+      color: #4ade80;
+      line-height: 1.2;
+    }
+
+    .live-card .lc-unit {
+      font-size: 0.7em;
+      color: #94a3b8;
+    }
+
+    /* ===== ログ ===== */
+    #log {
+      background: #0a0d14;
+      border-radius: 8px;
+      padding: 10px;
+      height: 90px;
+      overflow-y: auto;
+      font-family: monospace;
+      font-size: 0.75em;
+      line-height: 1.5;
+      margin-top: 10px;
+    }
+
+    .full-span {
+      grid-column: 1 / -1;
+    }
+
+    /* ===== コピーボタン ===== */
+    #copyBtn {
+      background: #374151;
+      color: #e2e8f0;
+      font-size: 0.8em;
+      padding: 6px 14px;
+      margin-top: 10px;
+      width: 100%;
+    }
+
+    #copyBtn:hover {
+      background: #4b5563;
+    }
+
+    #copyOutput {
+      margin-top: 8px;
+      background: #0a0d14;
+      border-radius: 6px;
+      padding: 10px;
+      font-family: monospace;
+      font-size: 0.8em;
+      color: #94a3b8;
+      white-space: pre;
+      display: none;
+    }
+  </style>
+</head>
+
+<body>
+
+  <h1>📡 OVR BLE キャリブレーション</h1>
+
+  <div class="status-bar">
+    <div class="dot" id="dot"></div>
+    <span id="statusText">未接続</span>
+    <button id="connectBtn">接続</button>
+    <button id="disconnectBtn" disabled>切断</button>
+  </div>
+
+  <div class="main-grid">
+
+    <!-- ===== 左: Rawデータ ===== -->
+    <div class="panel">
+      <h2>📊 受信 Raw 値</h2>
+      <table class="raw-table">
+        <tr>
+          <td>0-1</td>
+          <td>Peak Velocity</td>
+          <td class="raw-val" id="r0">-</td>
+        </tr>
+        <tr>
+          <td>2-3</td>
+          <td>Mean Power</td>
+          <td class="raw-val" id="r2">-</td>
+        </tr>
+        <tr>
+          <td>4-5</td>
+          <td>Peak Power</td>
+          <td class="raw-val" id="r4">-</td>
+        </tr>
+        <tr>
+          <td>6-7</td>
+          <td>Mean Velocity</td>
+          <td class="raw-val" id="r6">-</td>
+        </tr>
+        <tr>
+          <td>8-9</td>
+          <td>ROM</td>
+          <td class="raw-val" id="r8">-</td>
+        </tr>
+        <tr>
+          <td>10-11</td>
+          <td>Reserved 1</td>
+          <td class="raw-val" id="r10">-</td>
+        </tr>
+        <tr>
+          <td>12-13</td>
+          <td>Reserved 2</td>
+          <td class="raw-val" id="r12">-</td>
+        </tr>
+        <tr>
+          <td>14-15</td>
+          <td>Rep Duration</td>
+          <td class="raw-val" id="r14">-</td>
+        </tr>
+      </table>
+      <div id="bytes"></div>
+    </div>
+
+    <!-- ===== 右: センサー入力 ===== -->
+    <div class="panel">
+      <h2>⌨️ センサー表示値を入力</h2>
+      <div class="input-grid">
+        <div class="input-field">
+          <label>Weight</label>
+          <input type="number" id="inWeight" placeholder="例: 80" step="2.5">
+          <div class="unit">kg</div>
+        </div>
+        <div class="input-field">
+          <label>Mean Velocity</label>
+          <input type="number" id="inVelocity" placeholder="例: 0.65" step="0.01">
+          <div class="unit">m/s</div>
+        </div>
+        <div class="input-field">
+          <label>ROM</label>
+          <input type="number" id="inRom" placeholder="例: 48.7" step="0.1">
+          <div class="unit">cm (センサー本体に表示)
+          </div>
+        </div>
+        <div class="input-field">
+          <label>Mean Power</label>
+          <input type="number" id="inPower" placeholder="例: 513" step="1">
+          <div class="unit">aW (センサー本体に表示)</div>
+        </div>
+      </div>
+      <button id="copyBtn">📋 テキストでコピー</button>
+      <div id="copyOutput"></div>
+    </div>
+
+    <!-- ===== 下段: 計算結果 ===== -->
+    <div class="panel full-span">
+      <h2>🔢 最適係数の計算結果</h2>
+      <div class="result-grid">
+        <div class="result-card" id="cardV">
+          <div class="field-name">Mean Velocity 除数</div>
+          <div class="factor" id="factorV">-</div>
+          <div class="calc-val" id="calcV">-</div>
+          <div class="detail">raw[6-7] ÷ 除数 = m/s</div>
+        </div>
+        <div class="result-card" id="cardR">
+          <div class="field-name">ROM 除数</div>
+          <div class="factor" id="factorR">-</div>
+          <div class="calc-val" id="calcR">-</div>
+          <div class="detail">raw[8-9] ÷ 除数 = cm</div>
+        </div>
+        <div class="result-card" id="cardP">
+          <div class="field-name">Power 倍数</div>
+          <div class="factor" id="factorP">-</div>
+          <div class="calc-val" id="calcP">-</div>
+          <div class="detail">raw[2-3] × 倍数 = W</div>
+        </div>
+        <div class="result-card" id="cardPow">
+          <div class="field-name">物理パワー検証</div>
+          <div class="factor" id="physPow">-</div>
+          <div class="calc-val" id="physPowDetail">-</div>
+          <div class="detail">kg × 9.81 × m/s = W</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 下段: 現在の表示値 ===== -->
+    <div class="panel full-span">
+      <h2>🔴 現在の係数で計算した表示値</h2>
+      <div class="live-grid">
+        <div class="live-card">
+          <div class="lc-label">Mean Velocity</div>
+          <div class="lc-value" id="liveV">-</div>
+          <div class="lc-unit">m/s (÷193.3)</div>
+        </div>
+        <div class="live-card">
+          <div class="lc-label">ROM</div>
+          <div class="lc-value" id="liveR">-</div>
+          <div class="lc-unit">cm (÷16.49)</div>
+        </div>
+        <div class="live-card">
+          <div class="lc-label">Mean Power</div>
+          <div class="lc-value" id="liveP">-</div>
+          <div class="lc-unit">W (×2.80)</div>
+        </div>
+        <div class="live-card">
+          <div class="lc-label">Peak Velocity</div>
+          <div class="lc-value" id="livePV">-</div>
+          <div class="lc-unit">m/s (÷100)</div>
+        </div>
+        <div class="live-card">
+          <div class="lc-label">Peak Power</div>
+          <div class="lc-value" id="livePP">-</div>
+          <div class="lc-unit">W (×2.80)</div>
+        </div>
+        <div class="live-card">
+          <div class="lc-label">Rep Duration</div>
+          <div class="lc-value" id="liveDur">-</div>
+          <div class="lc-unit">ms</div>
+        </div>
+      </div>
+      <div id="log"></div>
+    </div>
+
+  </div>
+
+  <script>
+    const SERVICE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';  // BLEService.tsの正しいUUID
+    const CHAR_UUID = '14001dc2-5089-47d3-84bc-7c3d418389aa';
+
+    // 現在アプリで使用中の係数
+    const FACTORS = {
+      // 直接計測+物理公式検証済スケール係数 (2026-02-23)
+      meanVelocity: 100.0,  // raw[4-5] / 100 = m/s
+      rom: 3.937,           // raw[2-3] / 3.937 = cm (0.1 inch単位)
+      power: 1.0,           // raw[8-9] * 1.0 = W
+      peakVelocity: 100,    // ※要検証 (pos 0-1 か 6-7 か)
+    };
+
+    let device = null, server = null, latestRaw = null;
+
+    const readUInt16LE = (bytes, offset) => bytes[offset] | (bytes[offset + 1] << 8);
+
+    const log = (msg, color = '#94a3b8') => {
+      const div = document.getElementById('log');
+      div.innerHTML += `<span style="color:${color}">[${new Date().toLocaleTimeString()}] ${msg}</span>\n`;
+      div.scrollTop = div.scrollHeight;
+    };
+
+    // センサー入力から最適係数を計算して表示
+    const updateCalibration = () => {
+      if (!latestRaw) return;
+
+      const raw_rom = readUInt16LE(latestRaw, 2);
+      const raw_mv = readUInt16LE(latestRaw, 4);
+      const raw_mp = readUInt16LE(latestRaw, 8);
+
+      const sV = parseFloat(document.getElementById('inVelocity').value);
+      const sR = parseFloat(document.getElementById('inRom').value);
+      const sP = parseFloat(document.getElementById('inPower').value);
+      const sW = parseFloat(document.getElementById('inWeight').value);
+
+      // Mean Velocity 係数
+      if (!isNaN(sV) && raw_mv > 0) {
+        const factorV = raw_mv / sV;
+        document.getElementById('factorV').textContent = factorV.toFixed(2);
+        document.getElementById('calcV').textContent = `${raw_mv} ÷ ${factorV.toFixed(2)} = ${sV} m/s`;
+        document.getElementById('cardV').classList.toggle('match', Math.abs(factorV - FACTORS.meanVelocity) < 5);
+      } else {
+        document.getElementById('factorV').textContent = raw_mv > 0 ? `raw=${raw_mv}` : '-';
+        document.getElementById('calcV').textContent = '← Mean Velocity を入力';
+      }
+
+      // ROM 係数
+      if (!isNaN(sR) && raw_rom > 0) {
+        const factorR = raw_rom / sR;
+        document.getElementById('factorR').textContent = factorR.toFixed(2);
+        document.getElementById('calcR').textContent = `${raw_rom} ÷ ${factorR.toFixed(2)} = ${sR} cm`;
+        document.getElementById('cardR').classList.toggle('match', Math.abs(factorR - FACTORS.rom) < 2);
+      } else {
+        document.getElementById('factorR').textContent = raw_rom > 0 ? `raw=${raw_rom}` : '-';
+        document.getElementById('calcR').textContent = '← ROM を入力';
+      }
+
+      // Power 倍数
+      if (!isNaN(sP) && raw_mp > 0) {
+        const multP = sP / raw_mp;
+        document.getElementById('factorP').textContent = `×${multP.toFixed(2)}`;
+        document.getElementById('calcP').textContent = `${raw_mp} × ${multP.toFixed(2)} = ${sP} W`;
+        document.getElementById('cardP').classList.toggle('match', Math.abs(multP - FACTORS.power) < 0.3);
+      } else {
+        document.getElementById('factorP').textContent = raw_mp > 0 ? `raw=${raw_mp}` : '-';
+        document.getElementById('calcP').textContent = '← Mean Power を入力';
+      }
+
+      // 物理パワー検証: kg × 9.81 × m/s
+      if (!isNaN(sW) && !isNaN(sV)) {
+        const physP = sW * 9.81 * sV;
+        document.getElementById('physPow').textContent = `${physP.toFixed(0)} W`;
+        document.getElementById('physPowDetail').textContent =
+          `${sW}×9.81×${sV}=${physP.toFixed(0)}W  センサー:${isNaN(sP) ? '?' : sP}W`;
+        document.getElementById('cardPow').classList.toggle('match',
+          !isNaN(sP) && Math.abs(physP - sP) / sP < 0.15);
+      }
+    };
+
+    // BLEデータ受信
+    const onData = (event) => {
+      const raw = new Uint8Array(event.target.value.buffer);
+      latestRaw = raw;
+
+      // バイト表示
+      document.getElementById('bytes').textContent =
+        Array.from(raw).map(b => b.toString(16).padStart(2, '0')).join(' ');
+
+      // Raw値テーブル更新
+      [0, 2, 4, 6, 8, 10, 12, 14].forEach(i => {
+        document.getElementById(`r${i}`).textContent = readUInt16LE(raw, i);
+      });
+
+      // 現在の係数で計算した表示値
+      const peak_v = readUInt16LE(raw, 0) / FACTORS.peakVelocity; // 要検証
+      const rom_cm = readUInt16LE(raw, 2) / FACTORS.rom;
+      const mean_v = readUInt16LE(raw, 4) / FACTORS.meanVelocity;
+      const peak_p = readUInt16LE(raw, 6) / FACTORS.peakVelocity; // ※仮
+      const mean_p = readUInt16LE(raw, 8) * FACTORS.power;
+      const dur_ms = readUInt16LE(raw, 14);
+
+      document.getElementById('liveV').textContent = mean_v.toFixed(2);
+      document.getElementById('liveR').textContent = rom_cm.toFixed(1);
+      document.getElementById('liveP').textContent = mean_p.toFixed(0);
+      document.getElementById('livePV').textContent = peak_v.toFixed(2);
+      document.getElementById('livePP').textContent = peak_p.toFixed(0);
+      document.getElementById('liveDur').textContent = dur_ms;
+
+      log(`mv=${mean_v.toFixed(2)}m/s  ROM=${rom_cm.toFixed(1)}cm  mp=${mean_p.toFixed(0)}W  dur=${dur_ms}ms`, '#86efac');
+
+      // 入力があれば係数を自動計算
+      updateCalibration();
+    };
+
+    // コピーボタン
+    document.getElementById('copyBtn').addEventListener('click', () => {
+      if (!latestRaw) { alert('まずBLE接続してデータを受信してください'); return; }
+      const raw_pkv = readUInt16LE(latestRaw, 0);
+      const raw_rom = readUInt16LE(latestRaw, 2);
+      const raw_mv = readUInt16LE(latestRaw, 4);
+      const raw_pkp = readUInt16LE(latestRaw, 6);
+      const raw_mp = readUInt16LE(latestRaw, 8);
+      const raw_dur = readUInt16LE(latestRaw, 14);
+
+      const sV = document.getElementById('inVelocity').value;
+      const sR = document.getElementById('inRom').value;
+      const sP = document.getElementById('inPower').value;
+      const sW = document.getElementById('inWeight').value;
+
+      const fV = sV ? (raw_mv / parseFloat(sV)).toFixed(2) : '?';
+      const fR = sR ? (raw_rom / parseFloat(sR)).toFixed(2) : '?';
+      const fP = sP ? (parseFloat(sP) / raw_mp).toFixed(2) : '?';
+
+      const text =
+        `=== OVR BLE キャリブレーション (${new Date().toLocaleString()}) ===
+重量: ${sW || '?'} kg
+
+[Rawバイト]
+  raw_rom = ${raw_rom}  (pos 2-3)
+  raw_mv  = ${raw_mv}   (pos 4-5)
+  raw_mp  = ${raw_mp}   (pos 8-9)
+  raw_pkv = ${raw_pkv}  (pos 0-1)
+  raw_pkp = ${raw_pkp}  (pos 6-7)
+  raw_dur = ${raw_dur}  ms
+
+[センサー表示]
+  Mean Velocity = ${sV || '?'} m/s
+  ROM           = ${sR || '?'} cm
+  Mean Power    = ${sP || '?'} W
+
+[計算係数]
+  MeanVelocity除数 = ${raw_mv} / ${sV} = ${fV} (pos 4-5)
+  ROM除数          = ${raw_rom} / ${sR} = ${fR} (pos 2-3)
+  Power倍数        = ${sP} / ${raw_mp} = ${fP} (pos 8-9)`;
+
+      navigator.clipboard.writeText(text).catch(() => { });
+      const out = document.getElementById('copyOutput');
+      out.textContent = text;
+      out.style.display = 'block';
+    });
+
+    // 入力変更時に再計算
+    ['inVelocity', 'inRom', 'inPower', 'inWeight'].forEach(id => {
+      document.getElementById(id).addEventListener('input', updateCalibration);
+    });
+
+    // BLE接続
+    document.getElementById('connectBtn').addEventListener('click', async () => {
+      try {
+        log('スキャン中...', '#60a5fa');
+        device = await navigator.bluetooth.requestDevice({
+          acceptAllDevices: true,
+          optionalServices: [SERVICE_UUID]
+        });
+        log(`接続: ${device.name}`, '#4ade80');
+        document.getElementById('statusText').textContent = `接続: ${device.name}`;
+        document.getElementById('dot').classList.add('ok');
+
+        server = await device.gatt.connect();
+        const service = await server.getPrimaryService(SERVICE_UUID);
+        const char = await service.getCharacteristic(CHAR_UUID);
+        char.addEventListener('characteristicvaluechanged', onData);
+        await char.startNotifications();
+        log('通知受信開始 ✅', '#4ade80');
+        document.getElementById('connectBtn').disabled = true;
+        document.getElementById('disconnectBtn').disabled = false;
+      } catch (e) {
+        log(`エラー: ${e.message}`, '#f87171');
+      }
+    });
+
+    document.getElementById('disconnectBtn').addEventListener('click', () => {
+      if (device?.gatt?.connected) device.gatt.disconnect();
+      document.getElementById('statusText').textContent = '切断済';
+      document.getElementById('dot').classList.remove('ok');
+      document.getElementById('connectBtn').disabled = false;
+      document.getElementById('disconnectBtn').disabled = true;
+      log('切断', '#f87171');
+    });
+  </script>
+</body>
+
+</html>
