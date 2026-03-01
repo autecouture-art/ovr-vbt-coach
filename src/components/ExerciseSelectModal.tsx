@@ -80,16 +80,21 @@ export function ExerciseSelectModal({
       return;
     }
 
-    const newExercise = await ExerciseService.addExercise({
-      name: newExerciseName.trim(),
-      category: (selectedCategory === 'all' ? 'accessory' : selectedCategory) as Exercise['category'],
-      has_lvp: true,
-    });
+    try {
+      const newExercise = await ExerciseService.addExercise({
+        name: newExerciseName.trim(),
+        category: (selectedCategory === 'all' ? 'accessory' : selectedCategory) as Exercise['category'],
+        has_lvp: true,
+      });
 
-    setNewExerciseName('');
-    setIsAddMode(false);
-    await loadExercises();
-    Alert.alert('追加完了', `${newExercise.name}を追加しました`);
+      setNewExerciseName('');
+      setIsAddMode(false);
+      await loadExercises();
+      Alert.alert('追加完了', `${newExercise.name}を追加しました`);
+    } catch (error) {
+      console.error('Add exercise error:', error);
+      Alert.alert('エラー', '種目の追加に失敗しました。');
+    }
   };
 
   const handleEditExercise = (exercise: Exercise) => {
@@ -102,15 +107,20 @@ export function ExerciseSelectModal({
   const handleSaveEdit = async () => {
     if (!editingExercise) return;
 
-    await ExerciseService.updateExercise(editingExercise.id, {
-      min_rom_threshold: parseFloat(editMinRom) || 10.0,
-      rep_detection_mode: editMode,
-      target_pause_ms: parseInt(editPause) || 0,
-    });
+    try {
+      await ExerciseService.updateExercise(editingExercise.id, {
+        min_rom_threshold: parseFloat(editMinRom) || 10.0,
+        rep_detection_mode: editMode,
+        target_pause_ms: parseInt(editPause) || 0,
+      });
 
-    setEditingExercise(null);
-    await loadExercises();
-    Alert.alert('更新完了', `${editingExercise.name}の設定を更新しました`);
+      setEditingExercise(null);
+      await loadExercises();
+      Alert.alert('更新完了', `${editingExercise.name}の設定を更新しました`);
+    } catch (error) {
+      console.error('Update exercise error:', error);
+      Alert.alert('エラー', '種目の更新に失敗しました。');
+    }
   };
 
   const handleDeleteExercise = async (id: string, name: string) => {

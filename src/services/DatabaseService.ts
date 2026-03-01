@@ -199,6 +199,10 @@ class DatabaseService {
       { table: 'sets', column: 'peak_hr', type: 'REAL' },
       // Reps
       { table: 'reps', column: 'hr_bpm', type: 'REAL' },
+      // Exercises
+      { table: 'exercises', column: 'min_rom_threshold', type: 'REAL' },
+      { table: 'exercises', column: 'rep_detection_mode', type: 'TEXT' },
+      { table: 'exercises', column: 'target_pause_ms', type: 'INTEGER' },
     ];
 
     for (const m of migrations) {
