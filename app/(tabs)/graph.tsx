@@ -14,6 +14,7 @@ import {
   Dimensions,
   ActivityIndicator,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import DatabaseService from '@/src/services/DatabaseService';
 import AICoachService from '@/src/services/AICoachService';
@@ -33,6 +34,7 @@ type TabType = 'lvp' | 'trend' | 'zones';
 
 export default function GraphScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<TabType>('lvp');
   const [selectedExercise, setSelectedExercise] = useState('ベンチプレス');
   const [lvpData, setLvpData] = useState<LVPData | null>(null);
@@ -186,7 +188,7 @@ export default function GraphScreen() {
 
   return (
     <ScrollView style={styles.container}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top || 16 }]}>
         <Text style={styles.title}>📊 LVP グラフ</Text>
       </View>
 

@@ -13,6 +13,7 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Platform } from 'react-native';
 import BLEService from '@/src/services/BLEService';
@@ -22,6 +23,7 @@ import type { Device } from 'react-native-ble-plx';
 
 export default function HomeScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [isConnected, setIsConnected] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [recentSessions, setRecentSessions] = useState<SessionData[]>([]);
@@ -166,7 +168,7 @@ export default function HomeScreen() {
 
   return (
     <ScrollView style={styles.container}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: 24 + (insets.top || 0) }]}>
         <Text style={styles.title}>RepVelo VBT Coach</Text>
         <Text style={styles.subtitle}>Velocity-Based Training</Text>
       </View>

@@ -19,6 +19,7 @@ import {
     KeyboardAvoidingView,
     Platform,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import DatabaseService from '@/src/services/DatabaseService';
@@ -28,6 +29,7 @@ import type { SessionData, SetData, RepData } from '@/src/types/index';
 
 export default function SessionDetailScreen() {
     const router = useRouter();
+    const insets = useSafeAreaInsets();
     const { session_id } = useLocalSearchParams<{ session_id: string }>();
 
     const [session, setSession] = useState<SessionData | null>(null);
@@ -194,7 +196,7 @@ export default function SessionDetailScreen() {
     return (
         <View style={styles.container}>
             {/* ヘッダー */}
-            <View style={styles.header}>
+            <View style={[styles.header, { paddingTop: insets.top || 16 }]}>
                 <TouchableOpacity onPress={() => router.back()}>
                     <Text style={styles.backText}>← 履歴</Text>
                 </TouchableOpacity>

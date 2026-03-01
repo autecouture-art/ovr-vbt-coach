@@ -16,6 +16,7 @@ import {
     Platform,
     ActivityIndicator,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import AICoachService from '@/src/services/AICoachService';
 import DatabaseService from '@/src/services/DatabaseService';
@@ -39,6 +40,7 @@ const QUICK_QUESTIONS = [
 
 export default function AICoachChatScreen() {
     const router = useRouter();
+    const insets = useSafeAreaInsets();
     const scrollViewRef = useRef<ScrollView>(null);
     const { setHistory, currentExercise, currentLoad, currentSession, settings } = useTrainingStore();
 
@@ -191,7 +193,7 @@ export default function AICoachChatScreen() {
             keyboardVerticalOffset={90}
         >
             {/* ヘッダー */}
-            <View style={styles.header}>
+            <View style={[styles.header, { paddingTop: insets.top || 16 }]}>
                 <TouchableOpacity onPress={() => router.back()}>
                     <Text style={styles.backText}>← 戻る</Text>
                 </TouchableOpacity>

@@ -16,6 +16,7 @@ import {
     ActivityIndicator,
     Modal,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { format, parseISO, startOfWeek, endOfWeek, isWithinInterval } from 'date-fns';
@@ -32,6 +33,7 @@ const LIFT_FILTERS = ['すべて', 'ベンチプレス', 'スクワット', 'デ
 
 export default function HistoryScreen() {
     const router = useRouter();
+    const insets = useSafeAreaInsets();
 
     const [sessions, setSessions] = useState<SessionData[]>([]);
     const [filteredSessions, setFilteredSessions] = useState<SessionData[]>([]);
@@ -201,7 +203,7 @@ export default function HistoryScreen() {
     return (
         <View style={styles.container}>
             {/* ヘッダー */}
-            <View style={styles.header}>
+            <View style={[styles.header, { paddingTop: insets.top || 16 }]}>
                 <Text style={styles.title}>📖 トレーニング履歴</Text>
                 <TouchableOpacity style={styles.filterButton} onPress={() => setShowFilterModal(true)}>
                     <Text style={styles.filterButtonText}>⚙️ フィルター</Text>
