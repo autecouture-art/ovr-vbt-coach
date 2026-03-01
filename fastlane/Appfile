@@ -1,0 +1,10 @@
+# Appfile: App Store ConnectとApple Developer Portalの接続設定
+
+# Bundle Identifier
+app_identifier("com.autecouture.repvelocoach.hh")
+
+# Apple IDまたはApp Store Connect APIキーのIssuer IDを設定
+# apple_id("your-apple-id@example.com")  # Apple IDを使う場合はコメントを外す
+
+# App Store Connect APIキーを使う場合（推奨）
+# → fastlane/api_key.json を作成してください（下記README参照）

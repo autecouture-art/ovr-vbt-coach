@@ -1,6 +1,7 @@
 /**
  * LVP Graph Screen
- * 負荷-速度プロファイルグラフ画面
+ * 負荷-速度プロファイル・進捗グラフ画面
+ * DBから実データを取得してグラフ表示
  */
 
 import React, { useState, useEffect } from 'react';
@@ -11,355 +12,353 @@ import {
   TouchableOpacity,
   ScrollView,
   Dimensions,
+  ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { LineChart } from 'react-native-chart-kit';
 import DatabaseService from '@/src/services/DatabaseService';
-import type { LVPData } from '@/src/types/index';
+import AICoachService from '@/src/services/AICoachService';
+import type { LVPData, SessionData, SetData } from '@/src/types/index';
 
 const { width } = Dimensions.get('window');
 
+// 速度ゾーンの定義（日本語）
+const VELOCITY_ZONES = [
+  { name: '🔥 パワー', minV: 1.0, maxV: 1.5, color: '#FFD700', desc: '爆発的な力 (1RM 30-50%)' },
+  { name: '⚡ スピード・ストレングス', minV: 0.75, maxV: 1.0, color: '#FF8C00', desc: '速い力 (1RM 50-70%)' },
+  { name: '💪 筋肥大', minV: 0.5, maxV: 0.75, color: '#32CD32', desc: 'サイズアップ (1RM 70-85%)' },
+  { name: '🏋️ 最大筋力', minV: 0.0, maxV: 0.5, color: '#DC143C', desc: '最大力 (1RM 85%+)' },
+];
+
+type TabType = 'lvp' | 'trend' | 'zones';
+
 export default function GraphScreen() {
   const router = useRouter();
+  const [activeTab, setActiveTab] = useState<TabType>('lvp');
   const [selectedExercise, setSelectedExercise] = useState('ベンチプレス');
   const [lvpData, setLvpData] = useState<LVPData | null>(null);
+  const [sessions, setSessions] = useState<SessionData[]>([]);
+  const [recentSets, setRecentSets] = useState<SetData[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [e1rmEstimate, setE1rmEstimate] = useState<number | null>(null);
 
-  const exercises = ['ベンチプレス', 'スクワット', 'デッドリフト', 'オーバーヘッドプレス'];
+  const exercises = ['ベンチプレス', 'スクワット', 'デッドリフト', 'オーバーヘッドプレス', 'バーベルロー'];
 
   useEffect(() => {
-    loadLVPData();
+    loadData();
   }, [selectedExercise]);
 
-  const loadLVPData = async () => {
+  const loadData = async () => {
+    setLoading(true);
     try {
-      // TODO: DatabaseServiceからLVPデータを取得
-      // const data = await DatabaseService.getLVPData(selectedExercise);
-      // setLvpData(data);
+      // DBからLVPプロファイルを取得（なければデモデータ）
+      const lvp = await DatabaseService.getLVPProfile(selectedExercise);
+      if (lvp) {
+        setLvpData(lvp);
+        const est1rm = Math.abs(lvp.intercept / lvp.slope);
+        setE1rmEstimate(est1rm);
+      } else {
+        // デモ用フォールバック
+        const demo: LVPData = {
+          lift: selectedExercise,
+          vmax: 1.5,
+          v1rm: 0.15,
+          slope: -0.0135,
+          intercept: 1.65,
+          r_squared: 0.95,
+          last_updated: new Date().toISOString(),
+        };
+        setLvpData(demo);
+        setE1rmEstimate(Math.abs(demo.intercept / demo.slope));
+      }
 
-      // デモデータ
-      setLvpData({
-        lift: selectedExercise,
-        vmax: 1.5,
-        v1rm: 0.15,
-        slope: -0.0135,
-        intercept: 1.65,
-        r_squared: 0.95,
-        last_updated: new Date().toISOString(),
-      });
+      // 最近のセッションをDBから取得
+      const allSessions = await DatabaseService.getSessions();
+      setSessions(allSessions.slice(0, 10));
+
+      // 最新5セッションのセットデータを集める
+      const allSets: SetData[] = [];
+      for (const session of allSessions.slice(0, 5)) {
+        const sets = await DatabaseService.getSetsForSession(session.session_id);
+        const filtered = sets.filter(s => s.lift === selectedExercise);
+        allSets.push(...filtered);
+      }
+      setRecentSets(allSets.slice(0, 20));
     } catch (error) {
-      console.error('Failed to load LVP data:', error);
+      console.error('LVPデータ読み込み失敗:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
-  // デモ用のグラフデータ生成
-  const generateChartData = () => {
-    if (!lvpData) return { labels: [], datasets: [{ data: [] }] };
+  // LVPラインをシンプルなバー表示で描画（react-native-chart-kitが不要）
+  const renderLVPBars = () => {
+    if (!lvpData) return null;
+    const loads = [20, 40, 60, 80, 100, 120, 140];
+    const maxVel = lvpData.vmax;
 
-    const loads = [20, 40, 60, 80, 100, 120];
-    const labels = loads.map(l => l.toString());
-    const velocities = loads.map(load => {
-      return Math.max(0, lvpData.intercept + lvpData.slope * load);
-    });
-
-    return {
-      labels,
-      datasets: [{
-        data: velocities,
-        color: (opacity = 1) => `rgba(33, 150, 243, ${opacity})`,
-        strokeWidth: 2,
-      }],
-    };
+    return (
+      <View style={styles.barsContainer}>
+        <Text style={styles.subLabel}>負荷 → 速度プロファイル</Text>
+        {loads.map(load => {
+          const vel = Math.max(0, lvpData.intercept + lvpData.slope * load);
+          const pct = (vel / maxVel) * 100;
+          const zone = AICoachService.getZone(vel);
+          return (
+            <View key={load} style={styles.barRow}>
+              <Text style={styles.barLabel}>{load}kg</Text>
+              <View style={styles.barTrack}>
+                <View style={[styles.barFill, { width: `${pct}%`, backgroundColor: zone.color }]} />
+              </View>
+              <Text style={[styles.barValue, { color: zone.color }]}>{vel.toFixed(2)}</Text>
+            </View>
+          );
+        })}
+      </View>
+    );
   };
 
-  // 速度ゾーン
-  const velocityZones = [
-    { name: 'Power', minV: 1.0, maxV: 1.5, color: '#4CAF50' },
-    { name: 'Strength-Speed', minV: 0.5, maxV: 1.0, color: '#2196F3' },
-    { name: 'Hypertrophy', minV: 0.3, maxV: 0.5, color: '#FF9800' },
-    { name: 'Strength', minV: 0.1, maxV: 0.3, color: '#9C27B0' },
-  ];
+  // 過去セッションのボリュームトレンドを表示
+  const renderVolumeTrend = () => {
+    if (sessions.length === 0) {
+      return (
+        <View style={styles.noDataContainer}>
+          <Text style={styles.noDataText}>📭 まだセッションデータがありません</Text>
+          <Text style={styles.noDataSubText}>トレーニングを記録してください</Text>
+        </View>
+      );
+    }
+
+    const maxVol = Math.max(...sessions.map(s => s.total_volume || 0));
+    return (
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>📈 セッション別ボリューム</Text>
+        {sessions.map((session, idx) => {
+          const vol = session.total_volume || 0;
+          const pct = maxVol > 0 ? (vol / maxVol) * 100 : 0;
+          return (
+            <View key={idx} style={styles.barRow}>
+              <Text style={styles.barLabel}>{session.date.slice(5)}</Text>
+              <View style={styles.barTrack}>
+                <View style={[styles.barFill, { width: `${pct}%`, backgroundColor: '#2196F3' }]} />
+              </View>
+              <Text style={[styles.barValue, { color: '#2196F3' }]}>
+                {Math.round(vol).toLocaleString()}
+              </Text>
+            </View>
+          );
+        })}
+        <Text style={styles.unitLabel}>単位: kg（総ボリューム）</Text>
+      </View>
+    );
+  };
+
+  // 最近のセット速度トレンド
+  const renderVelocityTrend = () => {
+    if (recentSets.length === 0) {
+      return (
+        <View style={styles.noDataContainer}>
+          <Text style={styles.noDataText}>⚡ {selectedExercise}のデータがありません</Text>
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>⚡ {selectedExercise} — 最近の速度推移</Text>
+        {recentSets.map((set, idx) => {
+          const vel = set.avg_velocity ?? 0;
+          const zone = AICoachService.getZone(vel);
+          return (
+            <View key={idx} style={styles.trendRow}>
+              <Text style={styles.trendSetLabel}>#{set.set_index}</Text>
+              <Text style={styles.trendLoad}>{set.load_kg}kg×{set.reps}</Text>
+              <View style={styles.trendZone}>
+                <Text style={[styles.trendZoneText, { color: zone.color }]}>
+                  {zone.emoji} {vel.toFixed(2)} m/s
+                </Text>
+              </View>
+            </View>
+          );
+        })}
+      </View>
+    );
+  };
 
   return (
     <ScrollView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <Text style={styles.backButtonText}>← 戻る</Text>
-        </TouchableOpacity>
-        <Text style={styles.title}>LVPグラフ</Text>
-        <View style={styles.placeholder} />
+        <Text style={styles.title}>📊 LVP グラフ</Text>
       </View>
 
-      {/* 種目選択 */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>種目</Text>
+      {/* タブ切替 */}
+      <View style={styles.tabBar}>
+        {(['lvp', 'trend', 'zones'] as TabType[]).map(tab => (
+          <TouchableOpacity
+            key={tab}
+            style={[styles.tab, activeTab === tab && styles.tabActive]}
+            onPress={() => setActiveTab(tab)}
+          >
+            <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>
+              {tab === 'lvp' ? 'LVP' : tab === 'trend' ? '進捗' : '速度ゾーン'}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* 種目選択（LVP/trend タブ） */}
+      {activeTab !== 'zones' && (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.exerciseScroll}>
           {exercises.map((ex) => (
             <TouchableOpacity
               key={ex}
-              style={[
-                styles.exerciseButton,
-                selectedExercise === ex && styles.exerciseButtonActive,
-              ]}
+              style={[styles.exerciseButton, selectedExercise === ex && styles.exerciseButtonActive]}
               onPress={() => setSelectedExercise(ex)}
             >
-              <Text
-                style={[
-                  styles.exerciseButtonText,
-                  selectedExercise === ex && styles.exerciseButtonTextActive,
-                ]}
-              >
+              <Text style={[styles.exerciseButtonText, selectedExercise === ex && styles.exerciseButtonTextActive]}>
                 {ex}
               </Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
-      </View>
-
-      {/* LVP統計 */}
-      {lvpData && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>LVP統計</Text>
-          <View style={styles.statsGrid}>
-            <View style={styles.statCard}>
-              <Text style={styles.statLabel}>Vmax</Text>
-              <Text style={styles.statValue}>{lvpData.vmax.toFixed(2)} m/s</Text>
-            </View>
-            <View style={styles.statCard}>
-              <Text style={styles.statLabel}>V1RM</Text>
-              <Text style={styles.statValue}>{lvpData.v1rm.toFixed(2)} m/s</Text>
-            </View>
-            <View style={styles.statCard}>
-              <Text style={styles.statLabel}>傾き</Text>
-              <Text style={styles.statValue}>{lvpData.slope.toFixed(4)}</Text>
-            </View>
-            <View style={styles.statCard}>
-              <Text style={styles.statLabel}>R²</Text>
-              <Text style={styles.statValue}>{lvpData.r_squared.toFixed(2)}</Text>
-            </View>
-          </View>
-        </View>
       )}
 
-      {/* グラフ */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>負荷-速度プロファイル</Text>
-        <View style={styles.chartContainer}>
-          {lvpData ? (
-            <LineChart
-              data={generateChartData()}
-              width={width - 32}
-              height={220}
-              chartConfig={{
-                backgroundColor: '#2a2a2a',
-                backgroundGradientFrom: '#2a2a2a',
-                backgroundGradientTo: '#2a2a2a',
-                decimalPlaces: 2,
-                color: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
-                labelColor: (opacity = 1) => `rgba(153, 153, 153, ${opacity})`,
-                style: {
-                  borderRadius: 16,
-                },
-                propsForDots: {
-                  r: '4',
-                  strokeWidth: '2',
-                  stroke: '#2196F3',
-                },
-              }}
-              bezier
-              style={styles.chart}
-              fromZero={false}
-              segments={5}
-              formatYLabel={(value) => `${value} m/s`}
-              formatXLabel={(value) => `${value}kg`}
-            />
-          ) : (
-            <View style={styles.noDataContainer}>
-              <Text style={styles.noDataText}>データがありません</Text>
-              <Text style={styles.noDataSubText}>
-                トレーニングを開始してデータを収集してください
-              </Text>
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#2196F3" />
+        </View>
+      ) : (
+        <>
+          {/* LVPタブ */}
+          {activeTab === 'lvp' && lvpData && (
+            <>
+              {/* 統計カード */}
+              <View style={styles.statsGrid}>
+                <View style={styles.statCard}>
+                  <Text style={styles.statLabel}>Vmax</Text>
+                  <Text style={styles.statValue}>{lvpData.vmax.toFixed(2)}</Text>
+                  <Text style={styles.statUnit}>m/s</Text>
+                </View>
+                <View style={styles.statCard}>
+                  <Text style={styles.statLabel}>V@1RM</Text>
+                  <Text style={styles.statValue}>{lvpData.v1rm.toFixed(2)}</Text>
+                  <Text style={styles.statUnit}>m/s</Text>
+                </View>
+                <View style={styles.statCard}>
+                  <Text style={styles.statLabel}>R²</Text>
+                  <Text style={[styles.statValue, { color: lvpData.r_squared > 0.9 ? '#4CAF50' : '#FF9800' }]}>
+                    {lvpData.r_squared.toFixed(2)}
+                  </Text>
+                  <Text style={styles.statUnit}>適合度</Text>
+                </View>
+                <View style={[styles.statCard, { borderColor: '#9C27B0', borderWidth: 1 }]}>
+                  <Text style={styles.statLabel}>推定1RM</Text>
+                  <Text style={[styles.statValue, { color: '#9C27B0' }]}>
+                    {e1rmEstimate?.toFixed(1)}
+                  </Text>
+                  <Text style={styles.statUnit}>kg</Text>
+                </View>
+              </View>
+
+              {/* バーグラフでLVP表示 */}
+              <View style={styles.section}>{renderLVPBars()}</View>
+            </>
+          )}
+
+          {/* 進捗タブ */}
+          {activeTab === 'trend' && (
+            <>
+              {renderVolumeTrend()}
+              {renderVelocityTrend()}
+            </>
+          )}
+
+          {/* 速度ゾーンタブ */}
+          {activeTab === 'zones' && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>速度ゾーンガイド</Text>
+              {VELOCITY_ZONES.map((zone) => (
+                <View key={zone.name} style={[styles.zoneCard, { borderLeftColor: zone.color }]}>
+                  <View style={[styles.zoneIndicator, { backgroundColor: zone.color }]} />
+                  <View style={styles.zoneInfo}>
+                    <Text style={[styles.zoneName, { color: zone.color }]}>{zone.name}</Text>
+                    <Text style={styles.zoneRange}>{zone.minV} – {zone.maxV} m/s</Text>
+                    <Text style={styles.zoneDesc}>{zone.desc}</Text>
+                  </View>
+                </View>
+              ))}
             </View>
           )}
-        </View>
-      </View>
-
-      {/* 速度ゾーン */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>速度ゾーン</Text>
-        {velocityZones.map((zone) => (
-          <View key={zone.name} style={styles.zoneCard}>
-            <View style={[styles.zoneIndicator, { backgroundColor: zone.color }]} />
-            <View style={styles.zoneInfo}>
-              <Text style={styles.zoneName}>{zone.name}</Text>
-              <Text style={styles.zoneRange}>
-                {zone.minV} - {zone.maxV} m/s
-              </Text>
-            </View>
-          </View>
-        ))}
-      </View>
-
-      {/* 推定1RM */}
-      {lvpData && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>推定1RM</Text>
-          <View style={styles.onermCard}>
-            <Text style={styles.onermValue}>
-              {Math.abs(lvpData.intercept / lvpData.slope).toFixed(1)} kg
-            </Text>
-            <Text style={styles.onermLabel}>推定最大筋力 ({selectedExercise})</Text>
-          </View>
-        </View>
+        </>
       )}
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#1a1a1a',
+  container: { flex: 1, backgroundColor: '#1a1a1a' },
+  header: { padding: 16, borderBottomWidth: 1, borderBottomColor: '#333' },
+  title: { fontSize: 22, fontWeight: 'bold', color: '#fff' },
+  tabBar: {
+    flexDirection: 'row', margin: 16, backgroundColor: '#2a2a2a',
+    borderRadius: 10, padding: 4,
   },
-  header: {
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#333',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  backButton: {
-    padding: 8,
-  },
-  backButtonText: {
-    color: '#2196F3',
-    fontSize: 16,
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
-  placeholder: {
-    width: 50,
-  },
-  section: {
-    padding: 16,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginBottom: 12,
-  },
-  exerciseScroll: {
-    flexDirection: 'row',
-  },
+  tab: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 7 },
+  tabActive: { backgroundColor: '#2196F3' },
+  tabText: { color: '#999', fontSize: 14, fontWeight: '600' },
+  tabTextActive: { color: '#fff' },
+  exerciseScroll: { paddingHorizontal: 16, marginBottom: 8 },
   exerciseButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    backgroundColor: '#2a2a2a',
-    borderRadius: 20,
-    marginRight: 8,
+    paddingHorizontal: 16, paddingVertical: 8,
+    backgroundColor: '#2a2a2a', borderRadius: 20, marginRight: 8,
   },
-  exerciseButtonActive: {
-    backgroundColor: '#9C27B0',
-  },
-  exerciseButtonText: {
-    color: '#999',
-    fontSize: 14,
-  },
-  exerciseButtonTextActive: {
-    color: '#fff',
-    fontWeight: '600',
-  },
+  exerciseButtonActive: { backgroundColor: '#9C27B0' },
+  exerciseButtonText: { color: '#999', fontSize: 13 },
+  exerciseButtonTextActive: { color: '#fff', fontWeight: '600' },
+  loadingContainer: { padding: 60, alignItems: 'center' },
   statsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginHorizontal: -4,
+    flexDirection: 'row', flexWrap: 'wrap',
+    paddingHorizontal: 12, marginBottom: 8,
   },
   statCard: {
-    width: '48%',
-    marginHorizontal: '1%',
-    marginBottom: 8,
-    backgroundColor: '#2a2a2a',
-    borderRadius: 8,
-    padding: 12,
+    width: '48%', margin: '1%',
+    backgroundColor: '#2a2a2a', borderRadius: 10,
+    padding: 12, alignItems: 'center',
   },
-  statLabel: {
-    fontSize: 12,
-    color: '#999',
-    marginBottom: 4,
+  statLabel: { fontSize: 11, color: '#999', marginBottom: 4 },
+  statValue: { fontSize: 22, fontWeight: 'bold', color: '#2196F3' },
+  statUnit: { fontSize: 11, color: '#666', marginTop: 2 },
+  section: { padding: 16 },
+  sectionTitle: { fontSize: 16, fontWeight: 'bold', color: '#fff', marginBottom: 12 },
+  subLabel: { fontSize: 13, color: '#999', marginBottom: 12 },
+  barsContainer: { gap: 8 },
+  barRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  barLabel: { width: 44, fontSize: 12, color: '#999', textAlign: 'right' },
+  barTrack: {
+    flex: 1, height: 18, backgroundColor: '#2a2a2a',
+    borderRadius: 4, overflow: 'hidden',
   },
-  statValue: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#2196F3',
+  barFill: { height: '100%', borderRadius: 4, minWidth: 4 },
+  barValue: { width: 40, fontSize: 12, textAlign: 'right' },
+  unitLabel: { fontSize: 11, color: '#666', marginTop: 8, textAlign: 'right' },
+  noDataContainer: { padding: 48, alignItems: 'center' },
+  noDataText: { fontSize: 16, color: '#999', marginBottom: 8 },
+  noDataSubText: { fontSize: 13, color: '#666', textAlign: 'center' },
+  trendRow: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#2a2a2a',
   },
-  chartContainer: {
-    backgroundColor: '#2a2a2a',
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
-  },
-  chart: {
-    marginVertical: 8,
-    borderRadius: 16,
-  },
-  noDataContainer: {
-    padding: 40,
-    alignItems: 'center',
-  },
-  noDataText: {
-    fontSize: 16,
-    color: '#999',
-    marginBottom: 8,
-  },
-  noDataSubText: {
-    fontSize: 14,
-    color: '#666',
-    textAlign: 'center',
-  },
+  trendSetLabel: { width: 28, fontSize: 12, color: '#666' },
+  trendLoad: { width: 80, fontSize: 13, color: '#fff' },
+  trendZone: { flex: 1, alignItems: 'flex-end' },
+  trendZoneText: { fontSize: 14, fontWeight: '600' },
   zoneCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#2a2a2a',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 8,
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#2a2a2a', padding: 14,
+    borderRadius: 10, marginBottom: 10, borderLeftWidth: 4,
   },
-  zoneIndicator: {
-    width: 4,
-    height: 40,
-    borderRadius: 2,
-    marginRight: 12,
-  },
-  zoneInfo: {
-    flex: 1,
-  },
-  zoneName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  zoneRange: {
-    fontSize: 14,
-    color: '#999',
-  },
-  onermCard: {
-    backgroundColor: '#9C27B0',
-    borderRadius: 12,
-    padding: 24,
-    alignItems: 'center',
-  },
-  onermValue: {
-    fontSize: 36,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
-  onermLabel: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.7)',
-    marginTop: 4,
-  },
+  zoneIndicator: { width: 4, height: 50, borderRadius: 2, marginRight: 12 },
+  zoneInfo: { flex: 1 },
+  zoneName: { fontSize: 16, fontWeight: 'bold', marginBottom: 2 },
+  zoneRange: { fontSize: 13, color: '#999', marginBottom: 2 },
+  zoneDesc: { fontSize: 12, color: '#666' },
 });

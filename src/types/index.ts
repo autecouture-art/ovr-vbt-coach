@@ -6,7 +6,7 @@
 // Core VBT Types
 // ========================================
 
-export type DeviceType = 'VBT' | 'manual';
+export type DeviceType = 'VBT' | 'manual' | 'OVR Velocity';
 export type SetType = 'normal' | 'amrap' | 'drop' | 'superset_A' | 'superset_B';
 
 export interface RepData {
@@ -113,6 +113,9 @@ export interface Exercise {
   category: 'squat' | 'bench' | 'deadlift' | 'press' | 'pull' | 'accessory';
   has_lvp: boolean;
   machine_weight_steps?: number[];
+  min_rom_threshold?: number; // 最小ROM (cm) - デフォルト 10
+  rep_detection_mode?: 'standard' | 'tempo' | 'pause' | 'short_rom';
+  target_pause_ms?: number; // 目標静止時間 (ms)
 }
 
 export interface TrainingSession {

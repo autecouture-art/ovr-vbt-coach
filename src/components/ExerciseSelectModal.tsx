@@ -36,6 +36,12 @@ export function ExerciseSelectModal({
   const [isAddMode, setIsAddMode] = useState(false);
   const [newExerciseName, setNewExerciseName] = useState('');
 
+  // 編集モード
+  const [editingExercise, setEditingExercise] = useState<Exercise | null>(null);
+  const [editMinRom, setEditMinRom] = useState('');
+  const [editMode, setEditMode] = useState<Exercise['rep_detection_mode']>('standard');
+  const [editPause, setEditPause] = useState('');
+
   const categories = [
     { id: 'all', name: 'すべて' },
     { id: 'squat', name: 'スクワット' },
@@ -84,6 +90,44 @@ export function ExerciseSelectModal({
     setIsAddMode(false);
     await loadExercises();
     Alert.alert('追加完了', `${newExercise.name}を追加しました`);
+  };
+
+  const handleEditExercise = (exercise: Exercise) => {
+    setEditingExercise(exercise);
+    setEditMinRom(exercise.min_rom_threshold?.toString() || '10.0');
+    setEditMode(exercise.rep_detection_mode || 'standard');
+    setEditPause(exercise.target_pause_ms?.toString() || '0');
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingExercise) return;
+
+    await ExerciseService.updateExercise(editingExercise.id, {
+      min_rom_threshold: parseFloat(editMinRom) || 10.0,
+      rep_detection_mode: editMode,
+      target_pause_ms: parseInt(editPause) || 0,
+    });
+
+    setEditingExercise(null);
+    await loadExercises();
+    Alert.alert('更新完了', `${editingExercise.name}の設定を更新しました`);
+  };
+
+  const handleDeleteExercise = async (id: string, name: string) => {
+    Alert.alert(
+      '種目を削除',
+      `${name} を削除しますか？`,
+      [
+        { text: 'キャンセル', style: 'cancel' },
+        {
+          text: '削除', style: 'destructive',
+          onPress: async () => {
+            await ExerciseService.deleteExercise(id);
+            await loadExercises();
+          }
+        },
+      ]
+    );
   };
 
   return (
@@ -172,22 +216,91 @@ export function ExerciseSelectModal({
                   </TouchableOpacity>
                 </View>
               </View>
+            ) : editingExercise ? (
+              <View style={styles.editForm}>
+                <Text style={styles.addFormTitle}>{editingExercise.name} の設定</Text>
+
+                <Text style={styles.fieldLabel}>最小ROM (cm)</Text>
+                <Text style={styles.fieldDesc}>これより短い動きを無視します（ハーフ・ポーズ対策）</Text>
+                <TextInput
+                  style={styles.nameInput}
+                  value={editMinRom}
+                  onChangeText={setEditMinRom}
+                  keyboardType="numeric"
+                  placeholder="10.0"
+                />
+
+                <Text style={styles.fieldLabel}>検知モード</Text>
+                <View style={styles.modeContainer}>
+                  {(['standard', 'tempo', 'pause', 'short_rom'] as const).map(m => (
+                    <TouchableOpacity
+                      key={m}
+                      style={[styles.modeButton, editMode === m && styles.modeButtonActive]}
+                      onPress={() => setEditMode(m)}
+                    >
+                      <Text style={[styles.modeButtonText, editMode === m && styles.modeButtonTextActive]}>
+                        {m === 'standard' ? '標準' : m === 'tempo' ? 'テンポ' : m === 'pause' ? 'ポーズ' : '短ROM'}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {editMode === 'pause' && (
+                  <>
+                    <Text style={styles.fieldLabel}>目標静止時間 (ms)</Text>
+                    <TextInput
+                      style={styles.nameInput}
+                      value={editPause}
+                      onChangeText={setEditPause}
+                      keyboardType="numeric"
+                      placeholder="500"
+                    />
+                  </>
+                )}
+
+                <View style={styles.addFormButtons}>
+                  <TouchableOpacity
+                    style={[styles.addFormButton, styles.cancelButton]}
+                    onPress={() => setEditingExercise(null)}
+                  >
+                    <Text style={styles.addFormButtonText}>キャンセル</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.addFormButton, styles.confirmButton]}
+                    onPress={handleSaveEdit}
+                  >
+                    <Text style={styles.addFormButtonText}>保存</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <TouchableOpacity
+                  style={styles.deleteLink}
+                  onPress={() => handleDeleteExercise(editingExercise.id, editingExercise.name)}
+                >
+                  <Text style={styles.deleteLinkText}>この種目を削除</Text>
+                </TouchableOpacity>
+              </View>
             ) : (
               <>
                 {filteredExercises.map((exercise) => (
-                  <TouchableOpacity
+                  <View
                     key={exercise.id}
                     style={[
                       styles.exerciseItem,
                       currentExerciseId === exercise.id && styles.exerciseItemSelected,
                     ]}
-                    onPress={() => handleSelect(exercise)}
                   >
-                    <View style={styles.exerciseItemLeft}>
+                    <TouchableOpacity
+                      style={styles.exerciseItemLeft}
+                      onPress={() => handleSelect(exercise)}
+                    >
                       <Text style={styles.exerciseName}>{exercise.name}</Text>
                       <View style={styles.exerciseMeta}>
                         <Text style={styles.exerciseCategory}>
                           {categories.find(c => c.id === exercise.category)?.name || exercise.category}
+                        </Text>
+                        <Text style={styles.exerciseConfig}>
+                          ROM: {exercise.min_rom_threshold || 10}cm
                         </Text>
                         {exercise.has_lvp && (
                           <View style={styles.lvpBadge}>
@@ -195,11 +308,19 @@ export function ExerciseSelectModal({
                           </View>
                         )}
                       </View>
+                    </TouchableOpacity>
+                    <View style={styles.itemRight}>
+                      {currentExerciseId === exercise.id && (
+                        <Text style={styles.checkmark}>✓</Text>
+                      )}
+                      <TouchableOpacity
+                        onPress={() => handleEditExercise(exercise)}
+                        style={styles.settingsButton}
+                      >
+                        <Text style={styles.settingsIcon}>⚙️</Text>
+                      </TouchableOpacity>
                     </View>
-                    {currentExerciseId === exercise.id && (
-                      <Text style={styles.checkmark}>✓</Text>
-                    )}
-                  </TouchableOpacity>
+                  </View>
                 ))}
 
                 {/* Add Exercise Button */}
@@ -392,5 +513,72 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     color: '#fff',
+  },
+  editForm: {
+    backgroundColor: '#2a2a2a',
+    borderRadius: 12,
+    padding: 16,
+  },
+  fieldLabel: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+    marginTop: 12,
+    marginBottom: 4,
+  },
+  fieldDesc: {
+    color: '#999',
+    fontSize: 11,
+    marginBottom: 8,
+  },
+  modeContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 16,
+  },
+  modeButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+    backgroundColor: '#3a3a3a',
+    borderWidth: 1,
+    borderColor: '#444',
+  },
+  modeButtonActive: {
+    backgroundColor: '#1565C0',
+    borderColor: '#2196F3',
+  },
+  modeButtonText: {
+    color: '#ccc',
+    fontSize: 12,
+  },
+  modeButtonTextActive: {
+    color: '#fff',
+    fontWeight: 'bold',
+  },
+  exerciseConfig: {
+    fontSize: 11,
+    color: '#666',
+    marginLeft: 4,
+  },
+  itemRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  settingsButton: {
+    padding: 8,
+  },
+  settingsIcon: {
+    fontSize: 20,
+  },
+  deleteLink: {
+    marginTop: 20,
+    alignItems: 'center',
+  },
+  deleteLinkText: {
+    color: '#F44336',
+    fontSize: 13,
   },
 });

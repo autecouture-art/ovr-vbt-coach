@@ -12,6 +12,7 @@ import {
   TouchableOpacity,
   RefreshControl,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import DatabaseService from '../services/DatabaseService';
 import { SessionData, SetData } from '../types/index';
 import { format, parseISO } from 'date-fns';
@@ -21,6 +22,7 @@ interface HistoryScreenProps {
 }
 
 const HistoryScreen: React.FC<HistoryScreenProps> = ({ navigation }) => {
+  const router = useRouter();
   const [sessions, setSessions] = useState<SessionData[]>([]);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -44,12 +46,11 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ navigation }) => {
   };
 
   const handleSessionPress = async (session: SessionData) => {
-    try {
-      const sets = await DatabaseService.getSetsForSession(session.session_id);
-      navigation.navigate('SessionDetail', { session, sets });
-    } catch (error) {
-      console.error('Failed to load session details:', error);
-    }
+    // Expo Routerの動的ルートへ遷移
+    router.push({
+      pathname: '/(tabs)/session-detail',
+      params: { session_id: session.session_id },
+    } as any);
   };
 
   const formatDate = (dateStr: string): string => {

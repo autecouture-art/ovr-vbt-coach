@@ -1,0 +1,66 @@
+# Fastfile: Fastlaneの自動化レーン定義
+
+default_platform(:ios)
+
+platform :ios do
+
+  # --------------------------------------------------
+  # betaレーン: TestFlightへのビルド＆アップロードを自動化
+  # 使用方法: bundle exec fastlane beta
+  # --------------------------------------------------
+  desc "アーカイブを作成してTestFlightへアップロード"
+  lane :beta do
+    # App Store Connect APIキーを読み込む（fastlane/api_key.json が必要）
+    api_key = app_store_connect_api_key(
+      key_id: ENV["ASC_KEY_ID"],
+      issuer_id: ENV["ASC_ISSUER_ID"],
+      key_filepath: "./fastlane/api_key.p8",
+      duration: 1200,
+      in_house: false
+    )
+
+    # バージョン・ビルド番号の自動インクリメント（任意）
+    # increment_build_number(xcodeproj: "ios/RepVeloCoach.xcodeproj")
+
+    # アーカイブ作成
+    build_app(
+      workspace: "ios/RepVeloCoach.xcworkspace",
+      scheme: "RepVeloCoach",
+      configuration: "Release",
+      export_method: "app-store",
+      archive_path: "ios/RepVeloCoach_fastlane.xcarchive",
+      output_directory: "ios/fastlane_export",
+      output_name: "RepVeloCoach.ipa",
+      clean: true
+    )
+
+    # TestFlightへアップロード
+    upload_to_testflight(
+      api_key: api_key,
+      skip_waiting_for_build_processing: true  # 処理完了を待たずに終了
+    )
+
+    # 完了通知（任意: Slackなどに通知する場合は設定）
+    # slack(message: "TestFlightアップロード完了！ v#{get_version_number}")
+  end
+
+  # --------------------------------------------------
+  # buildのみ（アップロードなし・検証用）
+  # 使用方法: bundle exec fastlane build_only
+  # --------------------------------------------------
+  desc "アーカイブのみ作成（アップロードしない）"
+  lane :build_only do
+    build_app(
+      workspace: "ios/RepVeloCoach.xcworkspace",
+      scheme: "RepVeloCoach",
+      configuration: "Release",
+      export_method: "app-store",
+      archive_path: "ios/RepVeloCoach_fastlane.xcarchive",
+      output_directory: "ios/fastlane_export",
+      output_name: "RepVeloCoach.ipa",
+      clean: true
+    )
+    UI.success("✅ ビルド完了: ios/fastlane_export/RepVeloCoach.ipa")
+  end
+
+end

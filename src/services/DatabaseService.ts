@@ -158,7 +158,10 @@ class DatabaseService {
         name TEXT NOT NULL UNIQUE,
         category TEXT NOT NULL,
         has_lvp INTEGER DEFAULT 0,
-        machine_weight_steps TEXT
+        machine_weight_steps TEXT,
+        min_rom_threshold REAL DEFAULT 10.0,
+        rep_detection_mode TEXT DEFAULT 'standard',
+        target_pause_ms INTEGER DEFAULT 0
       );
     `);
 
@@ -271,10 +274,10 @@ class DatabaseService {
   async getLVPProfile(lift: string): Promise<LVPData | null> {
     if (!this.db) return null;
 
-    const result = await this.db.getFirstAsync<LVPData>(
+    const result = await (this.db.getFirstAsync(
       'SELECT * FROM lvp_profiles WHERE lift = ?',
       [lift]
-    );
+    ) as Promise<LVPData | null>);
 
     return result || null;
   }
@@ -308,9 +311,9 @@ class DatabaseService {
   async getSessions(): Promise<SessionData[]> {
     if (!this.db) return [];
 
-    const results = await this.db.getAllAsync<SessionData>(
+    const results = await (this.db.getAllAsync(
       'SELECT * FROM sessions ORDER BY date DESC'
-    );
+    ) as Promise<SessionData[]>);
 
     return results;
   }
@@ -321,10 +324,10 @@ class DatabaseService {
   async getSession(sessionId: string): Promise<SessionData | null> {
     if (!this.db) return null;
 
-    const result = await this.db.getFirstAsync<SessionData>(
+    const result = await (this.db.getFirstAsync(
       'SELECT * FROM sessions WHERE session_id = ?',
       [sessionId]
-    );
+    ) as Promise<SessionData | null>);
 
     return result || null;
   }
@@ -335,10 +338,10 @@ class DatabaseService {
   async getSetsForSession(sessionId: string): Promise<SetData[]> {
     if (!this.db) return [];
 
-    const results = await this.db.getAllAsync<SetData>(
+    const results = await (this.db.getAllAsync(
       'SELECT * FROM sets WHERE session_id = ? ORDER BY set_index',
       [sessionId]
-    );
+    ) as Promise<SetData[]>);
 
     return results;
   }
@@ -349,10 +352,10 @@ class DatabaseService {
   async getRepsForSet(sessionId: string, lift: string, setIndex: number): Promise<RepData[]> {
     if (!this.db) return [];
 
-    const results = await this.db.getAllAsync<RepData>(
+    const results = await (this.db.getAllAsync(
       'SELECT * FROM reps WHERE session_id = ? AND lift = ? AND set_index = ? ORDER BY rep_index',
       [sessionId, lift, setIndex]
-    );
+    ) as Promise<RepData[]>);
 
     return results;
   }
@@ -363,10 +366,10 @@ class DatabaseService {
   async getBestPR(lift: string, type: string): Promise<PRRecord | null> {
     if (!this.db) return null;
 
-    const result = await this.db.getFirstAsync<PRRecord>(
+    const result = await (this.db.getFirstAsync(
       'SELECT * FROM pr_records WHERE lift = ? AND type = ? ORDER BY value DESC LIMIT 1',
       [lift, type]
-    );
+    ) as Promise<PRRecord | null>);
 
     return result || null;
   }
@@ -382,14 +385,20 @@ class DatabaseService {
       : null;
 
     await this.db.runAsync(
-      `INSERT OR REPLACE INTO exercises (id, name, category, has_lvp, machine_weight_steps)
-       VALUES (?, ?, ?, ?, ?)`,
+      `INSERT OR REPLACE INTO exercises (
+        id, name, category, has_lvp, machine_weight_steps, 
+        min_rom_threshold, rep_detection_mode, target_pause_ms
+      )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         exercise.id,
         exercise.name,
         exercise.category,
         exercise.has_lvp ? 1 : 0,
         stepsJson,
+        exercise.min_rom_threshold ?? 10.0,
+        exercise.rep_detection_mode ?? 'standard',
+        exercise.target_pause_ms ?? 0,
       ]
     );
   }
@@ -400,7 +409,7 @@ class DatabaseService {
   async getExercises(): Promise<Exercise[]> {
     if (!this.db) return [];
 
-    const results = await this.db.getAllAsync<any>('SELECT * FROM exercises ORDER BY name');
+    const results = await (this.db.getAllAsync('SELECT * FROM exercises ORDER BY name') as Promise<any[]>);
 
     return results.map((row: any) => ({
       ...row,
@@ -408,6 +417,9 @@ class DatabaseService {
       machine_weight_steps: row.machine_weight_steps
         ? JSON.parse(row.machine_weight_steps)
         : undefined,
+      min_rom_threshold: row.min_rom_threshold,
+      rep_detection_mode: row.rep_detection_mode,
+      target_pause_ms: row.target_pause_ms,
     }));
   }
 
@@ -431,6 +443,14 @@ class DatabaseService {
     await this.db.runAsync('DELETE FROM reps WHERE session_id = ?', [sessionId]);
     await this.db.runAsync('DELETE FROM sets WHERE session_id = ?', [sessionId]);
     await this.db.runAsync('DELETE FROM sessions WHERE session_id = ?', [sessionId]);
+  }
+
+  /**
+   * 種目をマスターから削除
+   */
+  async deleteExercise(id: string): Promise<void> {
+    if (!this.db) return;
+    await this.db.runAsync('DELETE FROM exercises WHERE id = ?', [id]);
   }
 
   /**

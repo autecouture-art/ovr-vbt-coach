@@ -18,14 +18,23 @@ import { useRouter } from 'expo-router';
 import { useTrainingStore } from '@/src/store/trainingStore';
 import { useSessionLogic } from '@/src/hooks/useSessionLogic';
 import { ExerciseSelectModal } from '@/src/components/ExerciseSelectModal';
+import PRNotification from '@/src/components/PRNotification';
 import DatabaseService from '@/src/services/DatabaseService';
-import type { Exercise } from '@/src/types/index';
+import AICoachService from '@/src/services/AICoachService';
+import type { Exercise, PRRecord } from '@/src/types/index';
 
 export default function SessionScreen() {
   const router = useRouter();
 
-  // Custom Hook for Logic
-  const { finishSet } = useSessionLogic();
+  // PR検知時のモーダル状態
+  const [prRecord, setPRRecord] = useState<PRRecord | null>(null);
+  const [showPRModal, setShowPRModal] = useState(false);
+
+  // Custom Hook for Logic（PR検知コールバックを渡す）
+  const { finishSet } = useSessionLogic((pr: PRRecord) => {
+    setPRRecord(pr);
+    setShowPRModal(true);
+  });
 
   // Global State
   const {
@@ -140,10 +149,16 @@ export default function SessionScreen() {
     <ScrollView style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <Text style={styles.backButtonText}>← Back</Text>
+          <Text style={styles.backButtonText}>← 戻る</Text>
         </TouchableOpacity>
-        <Text style={styles.title}>VBT Session</Text>
-        <Text style={styles.setNumber}>Set {currentSetIndex}</Text>
+        <Text style={styles.title}>セッション</Text>
+        {/* AIコーチボタン */}
+        <TouchableOpacity
+          style={styles.coachNavButton}
+          onPress={() => router.push('/coach-chat' as any)}
+        >
+          <Text style={styles.coachNavButtonText}>🤖 AI</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Connection Status */}
@@ -221,14 +236,26 @@ export default function SessionScreen() {
         </View>
       </View>
 
-      {/* Live Data Display */}
+      {/* Live データ表示 */}
       <View style={styles.dataCard}>
         <Text style={styles.dataTitle}>Live Data</Text>
         {liveData ? (
           <>
+            {/* 速度ゾーンバッジ */}
+            {(() => {
+              const zone = AICoachService.getZone(liveData.mean_velocity);
+              return (
+                <View style={[styles.zoneBadge, { borderColor: zone.color }]}>
+                  <Text style={styles.zoneEmoji}>{zone.emoji}</Text>
+                  <Text style={[styles.zoneName, { color: zone.color }]}>{zone.name}ゾーン</Text>
+                </View>
+              );
+            })()}
             <View style={styles.dataRow}>
               <Text style={styles.dataLabel}>Mean Velocity</Text>
-              <Text style={styles.dataValue}>
+              <Text style={[styles.dataValue, {
+                color: AICoachService.getZone(liveData.mean_velocity).color
+              }]}>
                 {liveData.mean_velocity.toFixed(2)} m/s
               </Text>
             </View>
@@ -258,21 +285,51 @@ export default function SessionScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Detailed Set History */}
+      {/* AIコーチアドバイスカード */}
+      {setHistory.length > 0 && (() => {
+        const advice = AICoachService.getCoachingAdvice(
+          setHistory, currentSetIndex, undefined
+        );
+        const colorMap = {
+          info: '#2196F3',
+          success: '#4CAF50',
+          warning: '#FF9800',
+          alert: '#F44336',
+        };
+        return (
+          <View style={[styles.coachCard, { borderColor: colorMap[advice.severity] }]}>
+            <Text style={styles.coachEmoji}>{advice.emoji}</Text>
+            <View style={styles.coachContent}>
+              <Text style={[styles.coachMessage, { color: colorMap[advice.severity] }]}>
+                {advice.message}
+              </Text>
+              {advice.suggestedAction && (
+                <Text style={styles.coachAction}>{advice.suggestedAction}</Text>
+              )}
+            </View>
+          </View>
+        );
+      })()}
+
+      {/* セッション履歴 */}
       {setHistory.length > 0 && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Session History</Text>
-          {setHistory.map((set, idx) => (
-            <View key={idx} style={styles.setCard}>
-              <View style={styles.setHeader}>
-                <Text style={styles.setNumberText}>Set {set.set_index}</Text>
-                <Text style={styles.setLoad}>{set.load_kg} kg × {set.reps}</Text>
+          {setHistory.map((set, idx) => {
+            const zone = set.avg_velocity ? AICoachService.getZone(set.avg_velocity) : null;
+            return (
+              <View key={idx} style={styles.setCard}>
+                <View style={styles.setHeader}>
+                  <Text style={styles.setNumberText}>Set {set.set_index}</Text>
+                  <Text style={styles.setLoad}>{set.load_kg} kg × {set.reps}</Text>
+                  {zone && <Text style={{ color: zone.color, fontSize: 14 }}>{zone.emoji}</Text>}
+                </View>
+                <Text style={[styles.setVelocity, zone ? { color: zone.color } : {}]}>
+                  Avg Vel: {set.avg_velocity?.toFixed(2)} m/s
+                </Text>
               </View>
-              <Text style={styles.setVelocity}>
-                Avg Vel: {set.avg_velocity.toFixed(2)} m/s
-              </Text>
-            </View>
-          ))}
+            );
+          })}
         </View>
       )}
 
@@ -286,12 +343,19 @@ export default function SessionScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Modal */}
+      {/* エクササイズ選択モーダル */}
       <ExerciseSelectModal
         visible={showExerciseModal}
         onClose={() => setShowExerciseModal(false)}
         onSelect={handleExerciseSelect}
         currentExerciseId={currentExercise?.id}
+      />
+
+      {/* PR達成通知モーダル */}
+      <PRNotification
+        visible={showPRModal}
+        prRecord={prRecord}
+        onClose={() => setShowPRModal(false)}
       />
     </ScrollView>
   );
@@ -541,5 +605,43 @@ const styles = StyleSheet.create({
     color: '#4CAF50',
     fontWeight: '600',
   },
+  // 速度ゾーンバッジ
+  zoneBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+    borderRadius: 8,
+    borderWidth: 2,
+    marginBottom: 12,
+    backgroundColor: '#1a1a1a',
+    gap: 8,
+  },
+  zoneEmoji: { fontSize: 22 },
+  zoneName: { fontSize: 16, fontWeight: 'bold' },
+  // AIコーチカード
+  coachCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginHorizontal: 16,
+    marginBottom: 16,
+    padding: 16,
+    backgroundColor: '#1e1e2e',
+    borderRadius: 12,
+    borderWidth: 2,
+    gap: 12,
+  },
+  coachEmoji: { fontSize: 28, lineHeight: 32 },
+  coachContent: { flex: 1 },
+  coachMessage: { fontSize: 15, fontWeight: '600', marginBottom: 6 },
+  coachAction: { fontSize: 13, color: '#bbb', lineHeight: 18 },
+  // AIコーチボタン（ヘッダー）
+  coachNavButton: {
+    paddingHorizontal: 12, paddingVertical: 6,
+    backgroundColor: '#1565C0', borderRadius: 16,
+    borderWidth: 1, borderColor: '#2196F3',
+  },
+  coachNavButtonText: { color: '#2196F3', fontSize: 14, fontWeight: '600' },
 });
+
+
 
