@@ -176,7 +176,7 @@ export default function SessionScreen() {
 
   return (
     <ScrollView style={styles.container}>
-      <View style={[styles.header, { paddingTop: insets.top || 16 }]}>
+      <View style={[styles.header, { paddingTop: (insets.top || 0) + 12 }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <Text style={styles.backButtonText}>← 戻る</Text>
         </TouchableOpacity>

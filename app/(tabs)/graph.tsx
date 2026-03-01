@@ -188,7 +188,7 @@ export default function GraphScreen() {
 
   return (
     <ScrollView style={styles.container}>
-      <View style={[styles.header, { paddingTop: insets.top || 16 }]}>
+      <View style={[styles.header, { paddingTop: (insets.top || 0) + 12 }]}>
         <Text style={styles.title}>📊 LVP グラフ</Text>
       </View>
 

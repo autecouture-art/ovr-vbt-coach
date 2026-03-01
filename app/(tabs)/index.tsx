@@ -168,7 +168,7 @@ export default function HomeScreen() {
 
   return (
     <ScrollView style={styles.container}>
-      <View style={[styles.header, { paddingTop: 24 + (insets.top || 0) }]}>
+      <View style={[styles.header, { paddingTop: (insets.top || 0) + 12 }]}>
         <Text style={styles.title}>RepVelo VBT Coach</Text>
         <Text style={styles.subtitle}>Velocity-Based Training</Text>
       </View>

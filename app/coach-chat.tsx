@@ -193,7 +193,7 @@ export default function AICoachChatScreen() {
             keyboardVerticalOffset={90}
         >
             {/* ヘッダー */}
-            <View style={[styles.header, { paddingTop: insets.top || 16 }]}>
+            <View style={[styles.header, { paddingTop: (insets.top || 0) + 12 }]}>
                 <TouchableOpacity onPress={() => router.back()}>
                     <Text style={styles.backText}>← 戻る</Text>
                 </TouchableOpacity>

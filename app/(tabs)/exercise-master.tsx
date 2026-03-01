@@ -10,6 +10,7 @@ import {
     SafeAreaView,
     Modal,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import ExerciseService from '@/src/services/ExerciseService';
 import type { Exercise } from '@/src/types/index';
@@ -17,6 +18,7 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 
 export default function ExerciseMasterScreen() {
     const router = useRouter();
+    const insets = useSafeAreaInsets();
     const [exercises, setExercises] = useState<Exercise[]>([]);
     const [selectedCategory, setSelectedCategory] = useState<string>('all');
     const [searchQuery, setSearchQuery] = useState('');
@@ -86,16 +88,20 @@ export default function ExerciseMasterScreen() {
             has_lvp: true, // デフォルトでLVP有効
         };
 
-        if (editingExercise) {
-            await ExerciseService.updateExercise(editingExercise.id, payload);
-            Alert.alert('更新完了', `${editName}を更新しました`);
-        } else {
-            await ExerciseService.addExercise(payload);
-            Alert.alert('追加完了', `${editName}を追加しました`);
+        try {
+            if (editingExercise) {
+                await ExerciseService.updateExercise(editingExercise.id, payload);
+                Alert.alert('更新完了', `${editName}を更新しました`);
+            } else {
+                await ExerciseService.addExercise(payload);
+                Alert.alert('追加完了', `${editName}を追加しました`);
+            }
+            setIsModalVisible(false);
+            loadExercises();
+        } catch (error) {
+            console.error('Save error:', error);
+            Alert.alert('エラー', '保存中にエラーが発生しました');
         }
-
-        setIsModalVisible(false);
-        loadExercises();
     };
 
     const handleDelete = async (id: string, name: string) => {
@@ -116,8 +122,8 @@ export default function ExerciseMasterScreen() {
     };
 
     return (
-        <SafeAreaView style={styles.safeArea}>
-            <View style={styles.header}>
+        <View style={styles.safeArea}>
+            <View style={[styles.header, { paddingTop: (insets.top || 0) + 8 }]}>
                 <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
                     <IconSymbol name="chevron.left" size={24} color="#fff" />
                 </TouchableOpacity>
@@ -186,7 +192,7 @@ export default function ExerciseMasterScreen() {
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
                         <View style={styles.modalHeader}>
-                            <Text style={styles.modalTitle}>{editingExercise ? '種目を編集' : '種目録登録'}</Text>
+                            <Text style={styles.modalTitle}>{editingExercise ? '種目を編集' : '種目登録'}</Text>
                             <TouchableOpacity onPress={() => setIsModalVisible(false)}>
                                 <IconSymbol name="xmark" size={24} color="#999" />
                             </TouchableOpacity>
@@ -249,7 +255,7 @@ export default function ExerciseMasterScreen() {
                     </View>
                 </View>
             </Modal>
-        </SafeAreaView>
+        </View>
     );
 }
 

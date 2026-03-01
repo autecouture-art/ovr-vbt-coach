@@ -203,7 +203,7 @@ export default function HistoryScreen() {
     return (
         <View style={styles.container}>
             {/* ヘッダー */}
-            <View style={[styles.header, { paddingTop: insets.top || 16 }]}>
+            <View style={[styles.header, { paddingTop: (insets.top || 0) + 12 }]}>
                 <Text style={styles.title}>📖 トレーニング履歴</Text>
                 <TouchableOpacity style={styles.filterButton} onPress={() => setShowFilterModal(true)}>
                     <Text style={styles.filterButtonText}>⚙️ フィルター</Text>

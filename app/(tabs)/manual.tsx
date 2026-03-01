@@ -14,6 +14,7 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import DatabaseService from '@/src/services/DatabaseService';
 import AICoachService from '@/src/services/AICoachService';
@@ -23,26 +24,25 @@ interface ManualSet {
   exercise: string;
   loadKg: string;
   reps: string;
-  avgVelocity: string;
   rpe: string;
 }
 
 export default function ManualInputScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [exercise, setExercise] = useState('ベンチプレス');
   const [saving, setSaving] = useState(false);
   const [sets, setSets] = useState<ManualSet[]>([{
     exercise: 'ベンチプレス',
     loadKg: '',
     reps: '',
-    avgVelocity: '',
     rpe: '',
   }]);
 
   const exercises = ['ベンチプレス', 'スクワット', 'デッドリフト', 'オーバーヘッドプレス', 'バーベルロー'];
 
   const addSet = () => {
-    setSets([...sets, { exercise, loadKg: '', reps: '', avgVelocity: '', rpe: '' }]);
+    setSets([...sets, { exercise, loadKg: '', reps: '', rpe: '' }]);
   };
 
   const updateSet = (index: number, field: keyof ManualSet, value: string) => {
@@ -82,7 +82,7 @@ export default function ManualInputScreen() {
         reps: parseInt(s.reps) || 0,
         device_type: 'manual',
         set_type: 'normal',
-        avg_velocity: s.avgVelocity ? parseFloat(s.avgVelocity) : null,
+        avg_velocity: null,
         velocity_loss: null,
         rpe: s.rpe ? parseFloat(s.rpe) : undefined,
         timestamp: new Date().toISOString(),
@@ -121,7 +121,7 @@ export default function ManualInputScreen() {
 
   return (
     <ScrollView style={styles.container}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: (insets.top || 0) + 12 }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <Text style={styles.backButtonText}>← 戻る</Text>
         </TouchableOpacity>
@@ -158,18 +158,13 @@ export default function ManualInputScreen() {
 
         {sets.map((set, index) => {
           // 速度が入力されている場合はゾーンを表示
-          const vel = parseFloat(set.avgVelocity);
-          const zone = !isNaN(vel) && vel > 0 ? AICoachService.getZone(vel) : null;
+          const vel = NaN; // 平均速度項目は削除済み
+          const zone = null;
 
           return (
             <View key={index} style={styles.setCard}>
               <View style={styles.setCardHeader}>
                 <Text style={styles.setNumber}>セット {index + 1}</Text>
-                {zone && (
-                  <Text style={[styles.zoneTag, { color: zone.color }]}>
-                    {zone.emoji} {zone.name}
-                  </Text>
-                )}
                 {sets.length > 1 && (
                   <TouchableOpacity onPress={() => removeSet(index)}>
                     <Text style={styles.removeButton}>削除</Text>
@@ -199,18 +194,6 @@ export default function ManualInputScreen() {
                     placeholder="5"
                     placeholderTextColor="#666"
                     keyboardType="numeric"
-                  />
-                </View>
-
-                <View style={styles.inputWrapper}>
-                  <Text style={styles.inputLabel}>平均速度 (m/s)</Text>
-                  <TextInput
-                    style={[styles.input, zone && { borderColor: zone.color, borderWidth: 1 }]}
-                    value={set.avgVelocity}
-                    onChangeText={(value) => updateSet(index, 'avgVelocity', value)}
-                    placeholder="0.00"
-                    placeholderTextColor="#666"
-                    keyboardType="decimal-pad"
                   />
                 </View>
 

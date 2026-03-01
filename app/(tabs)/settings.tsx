@@ -6,12 +6,15 @@ import {
     TouchableOpacity,
     ScrollView,
     SafeAreaView,
+    Alert,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 
 export default function SettingsScreen() {
     const router = useRouter();
+    const insets = useSafeAreaInsets();
 
     const menuItems = [
         {
@@ -26,21 +29,21 @@ export default function SettingsScreen() {
             title: 'アプリ設定',
             subtitle: '単位、通知、オーディオフィードバック',
             icon: 'slider.horizontal.3',
-            onPress: () => { }, // 将来の実装
+            onPress: () => Alert.alert('アプリ設定', '現在開発中です。単位や通知の設定がここに追加されます。'),
         },
         {
             id: 'help',
             title: 'ヘルプ・ガイド',
             subtitle: '使い方、BLE接続のコツ',
             icon: 'questionmark.circle.fill',
-            onPress: () => { },
+            onPress: () => Alert.alert('ヘルプ', '公式ガイドを準備中です。右上の「AI相談」から使い方の質問も可能です。'),
         },
     ];
 
     return (
         <SafeAreaView style={styles.safeArea}>
             <ScrollView style={styles.container}>
-                <View style={styles.header}>
+                <View style={[styles.header, { paddingTop: insets.top || 32 }]}>
                     <Text style={styles.title}>設定</Text>
                 </View>
 
