@@ -32,7 +32,7 @@ const config: ExpoConfig = {
   ios: {
     supportsTablet: true,
     bundleIdentifier: env.iosBundleId,
-    buildNumber: "7",
+    buildNumber: "12",
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
       NSBluetoothAlwaysUsageDescription:
@@ -47,6 +47,10 @@ const config: ExpoConfig = {
         "This app saves workout videos to your photo library.",
       NSLocationWhenInUseUsageDescription:
         "This app may use location services for enhanced training features.",
+      NSHealthShareUsageDescription:
+        "Allow RepVelo Coach to read heart rate data from your AirPods or Apple Watch to optimize your rest intervals and training intensity.",
+      NSHealthUpdateUsageDescription:
+        "Allow RepVelo Coach to integrate with HealthKit to provide a comprehensive view of your training data.",
     },
   },
   android: {
