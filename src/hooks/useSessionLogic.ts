@@ -3,7 +3,8 @@
  * Connects UI, BLE, Store, VBTLogic, and AudioService
  */
 
-import { useEffect, useCallback, useRef } from 'react';
+import { useEffect, useCallback, useRef, useState } from 'react';
+import { AppState, type AppStateStatus } from 'react-native';
 import { useTrainingStore } from '../store/trainingStore';
 import BLEService from '../services/BLEService';
 import AudioService from '../services/AudioService';
@@ -12,12 +13,14 @@ import VBTCalculations, { getVelocityAt1RM } from '../utils/VBTCalculations';
 import DatabaseService from '../services/DatabaseService';
 import AICoachService from '../services/AICoachService';
 import HealthService from '../services/HealthService';
+import SessionRecoveryService, { type SessionRecoverySnapshot } from '../services/SessionRecoveryService';
 import type { RepVeloData, Exercise, RepData, SetData, PRRecord } from '../types/index';
 
 // PR検知コールバック型
 type PRCallback = (pr: PRRecord) => void;
 
 export const useSessionLogic = (onPRDetected?: PRCallback) => {
+  const [recoveryReady, setRecoveryReady] = useState(false);
   // Store State & Actions
   const {
     currentSession,
@@ -27,6 +30,8 @@ export const useSessionLogic = (onPRDetected?: PRCallback) => {
     currentLoad,
     currentReps,
     currentExercise,
+    targetWeight,
+    sessionStartTime,
     isConnected,
     liveData,
     repHistory,
@@ -36,8 +41,14 @@ export const useSessionLogic = (onPRDetected?: PRCallback) => {
     setHRPoints,
     sessionHRPoints,
     restStartTime,
+    sessionStartTimeStamp,
     setStartTimeStamp,
     pauseReason,
+    cnsBattery,
+    estimated1RM,
+    estimated1RM_confidence,
+    suggestedLoad,
+    proposedMVT,
 
     // Actions
     setConnectionStatus,
@@ -60,6 +71,43 @@ export const useSessionLogic = (onPRDetected?: PRCallback) => {
   const isMounted = useRef(true);
   const lastNotifiedRestTime = useRef<number | null>(null);
   const isFinishingSet = useRef(false); // ガードフラグ
+  const lastLiveDataAt = useRef(0);
+  const lastAcceptedRepAt = useRef(0);
+  const handleDataReceivedRef = useRef<((data: RepVeloData) => Promise<void>) | null>(null);
+  const handleConnectionChangedRef = useRef<((connected: boolean) => void) | null>(null);
+  const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+
+  const restoreFromSnapshot = useCallback(async (snapshot: SessionRecoverySnapshot) => {
+    useTrainingStore.setState((state) => ({
+      ...state,
+      currentSession: snapshot.currentSession,
+      isSessionActive: true,
+      isPaused: snapshot.isPaused,
+      pauseReason: snapshot.pauseReason,
+      sessionStartTime: snapshot.sessionStartTime,
+      sessionStartTimeStamp: snapshot.sessionStartTimeStamp,
+      currentSetIndex: snapshot.currentSetIndex,
+      currentLift: snapshot.currentLift,
+      currentLoad: snapshot.currentLoad,
+      currentReps: snapshot.currentReps,
+      targetWeight: snapshot.targetWeight,
+      setHistory: snapshot.setHistory,
+      setStartTimeStamp: snapshot.setStartTimeStamp,
+      restStartTime: snapshot.restStartTime,
+      liveData: null,
+      repHistory: snapshot.repHistory,
+      currentHeartRate: snapshot.currentHeartRate,
+      sessionHRPoints: state.sessionHRPoints,
+      setHRPoints: state.setHRPoints,
+      cnsBattery: snapshot.cnsBattery,
+      estimated1RM: snapshot.estimated1RM,
+      estimated1RM_confidence: snapshot.estimated1RM_confidence,
+      suggestedLoad: snapshot.suggestedLoad,
+      proposedMVT: snapshot.proposedMVT,
+      currentExercise: snapshot.currentExercise,
+    }));
+  }, []);
 
   // --- Setup finishSet for reuse ---
 
@@ -250,6 +298,17 @@ export const useSessionLogic = (onPRDetected?: PRCallback) => {
   // --- BLE Event Handlers ---
 
   const handleDataReceived = useCallback(async (data: RepVeloData) => {
+    const now = Date.now();
+
+    // セッション未開始時はライブ表示だけ間引いて更新し、重いレップ処理は行わない
+    if (!isSessionActive) {
+      if (now - lastLiveDataAt.current > 50) {
+        lastLiveDataAt.current = now;
+        setLiveData(data);
+      }
+      return;
+    }
+
     // 1. Finish Set Guard - finishSet実行中（DB保存中）はBLE入力を完全に破棄
     if (isFinishingSet.current) {
       console.log('[handleDataReceived] Finishing set in progress, discarding BLE input to prevent duplicate reps');
@@ -263,21 +322,21 @@ export const useSessionLogic = (onPRDetected?: PRCallback) => {
     }
 
     // 2. Update Live Data in Store (for UI)
-    setLiveData(data);
+    if (now - lastLiveDataAt.current > 33) {
+      lastLiveDataAt.current = now;
+      setLiveData(data);
+    }
 
     // 3. Process Rep Logic
     const minRom = currentExercise?.min_rom_threshold ?? 10.0;
     const isValidRep = data.rom_cm > minRom;
 
     if (isValidRep) {
-      // 3. Audio Feedback (Velocity Sense™)
-      if (settings.enable_audio_feedback) {
-        // レップごとの即時フィードバック
-        const isGood = data.mean_velocity >= 0.5; // 暫定基準、実際にはLVPと比較
-        AudioService.announceRepFeedback(data.mean_velocity, isGood);
-      }
+      // 同一レップの連続入力を抑制（センサー連投時のUIフリーズ対策）
+      if (now - lastAcceptedRepAt.current < 350) return;
+      lastAcceptedRepAt.current = now;
 
-      // 4. Calculate Derived Metrics
+      // 3. Calculate Derived Metrics
       const firstRepVel = repHistory.length > 0 ? repHistory[0].mean_velocity : data.mean_velocity;
       const vLoss = VBTLogic.calculateVelocityLoss(firstRepVel as number, data.mean_velocity);
 
@@ -309,36 +368,42 @@ export const useSessionLogic = (onPRDetected?: PRCallback) => {
       // 5. Add to Store
       addRep(newRep);
 
+      if (settings.enable_audio_feedback) {
+        AudioService.announceRepCount(newRep.rep_index);
+      }
+
       // 6. Intelligent 1RM Estimator (初動レップで計算)
       if (repHistory.length === 0 && data.mean_velocity > 0) {
-        const lvp = await DatabaseService.getLVPProfile(currentLift || '');
-        if (lvp && lvp.slope < 0) {
-          // MVT基準のbaseline 1RMを計算（getVelocityAt1RM経由でmvtを優先）
-          const velocityAt1RM = getVelocityAt1RM(lvp);
-          const baseline1RM = (velocityAt1RM - lvp.intercept) / lvp.slope;
+        void (async () => {
+          const lvp = await DatabaseService.getLVPProfile(currentLift || '');
+          if (lvp && lvp.slope < 0) {
+            // MVT基準のbaseline 1RMを計算（getVelocityAt1RM経由でmvtを優先）
+            const velocityAt1RM = getVelocityAt1RM(lvp);
+            const baseline1RM = (velocityAt1RM - lvp.intercept) / lvp.slope;
 
-          // ガード条件1: ウォームアップが軽すぎる場合（例: 30%未満）は予測のブレが大きいため除外
-          if (currentLoad >= baseline1RM * 0.3) {
-            const e1rm = VBTCalculations.estimateCurrentDay1RM(currentLoad, data.mean_velocity, lvp);
+            // ガード条件1: ウォームアップが軽すぎる場合（例: 30%未満）は予測のブレが大きいため除外
+            if (currentLoad >= baseline1RM * 0.3) {
+              const e1rm = VBTCalculations.estimateCurrentDay1RM(currentLoad, data.mean_velocity, lvp);
 
-            // ガード条件2: 予測値が異常に変動した場合（例: ベースラインの±30%以上）は外れ値として無視
-            const diffRatio = Math.abs(e1rm - baseline1RM) / baseline1RM;
-            if (diffRatio <= 0.3) {
-              // 信頼度の計算: R² と変動幅に基づく
-              let confidence: 'high' | 'medium' | 'low' = 'low';
-              if (lvp.r_squared >= 0.8 && diffRatio <= 0.1) {
-                confidence = 'high';
-              } else if (lvp.r_squared >= 0.6 && diffRatio <= 0.2) {
-                confidence = 'medium';
+              // ガード条件2: 予測値が異常に変動した場合（例: ベースラインの±30%以上）は外れ値として無視
+              const diffRatio = Math.abs(e1rm - baseline1RM) / baseline1RM;
+              if (diffRatio <= 0.3) {
+                // 信頼度の計算: R² と変動幅に基づく
+                let confidence: 'high' | 'medium' | 'low' = 'low';
+                if (lvp.r_squared >= 0.8 && diffRatio <= 0.1) {
+                  confidence = 'high';
+                } else if (lvp.r_squared >= 0.6 && diffRatio <= 0.2) {
+                  confidence = 'medium';
+                }
+
+                updateVBTIntelligence({
+                  estimated1RM: e1rm,
+                  estimated1RM_confidence: confidence
+                });
               }
-
-              updateVBTIntelligence({
-                estimated1RM: e1rm,
-                estimated1RM_confidence: confidence
-              });
             }
           }
-        }
+        })().catch((e) => console.error('e1RM calculation failed:', e));
       }
 
       // 7. Velocity Loss 警告 (最新論文基準: S:20%, B:10%, D:5%)
@@ -379,14 +444,22 @@ export const useSessionLogic = (onPRDetected?: PRCallback) => {
   // --- Setup & Teardown ---
 
   useEffect(() => {
+    handleDataReceivedRef.current = handleDataReceived;
+  }, [handleDataReceived]);
+
+  useEffect(() => {
+    handleConnectionChangedRef.current = handleConnectionChanged;
+  }, [handleConnectionChanged]);
+
+  useEffect(() => {
     isMounted.current = true;
     // Initialize Services
     AudioService.initialize();
 
     // Set BLE Callbacks
     BLEService.setCallbacks({
-      onDataReceived: handleDataReceived,
-      onConnectionStatusChanged: handleConnectionChanged,
+      onDataReceived: (data) => handleDataReceivedRef.current?.(data),
+      onConnectionStatusChanged: (connected) => handleConnectionChangedRef.current?.(connected),
       onError: (error) => console.error('BLE Error:', error),
     });
 
@@ -399,7 +472,175 @@ export const useSessionLogic = (onPRDetected?: PRCallback) => {
       isMounted.current = false;
       // Cleanup callbacks? (Optional if singleton persists)
     };
-  }, [handleDataReceived, handleConnectionChanged, setConnectionStatus]);
+  }, [setConnectionStatus]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      const snapshot = await SessionRecoveryService.loadSnapshot();
+      if (cancelled) return;
+
+      if (snapshot && !useTrainingStore.getState().isSessionActive) {
+        await restoreFromSnapshot(snapshot);
+      }
+
+      setRecoveryReady(true);
+    })().catch((error) => {
+      console.error('Session recovery bootstrap failed:', error);
+      setRecoveryReady(true);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [restoreFromSnapshot]);
+
+  useEffect(() => {
+    if (!recoveryReady) return;
+
+    if (persistTimerRef.current) {
+      clearTimeout(persistTimerRef.current);
+      persistTimerRef.current = null;
+    }
+
+    if (!isSessionActive || !currentSession) {
+      void SessionRecoveryService.clearSnapshot();
+      return;
+    }
+
+    const snapshot: SessionRecoverySnapshot = {
+      version: 1,
+      updatedAt: Date.now(),
+      currentSession,
+      currentSetIndex,
+      currentLift,
+      currentLoad,
+      currentReps,
+      targetWeight,
+      setHistory,
+      repHistory,
+      currentExercise,
+      isPaused,
+      pauseReason,
+      sessionStartTime,
+      sessionStartTimeStamp,
+      setStartTimeStamp,
+      restStartTime,
+      currentHeartRate,
+      cnsBattery,
+      estimated1RM,
+      estimated1RM_confidence,
+      suggestedLoad,
+      proposedMVT,
+    };
+
+    persistTimerRef.current = setTimeout(() => {
+      void SessionRecoveryService.saveSnapshot(snapshot);
+    }, 250);
+
+    return () => {
+      if (persistTimerRef.current) {
+        clearTimeout(persistTimerRef.current);
+        persistTimerRef.current = null;
+      }
+    };
+  }, [
+    recoveryReady,
+    isSessionActive,
+    currentSession,
+    currentSetIndex,
+    currentLift,
+    currentLoad,
+    currentReps,
+    targetWeight,
+    setHistory,
+    repHistory,
+    currentExercise,
+    isPaused,
+    pauseReason,
+    sessionStartTime,
+    sessionStartTimeStamp,
+    setStartTimeStamp,
+    restStartTime,
+    currentHeartRate,
+    cnsBattery,
+    estimated1RM,
+    estimated1RM_confidence,
+    suggestedLoad,
+    proposedMVT,
+  ]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      const previousState = appStateRef.current;
+      appStateRef.current = nextState;
+
+      if ((nextState === 'background' || nextState === 'inactive') && useTrainingStore.getState().isSessionActive) {
+        const state = useTrainingStore.getState();
+        if (state.currentSession) {
+          void SessionRecoveryService.saveSnapshot({
+            version: 1,
+            updatedAt: Date.now(),
+            currentSession: state.currentSession,
+            currentSetIndex: state.currentSetIndex,
+            currentLift: state.currentLift,
+            currentLoad: state.currentLoad,
+            currentReps: state.currentReps,
+            targetWeight: state.targetWeight,
+            setHistory: state.setHistory,
+            repHistory: state.repHistory,
+            currentExercise: state.currentExercise,
+            isPaused: state.isPaused,
+            pauseReason: state.pauseReason,
+            sessionStartTime: state.sessionStartTime,
+            sessionStartTimeStamp: state.sessionStartTimeStamp,
+            setStartTimeStamp: state.setStartTimeStamp,
+            restStartTime: state.restStartTime,
+            currentHeartRate: state.currentHeartRate,
+            cnsBattery: state.cnsBattery,
+            estimated1RM: state.estimated1RM,
+            estimated1RM_confidence: state.estimated1RM_confidence,
+            suggestedLoad: state.suggestedLoad,
+            proposedMVT: state.proposedMVT,
+          });
+        }
+      }
+
+      if ((previousState === 'background' || previousState === 'inactive') && nextState === 'active') {
+        void (async () => {
+          const storeState = useTrainingStore.getState();
+          if (!storeState.isSessionActive) {
+            const snapshot = await SessionRecoveryService.loadSnapshot();
+            if (snapshot && !useTrainingStore.getState().isSessionActive) {
+              await restoreFromSnapshot(snapshot);
+            }
+          }
+
+          const activeState = useTrainingStore.getState();
+          if (!activeState.isSessionActive) {
+            return;
+          }
+
+          const connected = await BLEService.isConnected();
+          if (!connected && BLEService.getLastDeviceInfo().id) {
+            const reconnected = await BLEService.reconnect();
+            if (reconnected) {
+              await BLEService.startNotifications();
+            }
+          } else if (connected) {
+            await BLEService.startNotifications();
+          }
+        })().catch((error) => {
+          console.error('Foreground session recovery failed:', error);
+        });
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [restoreFromSnapshot]);
   // --- Heart Rate Monitoring (Polling when Active) ---
   useEffect(() => {
     let hrTimerId: any = null;
@@ -415,14 +656,9 @@ export const useSessionLogic = (onPRDetected?: PRCallback) => {
     };
   }, [isSessionActive, updateHeartRate]);
 
-  // --- HealthKit Authorization (On Mount) ---
-  useEffect(() => {
-    if (isMounted.current) {
-      HealthService.authorize().then(authorized => {
-        console.log('[useSessionLogic] HealthKit initial authorization:', authorized);
-      });
-    }
-  }, []);
+  // NOTE:
+  // HealthKit authorization on mount is disabled for stability in TestFlight.
+  // It can be re-enabled after TurboModule crash root-cause is fixed.
 
   // --- Rest Timing & Ready Notification ---
   useEffect(() => {

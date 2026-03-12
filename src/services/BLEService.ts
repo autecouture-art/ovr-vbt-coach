@@ -5,26 +5,8 @@
 
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { RepVeloData } from '../types/index';
-
-// BLE機能はネイティブ環境のみで利用可能
-let BleManager: any = null;
-let Device: any = null;
-let Characteristic: any = null;
-let Service: any = null;
-
-// ネイティブ環境でのみBLEモジュールをインポート
-if (Platform.OS !== 'web') {
-  try {
-    const bleModule = require('react-native-ble-plx');
-    BleManager = bleModule.BleManager;
-    Device = bleModule.Device;
-    Characteristic = bleModule.Characteristic;
-    Service = bleModule.Service;
-  } catch (e) {
-    console.warn('BLE module not found or failed to load:', e);
-  }
-}
 
 // Platform-specific imports
 let PermissionsAndroid: any = null;
@@ -43,6 +25,7 @@ const SERVICE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
 const NOTIFY_CHARACTERISTIC_UUID = '14001dc2-5089-47d3-84bc-7c3d418389aa';
 const SCAN_DURATION = 5000; // 5 seconds
 const EXPECTED_DATA_SIZE = 16; // bytes
+const LAST_DEVICE_KEY = 'repvelo:last-device';
 
 // Helper function to decode base64 to byte array (React Native compatible)
 function base64ToBytes(base64: string): Uint8Array {
@@ -76,12 +59,15 @@ export interface BLEServiceCallbacks {
   onError?: (error: string) => void;
   onDeviceFound?: (device: any) => void;
   onDevicesDiscovered?: (devices: any[]) => void;
+  onScanStateChanged?: (isScanning: boolean) => void;
   onDebugInfo?: (info: string) => void;
 }
 
 class BLEService {
   private manager: any = null;
   private device: any = null;
+  private bleModuleLoaded: boolean = false;
+  private BleManagerClass: any = null;
   private lastConnectedDeviceId: string | null = null;  // 前回接続したデバイスID
   private lastConnectedDeviceName: string | null = null;  // 前回接続したデバイス名
   private isScanning: boolean = false;
@@ -93,65 +79,251 @@ class BLEService {
   private maxReconnectAttempts: number = 3;
   private reconnectTimer: any = null;
   private isWeb: boolean = Platform.OS === 'web';
+  private debugEnabled: boolean = __DEV__;
+  private lastDeviceHydrationPromise: Promise<void> | null = null;
+  private mockModeEnabled: boolean = false;
+  private mockConnected: boolean = false;
+  private mockNotificationTimer: ReturnType<typeof setInterval> | null = null;
+  private mockRepCounter: number = 0;
+  private mockScanTimer: ReturnType<typeof setTimeout> | null = null;
+  private scanTimer: ReturnType<typeof setTimeout> | null = null;
+  private disconnectSubscription: { remove?: () => void } | null = null;
+  private manualDisconnectRequested: boolean = false;
+  private reconnectInFlight: boolean = false;
 
   constructor() {
-    if (this.isWeb) {
-      this.debug('Web環境: BLE機能は利用できません（ネイティブ環境のみ）');
-      return;
-    }
-
-    // Generic Expo Go check (standard client only)
-    // We allow "custom" clients (Development Builds) to proceed
-    const isStandardExpoGo = Constants.appOwnership === 'expo' && Constants.executionEnvironment === 'storeClient';
-
-    if (isStandardExpoGo) {
-      this.debug('Standard Expo Go detected: BLE features are disabled. Please use a Development Build.');
-      // Mock manager to prevent crashes and allow UI testing
-      this.manager = {
-        state: async () => 'PoweredOff',
-        startDeviceScan: () => { },
-        stopDeviceScan: () => { },
-        destroy: () => { },
-        monitorCharacteristicForService: () => { },
-      };
-      return;
-    }
-
-    if (BleManager) {
-      try {
-        this.manager = new BleManager();
-
-        // Handle app restoration from background / BT state changes
-        this.manager.onStateChange((state: string) => {
-          this.debug(`Bluetooth state changed: ${state}`);
-          if (state === 'PoweredOn' && this.lastConnectedDeviceId) {
-            // Attempt to reconnect to known device
-            this.debug('BT powered on, trying to reconnect to last device...');
-            this.reconnect();
-          }
-        }, true);
-
-      } catch (e) {
-        console.warn('Failed to initialize BleManager:', e);
-        // Fallback mock if initialization fails
-        this.manager = {
-          state: async () => 'PoweredOff',
-          startDeviceScan: () => { },
-          stopDeviceScan: () => { },
-          destroy: () => { },
-        };
-      }
-    } else {
-      this.debug('BleManager class not available');
-    }
+    void this.hydrateLastDeviceInfo();
   }
 
   /**
    * Log debug info
    */
   private debug(message: string) {
+    if (!this.debugEnabled) return;
     console.log('[BLE]', message);
     this.callbacks.onDebugInfo?.(message);
+  }
+
+  private async hydrateLastDeviceInfo(): Promise<void> {
+    if (this.lastDeviceHydrationPromise) {
+      await this.lastDeviceHydrationPromise;
+      return;
+    }
+
+    this.lastDeviceHydrationPromise = (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(LAST_DEVICE_KEY);
+        if (!raw) return;
+
+        const parsed = JSON.parse(raw) as { id?: string; name?: string };
+        this.lastConnectedDeviceId = parsed.id ?? null;
+        this.lastConnectedDeviceName = parsed.name ?? null;
+      } catch (error) {
+        this.debug(`Failed to hydrate last device info: ${error}`);
+      } finally {
+        this.lastDeviceHydrationPromise = null;
+      }
+    })();
+
+    await this.lastDeviceHydrationPromise;
+  }
+
+  private async persistLastDeviceInfo(): Promise<void> {
+    try {
+      if (!this.lastConnectedDeviceId) return;
+      await AsyncStorage.setItem(
+        LAST_DEVICE_KEY,
+        JSON.stringify({
+          id: this.lastConnectedDeviceId,
+          name: this.lastConnectedDeviceName,
+        })
+      );
+    } catch (error) {
+      this.debug(`Failed to persist last device info: ${error}`);
+    }
+  }
+
+  private async clearLastDeviceInfo(): Promise<void> {
+    try {
+      await AsyncStorage.removeItem(LAST_DEVICE_KEY);
+    } catch (error) {
+      this.debug(`Failed to clear last device info: ${error}`);
+    }
+  }
+
+  private setScanningState(isScanning: boolean) {
+    if (this.isScanning === isScanning) return;
+    this.isScanning = isScanning;
+    this.callbacks.onScanStateChanged?.(isScanning);
+    this.debug(`Scanning ${isScanning ? 'started' : 'stopped'}`);
+  }
+
+  private clearDisconnectSubscription() {
+    if (this.disconnectSubscription?.remove) {
+      this.disconnectSubscription.remove();
+    }
+    this.disconnectSubscription = null;
+  }
+
+  private registerDisconnectListener(deviceId: string) {
+    this.clearDisconnectSubscription();
+
+    if (!this.manager || typeof this.manager.onDeviceDisconnected !== 'function') {
+      return;
+    }
+
+    this.disconnectSubscription = this.manager.onDeviceDisconnected(
+      deviceId,
+      async (error: any) => {
+        if (this.manualDisconnectRequested) {
+          return;
+        }
+
+        this.debug(`Device disconnected unexpectedly${error ? `: ${error.message || error}` : ''}`);
+        this.device = null;
+        await this.stopNotifications();
+
+        const reconnected = await this.attemptAutoReconnect('unexpected disconnect');
+        if (!reconnected) {
+          this.callbacks.onConnectionStatusChanged?.(false);
+        }
+      }
+    );
+  }
+
+  private async attemptAutoReconnect(reason: string): Promise<boolean> {
+    if (this.reconnectInFlight) {
+      this.debug(`Reconnect already in progress (${reason})`);
+      return true;
+    }
+
+    this.debug(`Attempting auto reconnect (${reason})...`);
+    const reconnected = await this.reconnect();
+    if (reconnected) {
+      await this.startNotifications();
+    }
+    return reconnected;
+  }
+
+  private isStandardExpoGo(): boolean {
+    return Constants.appOwnership === 'expo' && Constants.executionEnvironment === 'storeClient';
+  }
+
+  private createMockManager() {
+    return {
+      state: async () => 'PoweredOff',
+      startDeviceScan: () => { },
+      stopDeviceScan: () => { },
+      destroy: () => { },
+      monitorCharacteristicForService: () => { },
+      retrieveConnectedDevices: async () => [],
+      onStateChange: () => ({ remove: () => { } }),
+    };
+  }
+
+  private createMockDevice() {
+    return {
+      id: 'sim-ovr-velocity-001',
+      name: 'OVR Velocity Simulator',
+      rssi: -42,
+      connect: async () => this.createMockDevice(),
+      discoverAllServicesAndCharacteristics: async () => this.createMockDevice(),
+      isConnected: async () => this.mockConnected,
+      cancelConnection: async () => {
+        this.mockConnected = false;
+      },
+      services: async () => [],
+    };
+  }
+
+  private isUsingMockTransport(): boolean {
+    return this.mockModeEnabled && __DEV__ && Platform.OS === 'ios';
+  }
+
+  enableMockMode(enabled: boolean) {
+    this.mockModeEnabled = enabled;
+    this.debug(`Mock BLE mode ${enabled ? 'enabled' : 'disabled'}`);
+  }
+
+  isMockModeEnabled(): boolean {
+    return this.isUsingMockTransport();
+  }
+
+  private createMockRepData(): RepVeloData {
+    this.mockRepCounter += 1;
+
+    const phaseIndex = this.mockRepCounter % 5;
+    const phaseVelocity = [0.74, 0.68, 0.61, 0.56, 0.49][phaseIndex];
+    const mean_velocity = Number((phaseVelocity + (Math.random() * 0.04 - 0.02)).toFixed(2));
+    const peak_velocity = Number((mean_velocity + 0.12 + Math.random() * 0.06).toFixed(2));
+    const rom_cm = Number((44 + Math.random() * 14).toFixed(1));
+    const rep_duration_ms = Math.round(850 + Math.random() * 450);
+    const mean_power_w = Math.round(650 + mean_velocity * 320);
+    const peak_power_w = Math.round(mean_power_w * 1.18);
+
+    return {
+      mean_velocity,
+      peak_velocity,
+      rom_cm,
+      rep_duration_ms,
+      mean_power_w,
+      peak_power_w,
+      timestamp: Date.now(),
+    };
+  }
+
+  private loadBleModule(): boolean {
+    if (this.bleModuleLoaded) {
+      return !!this.BleManagerClass;
+    }
+
+    this.bleModuleLoaded = true;
+
+    if (this.isWeb) {
+      this.debug('Web環境: BLE機能は利用できません（ネイティブ環境のみ）');
+      return false;
+    }
+
+    try {
+      const bleModule = require('react-native-ble-plx');
+      this.BleManagerClass = bleModule.BleManager;
+      return !!this.BleManagerClass;
+    } catch (e) {
+      console.warn('BLE module not found or failed to load lazily:', e);
+      this.BleManagerClass = null;
+      return false;
+    }
+  }
+
+  private ensureManager(): boolean {
+    if (this.manager) return true;
+
+    if (this.isStandardExpoGo()) {
+      this.debug('Standard Expo Go detected: BLE features are disabled. Please use a Development Build.');
+      this.manager = this.createMockManager();
+      return true;
+    }
+
+    if (!this.loadBleModule() || !this.BleManagerClass) {
+      this.debug('BleManager class not available');
+      return false;
+    }
+
+    try {
+      this.manager = new this.BleManagerClass();
+      this.manager.onStateChange?.((state: string) => {
+        this.debug(`Bluetooth state changed: ${state}`);
+        if (state === 'PoweredOn' && this.lastConnectedDeviceId) {
+          this.debug('BT powered on, trying to reconnect to last device...');
+          this.reconnect();
+        }
+      }, true);
+      return true;
+    } catch (e) {
+      console.warn('Failed to initialize BleManager lazily:', e);
+      this.manager = this.createMockManager();
+      return false;
+    }
   }
 
   /**
@@ -201,8 +373,13 @@ class BLEService {
       return false;
     }
 
-    // Check if manager is initialized (mocked or real)
-    if (!this.manager) {
+    if (this.isUsingMockTransport()) {
+      await this.hydrateLastDeviceInfo();
+      this.debug('Simulator mock BLE initialized');
+      return true;
+    }
+
+    if (!this.ensureManager()) {
       this.debug('BLE Manager not initialized');
       return false;
     }
@@ -215,6 +392,7 @@ class BLEService {
     }
 
     try {
+      await this.hydrateLastDeviceInfo();
       const state = await this.manager.state();
       if (state !== 'PoweredOn') {
         this.callbacks.onError?.('Bluetooth is not powered on');
@@ -244,6 +422,29 @@ class BLEService {
       return;
     }
 
+    if (this.isUsingMockTransport()) {
+      this.setScanningState(true);
+      this.discoveredDevices = [];
+      if (this.mockScanTimer) {
+        clearTimeout(this.mockScanTimer);
+        this.mockScanTimer = null;
+      }
+      const mockDevice = this.createMockDevice();
+      this.mockScanTimer = setTimeout(() => {
+        this.discoveredDevices = [mockDevice];
+        this.callbacks.onDevicesDiscovered?.(this.discoveredDevices);
+        this.callbacks.onDeviceFound?.(mockDevice);
+        this.setScanningState(false);
+        this.mockScanTimer = null;
+      }, 450);
+      return;
+    }
+
+    if (!this.ensureManager()) {
+      this.callbacks.onError?.('BLE manager is unavailable');
+      return;
+    }
+
     // Expo Go check
     const isExpoGo = Constants.appOwnership === 'expo';
     if (isExpoGo) {
@@ -252,7 +453,7 @@ class BLEService {
     }
 
     if (this.isScanning) {
-      console.log('Already scanning');
+      this.debug('Already scanning');
       return;
     }
 
@@ -262,7 +463,7 @@ class BLEService {
       return;
     }
 
-    this.isScanning = true;
+    this.setScanningState(true);
     this.discoveredDevices = [];
 
     // iOSではUUIDフィルターなしでスキャン（より多くのデバイスを検出）
@@ -271,6 +472,7 @@ class BLEService {
     this.debug('Starting BLE scan...');
 
     try {
+      let repVeloFound = false;
       this.manager.startDeviceScan(
         serviceUUIDs,
         { allowDuplicates: false },
@@ -287,25 +489,30 @@ class BLEService {
             if (existingIndex === -1) {
               this.discoveredDevices.push(device);
               this.debug(`Device found: ${device.name || '(unnamed)'} (${device.id})`);
+              this.callbacks.onDevicesDiscovered?.(this.discoveredDevices);
 
-              if (device.name && this.isRepVeloDevice(device.name)) {
+              if (!repVeloFound && device.name && this.isRepVeloDevice(device.name)) {
+                repVeloFound = true;
                 this.debug(`RepVelo Velocity device found!`);
                 this.callbacks.onDeviceFound?.(device);
+                this.stopScan();
               }
             }
-
-            this.callbacks.onDevicesDiscovered?.(this.discoveredDevices);
           }
         }
       );
     } catch (e) {
       this.debug(`Start Scan Error: ${e}`);
-      this.isScanning = false;
+      this.setScanningState(false);
       return;
     }
 
     const scanDuration = Platform.OS === 'ios' ? 10000 : SCAN_DURATION;
-    setTimeout(() => {
+    if (this.scanTimer) {
+      clearTimeout(this.scanTimer);
+      this.scanTimer = null;
+    }
+    this.scanTimer = setTimeout(() => {
       const repveloDevice = this.discoveredDevices.find(d =>
         d.name && this.isRepVeloDevice(d.name)
       );
@@ -320,19 +527,31 @@ class BLEService {
    * Check if device name matches RepVelo Velocity
    */
   private isRepVeloDevice(name: string): boolean {
-    const repveloKeywords = ['RepVelo', 'Velocity', 'velocity', 'repvelo', 'OVR'];
-    return repveloKeywords.some(keyword => name.toLowerCase().includes(keyword.toLowerCase()));
+    const normalizedName = String(name ?? "").toLowerCase();
+    const repveloKeywords = ["repvelo", "velocity", "ovr"];
+    return repveloKeywords.some((keyword) => normalizedName.indexOf(keyword) !== -1);
   }
 
   /**
    * Stop scanning
    */
   stopScan() {
+    if (this.scanTimer) {
+      clearTimeout(this.scanTimer);
+      this.scanTimer = null;
+    }
+    if (this.mockScanTimer) {
+      clearTimeout(this.mockScanTimer);
+      this.mockScanTimer = null;
+    }
+    if (this.isUsingMockTransport()) {
+      this.setScanningState(false);
+      return;
+    }
     if (this.isScanning && this.manager) {
       this.manager.stopDeviceScan();
-      this.isScanning = false;
-      this.debug('Scan stopped');
     }
+    this.setScanningState(false);
   }
 
   /**
@@ -413,12 +632,33 @@ class BLEService {
    * Connect to a device
    */
   async connectToDevice(device: any): Promise<boolean> {
+    if (this.isUsingMockTransport()) {
+      this.stopScan();
+      this.device = this.createMockDevice();
+      this.mockConnected = true;
+      this.manualDisconnectRequested = false;
+      this.lastConnectedDeviceId = device?.id ?? 'sim-ovr-velocity-001';
+      this.lastConnectedDeviceName = device?.name ?? 'OVR Velocity Simulator';
+      this.reconnectAttempts = 0;
+      await this.persistLastDeviceInfo();
+      this.callbacks.onConnectionStatusChanged?.(true);
+      this.debug(`Connected to mock device: ${this.lastConnectedDeviceName}`);
+      return true;
+    }
+
     const isExpoGo = Constants.appOwnership === 'expo';
     if (isExpoGo) return false;
+
+    if (!this.ensureManager()) {
+      this.callbacks.onError?.('BLE manager is unavailable');
+      return false;
+    }
 
     try {
       this.debug(`Connecting to ${device.name}...`);
       this.stopScan();
+      this.manualDisconnectRequested = false;
+      this.clearDisconnectSubscription();
 
       const connectedDevice = await device.connect();
       this.debug('Device connected, discovering services...');
@@ -430,9 +670,11 @@ class BLEService {
       this.lastConnectedDeviceId = device.id;
       this.lastConnectedDeviceName = device.name;
       this.reconnectAttempts = 0;
+      await this.persistLastDeviceInfo();
 
       // Discover and log all services for debugging
       await this.discoverServices(connectedDevice);
+      this.registerDisconnectListener(connectedDevice.id);
 
       this.callbacks.onConnectionStatusChanged?.(true);
       this.debug('Connected successfully');
@@ -453,8 +695,30 @@ class BLEService {
    * Reconnect to the last connected device
    */
   async reconnect(): Promise<boolean> {
+    if (this.reconnectInFlight) {
+      this.debug('Reconnect skipped because another reconnect is already running');
+      return false;
+    }
+
+    if (this.isUsingMockTransport()) {
+      await this.hydrateLastDeviceInfo();
+      const mockDevice = this.createMockDevice();
+      return this.connectToDevice({
+        id: this.lastConnectedDeviceId ?? mockDevice.id,
+        name: this.lastConnectedDeviceName ?? mockDevice.name,
+        rssi: mockDevice.rssi,
+      });
+    }
+
     const isExpoGo = Constants.appOwnership === 'expo';
     if (isExpoGo) return false;
+
+    if (!this.ensureManager()) {
+      this.debug('BLE manager unavailable for reconnect');
+      return false;
+    }
+
+    await this.hydrateLastDeviceInfo();
 
     if (!this.lastConnectedDeviceId) {
       this.debug('No previous device to reconnect to');
@@ -466,6 +730,7 @@ class BLEService {
       return false;
     }
 
+    this.reconnectInFlight = true;
     this.reconnectAttempts++;
     this.debug(`Reconnect attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts}...`);
 
@@ -487,6 +752,8 @@ class BLEService {
     } catch (error) {
       this.debug(`Reconnect failed: ${error}`);
       return false;
+    } finally {
+      this.reconnectInFlight = false;
     }
   }
 
@@ -494,10 +761,31 @@ class BLEService {
    * Scan and reconnect to the last device
    */
   private async scanAndReconnect(): Promise<boolean> {
+    if (!this.ensureManager()) {
+      return false;
+    }
+
     return new Promise((resolve) => {
-      const timeout = setTimeout(() => {
+      this.setScanningState(true);
+      let settled = false;
+
+      const cleanup = () => {
+        if (this.scanTimer) {
+          clearTimeout(this.scanTimer);
+          this.scanTimer = null;
+        }
         this.stopScan();
-        resolve(false);
+      };
+
+      const finish = (result: boolean) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve(result);
+      };
+
+      this.scanTimer = setTimeout(() => {
+        finish(false);
       }, 10000);
 
       this.manager.startDeviceScan(
@@ -506,15 +794,16 @@ class BLEService {
         (error: any, device: any) => {
           if (error) {
             this.debug(`Scan error during reconnect: ${error.message}`);
-            this.stopScan();
-            resolve(false);
+            finish(false);
             return;
           }
 
           if (device && device.id === this.lastConnectedDeviceId) {
-            clearTimeout(timeout);
-            this.stopScan();
-            this.connectToDevice(device).then(resolve);
+            cleanup();
+            settled = true;
+            this.connectToDevice(device)
+              .then(resolve)
+              .catch(() => resolve(false));
           }
         }
       );
@@ -536,6 +825,16 @@ class BLEService {
    * Tries multiple approaches to get data
    */
   async startNotifications(): Promise<boolean> {
+    if (this.isUsingMockTransport()) {
+      await this.stopNotifications();
+      this.mockNotificationTimer = setInterval(() => {
+        if (!this.mockConnected) return;
+        this.callbacks.onDataReceived?.(this.createMockRepData());
+      }, 1400);
+      this.debug('Mock notifications started');
+      return true;
+    }
+
     const isExpoGo = Constants.appOwnership === 'expo';
     if (isExpoGo) return false;
 
@@ -544,6 +843,7 @@ class BLEService {
       return false;
     }
 
+    await this.stopNotifications();
     this.debug('Starting data reception...');
 
     // First, try to find and monitor a notifiable characteristic
@@ -622,9 +922,9 @@ class BLEService {
         } catch (error) {
           // Ignore read errors during polling
         }
-      }, 500); // Poll every 500ms
+      }, 100); // Poll every 100ms for lower UI latency
 
-      this.debug('Polling started (500ms interval)');
+      this.debug('Polling started (100ms interval)');
       return true;
     }
 
@@ -747,9 +1047,13 @@ class BLEService {
    * Stop notifications
    */
   async stopNotifications(): Promise<void> {
+    if (this.mockNotificationTimer) {
+      clearInterval(this.mockNotificationTimer);
+      this.mockNotificationTimer = null;
+    }
     if (this.notificationMonitor) {
-      if (typeof this.notificationMonitor === 'function') {
-        // It's a monitor callback, can't cancel it directly
+      if (typeof this.notificationMonitor?.remove === 'function') {
+        this.notificationMonitor.remove();
       } else {
         clearInterval(this.notificationMonitor);
       }
@@ -762,9 +1066,20 @@ class BLEService {
    * Disconnect from device (keeps device info for reconnection)
    */
   async disconnect(): Promise<void> {
+    if (this.isUsingMockTransport()) {
+      await this.stopNotifications();
+      this.mockConnected = false;
+      this.device = null;
+      this.callbacks.onConnectionStatusChanged?.(false);
+      this.debug('Mock device disconnected');
+      return;
+    }
+
     const isExpoGo = Constants.appOwnership === 'expo';
     if (isExpoGo) return;
 
+    this.manualDisconnectRequested = true;
+    this.clearDisconnectSubscription();
     await this.stopNotifications();
 
     if (this.device) {
@@ -784,9 +1099,24 @@ class BLEService {
    * Fully disconnect and clear device info
    */
   async disconnectAndClear(): Promise<void> {
+    if (this.isUsingMockTransport()) {
+      await this.stopNotifications();
+      this.mockConnected = false;
+      this.device = null;
+      this.lastConnectedDeviceId = null;
+      this.lastConnectedDeviceName = null;
+      this.reconnectAttempts = 0;
+      await this.clearLastDeviceInfo();
+      this.callbacks.onConnectionStatusChanged?.(false);
+      this.debug('Mock device disconnected and cleared');
+      return;
+    }
+
     const isExpoGo = Constants.appOwnership === 'expo';
     if (isExpoGo) return;
 
+    this.manualDisconnectRequested = true;
+    this.clearDisconnectSubscription();
     await this.stopNotifications();
 
     if (this.device) {
@@ -801,6 +1131,7 @@ class BLEService {
     this.lastConnectedDeviceId = null;
     this.lastConnectedDeviceName = null;
     this.reconnectAttempts = 0;
+    await this.clearLastDeviceInfo();
     this.callbacks.onConnectionStatusChanged?.(false);
     this.debug('Disconnected and device info cleared');
   }
@@ -809,6 +1140,10 @@ class BLEService {
    * Check if connected
    */
   async isConnected(): Promise<boolean> {
+    if (this.isUsingMockTransport()) {
+      return this.mockConnected;
+    }
+
     const isExpoGo = Constants.appOwnership === 'expo';
     if (isExpoGo) return false;
 
@@ -833,6 +1168,8 @@ class BLEService {
    * Start connection heartbeat monitor
    */
   private startHeartbeat(): void {
+    if (this.isUsingMockTransport()) return;
+
     const isExpoGo = Constants.appOwnership === 'expo';
     if (isExpoGo) return;
 
@@ -845,7 +1182,10 @@ class BLEService {
       const isConnected = await this.isConnected();
       if (!isConnected && this.lastConnectedDeviceId) {
         this.debug('Connection heartbeat lost. Attempting to reconnect...');
-        this.reconnect();
+        const reconnected = await this.attemptAutoReconnect('heartbeat');
+        if (!reconnected) {
+          this.callbacks.onConnectionStatusChanged?.(false);
+        }
       }
     }, 10000); // Check every 10 seconds
   }
@@ -856,6 +1196,7 @@ class BLEService {
   destroy() {
     this.stopScan();
     this.stopNotifications();
+    this.clearDisconnectSubscription();
     if (this.reconnectTimer) {
       clearInterval(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -866,6 +1207,7 @@ class BLEService {
     if (this.manager && this.manager.destroy) {
       this.manager.destroy();
     }
+    this.manager = null;
   }
 }
 

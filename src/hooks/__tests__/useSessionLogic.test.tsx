@@ -4,6 +4,7 @@
  */
 
 import { renderHook, act } from '@testing-library/react';
+import { AppState } from 'react-native';
 import { useSessionLogic } from '../useSessionLogic';
 import { useTrainingStore } from '../../store/trainingStore';
 import DatabaseService from '../../services/DatabaseService';
@@ -13,11 +14,69 @@ import { vi, describe, it, expect, beforeEach } from 'vitest';
 import type { RepVeloData, Exercise, LVPData } from '../../types/index';
 
 // Mock Services
-vi.mock('../../services/DatabaseService');
-vi.mock('../../services/AudioService');
-vi.mock('../../services/BLEService');
-vi.mock('../../services/AICoachService');
-vi.mock('../../services/HealthService');
+vi.mock('@react-native-async-storage/async-storage', () => ({
+    default: {
+        getItem: vi.fn().mockResolvedValue(null),
+        setItem: vi.fn().mockResolvedValue(undefined),
+        removeItem: vi.fn().mockResolvedValue(undefined),
+    },
+}));
+
+vi.mock('../../services/DatabaseService', () => ({
+    default: {
+        insertSet: vi.fn().mockResolvedValue(undefined),
+        insertRep: vi.fn().mockResolvedValue(undefined),
+        getBestPR: vi.fn().mockResolvedValue(null),
+        insertPRRecord: vi.fn().mockResolvedValue(undefined),
+        saveLVPProfile: vi.fn().mockResolvedValue(undefined),
+        getLVPProfile: vi.fn().mockResolvedValue(null),
+        getHighLoadRepsForMVT: vi.fn().mockResolvedValue([]),
+        getRepsForSession: vi.fn().mockResolvedValue([]),
+        excludeRep: vi.fn().mockResolvedValue(undefined),
+        recalculateAndUpdateSet: vi.fn().mockResolvedValue(undefined),
+        recalculateSetMetrics: vi.fn().mockResolvedValue(null),
+        markRepAsFailed: vi.fn().mockResolvedValue(undefined),
+    },
+}));
+
+vi.mock('../../services/AudioService', () => ({
+    default: {
+        initialize: vi.fn().mockResolvedValue(undefined),
+        speak: vi.fn().mockResolvedValue(undefined),
+        speakCoach: vi.fn().mockResolvedValue(undefined),
+        announcePR: vi.fn().mockResolvedValue(undefined),
+        announceRepCount: vi.fn().mockResolvedValue(undefined),
+        announceStopSet: vi.fn().mockResolvedValue(undefined),
+    },
+}));
+
+vi.mock('../../services/BLEService', () => ({
+    default: {
+        setCallbacks: vi.fn(),
+        isConnected: vi.fn().mockResolvedValue(true),
+        reconnect: vi.fn().mockResolvedValue(true),
+        startNotifications: vi.fn().mockResolvedValue(true),
+        getLastDeviceInfo: vi.fn(() => ({ id: 'device-1', name: 'RepVelo Sensor' })),
+    },
+}));
+
+vi.mock('../../services/AICoachService', () => ({
+    default: {
+        getVlThresholdByExercise: vi.fn(() => 20),
+        suggestNextLoad: vi.fn(() => ({
+            suggestedLoad: 100,
+            reason: 'maintain',
+            percentChange: 0,
+        })),
+    },
+}));
+
+vi.mock('../../services/HealthService', () => ({
+    default: {
+        startHeartRateMonitoring: vi.fn(() => 1),
+        stopHeartRateMonitoring: vi.fn(),
+    },
+}));
 
 describe('useSessionLogic Integration', () => {
     const mockExercise: Exercise = {
@@ -31,6 +90,9 @@ describe('useSessionLogic Integration', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        vi.spyOn(AppState, 'addEventListener').mockReturnValue({ remove: vi.fn() } as any);
+        vi.mocked(DatabaseService.getLVPProfile).mockResolvedValue(null);
+        vi.mocked(DatabaseService.getBestPR).mockResolvedValue(null);
         const store = useTrainingStore.getState();
         store.endSession();
         store.resetSetData();
@@ -56,6 +118,7 @@ describe('useSessionLogic Integration', () => {
         const store = useTrainingStore.getState();
         expect(store.repHistory.length).toBe(1);
         expect(store.repHistory[0].mean_velocity).toBe(0.8);
+        expect(AudioService.announceRepCount).toHaveBeenCalledWith(1);
     });
 
     it('should ignore BLE data during finishSet (Multi-Input Guard)', async () => {
@@ -182,7 +245,7 @@ describe('useSessionLogic Integration', () => {
     });
 
     it('should calculate rest_duration_s correctly based on previous restStartTime', async () => {
-        vi.useFakeTimers();
+        vi.useFakeTimers({ shouldAdvanceTime: true });
         const { result } = renderHook(() => useSessionLogic());
 
         const T0 = 1000000000000; // 2001-09-09T01:46:40.000Z
@@ -196,11 +259,17 @@ describe('useSessionLogic Integration', () => {
         const rep1: RepVeloData = {
             mean_velocity: 0.8, peak_velocity: 1.0, rom_cm: 45, rep_duration_ms: 1000, timestamp: T0 + 1000
         };
-        await act(async () => { await result.current.handleDataReceived(rep1); });
+        await act(async () => {
+            await result.current.handleDataReceived(rep1);
+            await vi.runOnlyPendingTimersAsync();
+        });
 
         // Finish Set 1 -> restStartTime becomes T0 + 2000
         vi.setSystemTime(new Date(T0 + 2000));
-        await act(async () => { await result.current.finishSet(); });
+        await act(async () => {
+            await result.current.finishSet();
+            await vi.runOnlyPendingTimersAsync();
+        });
 
         let store = useTrainingStore.getState();
         expect(store.setHistory[0].rest_duration_s).toBeUndefined(); // First set has no rest
@@ -218,11 +287,17 @@ describe('useSessionLogic Integration', () => {
         const rep2: RepVeloData = {
             mean_velocity: 0.8, peak_velocity: 1.0, rom_cm: 45, rep_duration_ms: 1000, timestamp: T1 + 1000
         };
-        await act(async () => { await result.current.handleDataReceived(rep2); });
+        await act(async () => {
+            await result.current.handleDataReceived(rep2);
+            await vi.runOnlyPendingTimersAsync();
+        });
 
         // Finish Set 2
         vi.setSystemTime(new Date(T1 + 2000));
-        await act(async () => { await result.current.finishSet(); });
+        await act(async () => {
+            await result.current.finishSet();
+            await vi.runOnlyPendingTimersAsync();
+        });
 
         store = useTrainingStore.getState();
         expect(store.setHistory[1].rest_duration_s).toBe(60); // 60 seconds of rest

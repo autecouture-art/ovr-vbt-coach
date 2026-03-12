@@ -18,6 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import DatabaseService from '@/src/services/DatabaseService';
 import AICoachService from '@/src/services/AICoachService';
+import { getLocalizedExerciseName } from '@/src/utils/exerciseLocalization';
 import type { LVPData, SessionData, SetData, Exercise } from '@/src/types/index';
 
 const { width } = Dimensions.get('window');
@@ -204,7 +205,8 @@ export default function GraphScreen() {
   return (
     <ScrollView style={styles.container}>
       <View style={[styles.header, { paddingTop: (insets.top || 0) + 12 }]}>
-        <Text style={styles.title}>📊 LVP グラフ</Text>
+        <Text style={styles.headerEyebrow}>TELEMETRY DECK</Text>
+        <Text style={styles.title}>LVP グラフ</Text>
       </View>
 
       {/* タブ切替 */}
@@ -232,7 +234,7 @@ export default function GraphScreen() {
               onPress={() => setSelectedExercise(ex.name)}
             >
               <Text style={[styles.exerciseButtonText, selectedExercise === ex.name && styles.exerciseButtonTextActive]}>
-                {ex.name}
+                {getLocalizedExerciseName(ex.name)}
               </Text>
             </TouchableOpacity>
           ))}
@@ -312,25 +314,32 @@ export default function GraphScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#1a1a1a' },
-  header: { padding: 16, borderBottomWidth: 1, borderBottomColor: '#333' },
-  title: { fontSize: 22, fontWeight: 'bold', color: '#fff' },
+  container: { flex: 1, backgroundColor: '#080808' },
+  header: {
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#341810',
+    backgroundColor: '#090909',
+  },
+  headerEyebrow: { color: '#ff6a2a', fontSize: 10, fontWeight: '800', letterSpacing: 2, marginBottom: 4 },
+  title: { fontSize: 22, fontWeight: '800', color: '#fff5ee' },
   tabBar: {
-    flexDirection: 'row', margin: 16, backgroundColor: '#2a2a2a',
-    borderRadius: 10, padding: 4,
+    flexDirection: 'row', margin: 16, backgroundColor: '#141414',
+    borderRadius: 14, padding: 4, borderWidth: 1, borderColor: '#341810',
   },
   tab: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 7 },
-  tabActive: { backgroundColor: '#2196F3' },
-  tabText: { color: '#999', fontSize: 14, fontWeight: '600' },
+  tabActive: { backgroundColor: '#ff5a1f' },
+  tabText: { color: '#b8a79b', fontSize: 14, fontWeight: '700' },
   tabTextActive: { color: '#fff' },
   exerciseScroll: { paddingHorizontal: 16, marginBottom: 8 },
   exerciseButton: {
     paddingHorizontal: 16, paddingVertical: 8,
-    backgroundColor: '#2a2a2a', borderRadius: 20, marginRight: 8,
+    backgroundColor: '#141414', borderRadius: 999, marginRight: 8, borderWidth: 1, borderColor: '#3b2218',
   },
-  exerciseButtonActive: { backgroundColor: '#9C27B0' },
-  exerciseButtonText: { color: '#999', fontSize: 13 },
-  exerciseButtonTextActive: { color: '#fff', fontWeight: '600' },
+  exerciseButtonActive: { backgroundColor: '#ff5a1f', borderColor: '#ff7a44' },
+  exerciseButtonText: { color: '#b8a79b', fontSize: 13, fontWeight: '700' },
+  exerciseButtonTextActive: { color: '#fff', fontWeight: '800' },
   loadingContainer: { padding: 60, alignItems: 'center' },
   statsGrid: {
     flexDirection: 'row', flexWrap: 'wrap',
@@ -338,44 +347,44 @@ const styles = StyleSheet.create({
   },
   statCard: {
     width: '48%', margin: '1%',
-    backgroundColor: '#2a2a2a', borderRadius: 10,
-    padding: 12, alignItems: 'center',
+    backgroundColor: '#111111', borderRadius: 16,
+    padding: 12, alignItems: 'center', borderWidth: 1, borderColor: '#432117',
   },
-  statLabel: { fontSize: 11, color: '#999', marginBottom: 4 },
-  statValue: { fontSize: 22, fontWeight: 'bold', color: '#2196F3' },
-  statUnit: { fontSize: 11, color: '#666', marginTop: 2 },
+  statLabel: { fontSize: 11, color: '#b8a79b', marginBottom: 4, fontWeight: '700', letterSpacing: 1 },
+  statValue: { fontSize: 22, fontWeight: '800', color: '#fff5ee' },
+  statUnit: { fontSize: 11, color: '#8b786d', marginTop: 2 },
   section: { padding: 16 },
-  sectionTitle: { fontSize: 16, fontWeight: 'bold', color: '#fff', marginBottom: 12 },
-  subLabel: { fontSize: 13, color: '#999', marginBottom: 12 },
+  sectionTitle: { fontSize: 18, fontWeight: '800', color: '#fff5ee', marginBottom: 12 },
+  subLabel: { fontSize: 13, color: '#ff6a2a', marginBottom: 12, fontWeight: '700', letterSpacing: 1 },
   barsContainer: { gap: 8 },
   barRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  barLabel: { width: 44, fontSize: 12, color: '#999', textAlign: 'right' },
+  barLabel: { width: 44, fontSize: 12, color: '#d0c1b7', textAlign: 'right', fontWeight: '700' },
   barTrack: {
-    flex: 1, height: 18, backgroundColor: '#2a2a2a',
-    borderRadius: 4, overflow: 'hidden',
+    flex: 1, height: 18, backgroundColor: '#171717',
+    borderRadius: 999, overflow: 'hidden', borderWidth: 1, borderColor: '#3b2218',
   },
-  barFill: { height: '100%', borderRadius: 4, minWidth: 4 },
-  barValue: { width: 40, fontSize: 12, textAlign: 'right' },
-  unitLabel: { fontSize: 11, color: '#666', marginTop: 8, textAlign: 'right' },
+  barFill: { height: '100%', borderRadius: 999, minWidth: 4 },
+  barValue: { width: 40, fontSize: 12, textAlign: 'right', fontWeight: '700' },
+  unitLabel: { fontSize: 11, color: '#8b786d', marginTop: 8, textAlign: 'right' },
   noDataContainer: { padding: 48, alignItems: 'center' },
-  noDataText: { fontSize: 16, color: '#999', marginBottom: 8 },
-  noDataSubText: { fontSize: 13, color: '#666', textAlign: 'center' },
+  noDataText: { fontSize: 16, color: '#d0c1b7', marginBottom: 8, fontWeight: '700' },
+  noDataSubText: { fontSize: 13, color: '#8b786d', textAlign: 'center' },
   trendRow: {
     flexDirection: 'row', alignItems: 'center',
-    paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#2a2a2a',
+    paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#2a1812',
   },
-  trendSetLabel: { width: 28, fontSize: 12, color: '#666' },
-  trendLoad: { width: 80, fontSize: 13, color: '#fff' },
+  trendSetLabel: { width: 28, fontSize: 12, color: '#8b786d', fontWeight: '700' },
+  trendLoad: { width: 80, fontSize: 13, color: '#fff5ee', fontWeight: '700' },
   trendZone: { flex: 1, alignItems: 'flex-end' },
   trendZoneText: { fontSize: 14, fontWeight: '600' },
   zoneCard: {
     flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#2a2a2a', padding: 14,
-    borderRadius: 10, marginBottom: 10, borderLeftWidth: 4,
+    backgroundColor: '#111111', padding: 14,
+    borderRadius: 18, marginBottom: 10, borderLeftWidth: 4, borderWidth: 1, borderColor: '#432117',
   },
   zoneIndicator: { width: 4, height: 50, borderRadius: 2, marginRight: 12 },
   zoneInfo: { flex: 1 },
-  zoneName: { fontSize: 16, fontWeight: 'bold', marginBottom: 2 },
-  zoneRange: { fontSize: 13, color: '#999', marginBottom: 2 },
-  zoneDesc: { fontSize: 12, color: '#666' },
+  zoneName: { fontSize: 16, fontWeight: '800', marginBottom: 2 },
+  zoneRange: { fontSize: 13, color: '#d0c1b7', marginBottom: 2, fontWeight: '700' },
+  zoneDesc: { fontSize: 12, color: '#8b786d' },
 });

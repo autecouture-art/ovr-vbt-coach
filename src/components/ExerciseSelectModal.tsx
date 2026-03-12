@@ -15,6 +15,11 @@ import {
   Alert,
 } from 'react-native';
 import ExerciseService from '@/src/services/ExerciseService';
+import {
+  getExerciseCategoryLabel,
+  getLocalizedExerciseName,
+  matchesExerciseQuery,
+} from '@/src/utils/exerciseLocalization';
 import type { Exercise } from '../types/index';
 
 interface ExerciseSelectModalProps {
@@ -31,7 +36,7 @@ export function ExerciseSelectModal({
   currentExerciseId,
 }: ExerciseSelectModalProps) {
   const [exercises, setExercises] = useState<Exercise[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [selectedCategory, setSelectedCategory] = useState<Exercise['category'] | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [isAddMode, setIsAddMode] = useState(false);
   const [newExerciseName, setNewExerciseName] = useState('');
@@ -43,8 +48,7 @@ export function ExerciseSelectModal({
   const [editPause, setEditPause] = useState('');
   const [editDescription, setEditDescription] = useState('');
 
-  const categories = [
-    { id: 'all', name: 'すべて' },
+  const categories: Array<{ id: Exercise['category']; name: string }> = [
     { id: 'squat', name: 'スクワット' },
     { id: 'bench', name: 'ベンチ' },
     { id: 'deadlift', name: 'デッドリフト' },
@@ -56,6 +60,10 @@ export function ExerciseSelectModal({
   useEffect(() => {
     if (visible) {
       loadExercises();
+      setSearchQuery('');
+      setIsAddMode(false);
+      setEditingExercise(null);
+      setNewExerciseName('');
     }
   }, [visible]);
 
@@ -64,10 +72,34 @@ export function ExerciseSelectModal({
     setExercises(all);
   };
 
+  useEffect(() => {
+    if (!visible) return;
+
+    if (!currentExerciseId) {
+      return;
+    }
+
+    const current = exercises.find(exercise => exercise.id === currentExerciseId);
+    if (current) {
+      setSelectedCategory(current.category);
+    }
+  }, [currentExerciseId, exercises, visible]);
+
+  const categorySummaries = categories.map(category => ({
+    ...category,
+    count: exercises.filter(exercise => exercise.category === category.id).length,
+  }));
+
   const filteredExercises = exercises.filter(exercise => {
-    const matchesCategory = selectedCategory === 'all' || exercise.category === selectedCategory;
-    const matchesSearch = exercise.name.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesCategory && matchesSearch;
+    const query = searchQuery.trim();
+    const matchesSearch = !query || matchesExerciseQuery(exercise.name, query);
+    const matchesCategory = selectedCategory ? exercise.category === selectedCategory : true;
+
+    if (!query && !selectedCategory) {
+      return false;
+    }
+
+    return matchesSearch && matchesCategory;
   });
 
   const handleSelect = (exercise: Exercise) => {
@@ -81,17 +113,22 @@ export function ExerciseSelectModal({
       return;
     }
 
+    if (!selectedCategory) {
+      Alert.alert('カテゴリーを選択', '新しい種目を追加する前にカテゴリーを選択してください');
+      return;
+    }
+
     try {
       const newExercise = await ExerciseService.addExercise({
         name: newExerciseName.trim(),
-        category: (selectedCategory === 'all' ? 'accessory' : selectedCategory) as Exercise['category'],
-        has_lvp: true,
+        category: selectedCategory,
+        has_lvp: selectedCategory !== 'accessory',
       });
 
       setNewExerciseName('');
       setIsAddMode(false);
       await loadExercises();
-      Alert.alert('追加完了', `${newExercise.name}を追加しました`);
+      Alert.alert('追加完了', `${getLocalizedExerciseName(newExercise.name)}を追加しました`);
     } catch (error) {
       console.error('Add exercise error:', error);
       Alert.alert('エラー', '種目の追加に失敗しました。');
@@ -119,7 +156,7 @@ export function ExerciseSelectModal({
 
       setEditingExercise(null);
       await loadExercises();
-      Alert.alert('更新完了', `${editingExercise.name}の設定を更新しました`);
+      Alert.alert('更新完了', `${getLocalizedExerciseName(editingExercise.name)}の設定を更新しました`);
     } catch (error) {
       console.error('Update exercise error:', error);
       Alert.alert('エラー', '種目の更新に失敗しました。');
@@ -129,7 +166,7 @@ export function ExerciseSelectModal({
   const handleDeleteExercise = async (id: string, name: string) => {
     Alert.alert(
       '種目を削除',
-      `${name} を削除しますか？`,
+      `${getLocalizedExerciseName(name)} を削除しますか？`,
       [
         { text: 'キャンセル', style: 'cancel' },
         {
@@ -154,7 +191,10 @@ export function ExerciseSelectModal({
         <View style={styles.container}>
           {/* Header */}
           <View style={styles.header}>
-            <Text style={styles.title}>種目を選択</Text>
+            <View>
+              <Text style={styles.title}>種目を選択</Text>
+              <Text style={styles.subtitle}>1. カテゴリーを選択してから 2. 種目を選びます</Text>
+            </View>
             <TouchableOpacity onPress={onClose} style={styles.closeButton}>
               <Text style={styles.closeButtonText}>✕</Text>
             </TouchableOpacity>
@@ -169,15 +209,18 @@ export function ExerciseSelectModal({
               value={searchQuery}
               onChangeText={setSearchQuery}
             />
+            <Text style={styles.searchHint}>
+              {selectedCategory
+                ? `${categories.find(cat => cat.id === selectedCategory)?.name} から選択中`
+                : '先にカテゴリーを選ぶと一覧が絞られます'}
+            </Text>
           </View>
 
           {/* Category Filter */}
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.categoryScroll}
-          >
-            {categories.map((cat) => (
+          <View style={styles.categorySection}>
+            <Text style={styles.categorySectionTitle}>カテゴリー</Text>
+            <View style={styles.categoryGrid}>
+              {categorySummaries.map((cat) => (
               <TouchableOpacity
                 key={cat.id}
                 style={[
@@ -186,17 +229,22 @@ export function ExerciseSelectModal({
                 ]}
                 onPress={() => setSelectedCategory(cat.id)}
               >
-                <Text
-                  style={[
-                    styles.categoryChipText,
-                    selectedCategory === cat.id && styles.categoryChipTextActive,
-                  ]}
-                >
+                <Text style={[
+                  styles.categoryChipText,
+                  selectedCategory === cat.id && styles.categoryChipTextActive,
+                ]}>
                   {cat.name}
                 </Text>
+                <Text style={[
+                  styles.categoryChipCount,
+                  selectedCategory === cat.id && styles.categoryChipCountActive,
+                ]}>
+                  {cat.count}種目
+                </Text>
               </TouchableOpacity>
-            ))}
-          </ScrollView>
+              ))}
+            </View>
+          </View>
 
           {/* Exercise List */}
           <ScrollView style={styles.exerciseList}>
@@ -231,7 +279,7 @@ export function ExerciseSelectModal({
               </View>
             ) : editingExercise ? (
               <View style={styles.editForm}>
-                <Text style={styles.addFormTitle}>{editingExercise.name} の設定</Text>
+                <Text style={styles.addFormTitle}>{getLocalizedExerciseName(editingExercise.name)} の設定</Text>
 
                 <Text style={styles.fieldLabel}>最小ROM (cm)</Text>
                 <Text style={styles.fieldDesc}>これより短い動きを無視します（ハーフ・ポーズ対策）</Text>
@@ -305,6 +353,15 @@ export function ExerciseSelectModal({
               </View>
             ) : (
               <>
+                {!selectedCategory && !searchQuery.trim() && filteredExercises.length === 0 ? (
+                  <View style={styles.emptyState}>
+                    <Text style={styles.emptyStateTitle}>カテゴリーを先に選択してください</Text>
+                    <Text style={styles.emptyStateText}>
+                      種目の候補を絞ってから選ぶ構成に変更しました。必要なら上の検索欄から直接検索もできます。
+                    </Text>
+                  </View>
+                ) : null}
+
                 {filteredExercises.map((exercise) => (
                   <View
                     key={exercise.id}
@@ -317,10 +374,10 @@ export function ExerciseSelectModal({
                       style={styles.exerciseItemLeft}
                       onPress={() => handleSelect(exercise)}
                     >
-                      <Text style={styles.exerciseName}>{exercise.name}</Text>
+                      <Text style={styles.exerciseName}>{getLocalizedExerciseName(exercise.name)}</Text>
                       <View style={styles.exerciseMeta}>
                         <Text style={styles.exerciseCategory}>
-                          {categories.find(c => c.id === exercise.category)?.name || exercise.category}
+                          {getExerciseCategoryLabel(exercise.category)}
                         </Text>
                         <Text style={styles.exerciseConfig}>
                           ROM: {exercise.min_rom_threshold || 10}cm
@@ -351,7 +408,7 @@ export function ExerciseSelectModal({
                   style={styles.addExerciseButton}
                   onPress={() => setIsAddMode(true)}
                 >
-                  <Text style={styles.addExerciseButtonText}>+ 種目を追加</Text>
+                  <Text style={styles.addExerciseButtonText}>+ {selectedCategory ? 'このカテゴリーに種目を追加' : '種目を追加'}</Text>
                 </TouchableOpacity>
               </>
             )}
@@ -387,6 +444,11 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#fff',
   },
+  subtitle: {
+    color: '#999',
+    fontSize: 12,
+    marginTop: 4,
+  },
   closeButton: {
     padding: 8,
   },
@@ -406,32 +468,80 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#fff',
   },
-  categoryScroll: {
+  searchHint: {
+    color: '#888',
+    fontSize: 12,
+    marginTop: 8,
+  },
+  categorySection: {
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 14,
     borderBottomWidth: 1,
     borderBottomColor: '#333',
   },
+  categorySectionTitle: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 10,
+  },
+  categoryGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginHorizontal: -4,
+  },
   categoryChip: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
+    width: '31%',
+    marginHorizontal: '1.1%',
+    marginBottom: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 14,
     backgroundColor: '#2a2a2a',
-    marginRight: 8,
+    borderWidth: 1,
+    borderColor: '#353535',
   },
   categoryChipActive: {
     backgroundColor: '#2196F3',
+    borderColor: '#64B5F6',
   },
   categoryChipText: {
     fontSize: 14,
-    color: '#999',
+    color: '#ddd',
+    fontWeight: '700',
   },
   categoryChipTextActive: {
     color: '#fff',
-    fontWeight: 'bold',
+  },
+  categoryChipCount: {
+    marginTop: 4,
+    fontSize: 11,
+    color: '#888',
+  },
+  categoryChipCountActive: {
+    color: '#eaf6ff',
   },
   exerciseList: {
     padding: 16,
+  },
+  emptyState: {
+    backgroundColor: '#222',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#333',
+  },
+  emptyStateTitle: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+  emptyStateText: {
+    color: '#aaa',
+    fontSize: 13,
+    lineHeight: 18,
   },
   exerciseItem: {
     flexDirection: 'row',

@@ -24,6 +24,7 @@ import { ja } from 'date-fns/locale';
 import DatabaseService from '@/src/services/DatabaseService';
 import AICoachService from '@/src/services/AICoachService';
 import { formatSessionForAI } from '@/src/utils/formatDataForAI';
+import { getLocalizedExerciseName } from '@/src/utils/exerciseLocalization';
 import type { SessionData } from '@/src/types/index';
 
 type FilterPeriod = 'all' | 'week' | 'month' | '3months';
@@ -107,7 +108,7 @@ export default function HistoryScreen() {
         // 種目フィルター
         if (lift !== 'すべて') {
             result = result.filter(s =>
-                s.lifts?.includes(lift) || false
+                s.lifts?.some((sessionLift) => getLocalizedExerciseName(sessionLift) === lift) || false
             );
         }
 
@@ -204,10 +205,30 @@ export default function HistoryScreen() {
         <View style={styles.container}>
             {/* ヘッダー */}
             <View style={[styles.header, { paddingTop: (insets.top || 0) + 12 }]}>
-                <Text style={styles.title}>📖 トレーニング履歴</Text>
+                <View style={styles.headerCopy}>
+                    <Text style={styles.headerEyebrow}>DATA GARAGE</Text>
+                    <Text style={styles.title}>トレーニング履歴</Text>
+                </View>
                 <TouchableOpacity style={styles.filterButton} onPress={() => setShowFilterModal(true)}>
-                    <Text style={styles.filterButtonText}>⚙️ フィルター</Text>
+                    <Text style={styles.filterButtonText}>FILTER</Text>
                 </TouchableOpacity>
+            </View>
+
+            <View style={styles.heroStrip}>
+                <View style={styles.heroCard}>
+                    <Text style={styles.heroLabel}>LOGS</Text>
+                    <Text style={styles.heroValue}>{sessions.length}</Text>
+                </View>
+                <View style={styles.heroCard}>
+                    <Text style={styles.heroLabel}>LOAD</Text>
+                    <Text style={styles.heroValue}>
+                        {Math.round(sessions.reduce((sum, s) => sum + (s.total_volume || 0), 0) / 1000)}k
+                    </Text>
+                </View>
+                <View style={styles.heroCard}>
+                    <Text style={styles.heroLabel}>MODE</Text>
+                    <Text style={styles.heroValue}>{activeTab === 'list' ? 'LIST' : 'STATS'}</Text>
+                </View>
             </View>
 
             {/* タブ */}
@@ -271,6 +292,7 @@ export default function HistoryScreen() {
                 {/* 統計タブ */}
                 {activeTab === 'stats' && (
                     <View style={styles.section}>
+                        <Text style={styles.panelEyebrow}>TREND TELEMETRY</Text>
                         <Text style={styles.sectionTitle}>週間ボリューム（直近8週）</Text>
                         {weeklyStats.length === 0 ? (
                             <Text style={styles.emptyText}>データがありません</Text>
@@ -315,7 +337,9 @@ export default function HistoryScreen() {
                 {/* リストタブ */}
                 {activeTab === 'list' && (
                     <>
+                        <Text style={[styles.panelEyebrow, styles.listEyebrow]}>SESSION LOGBOOK</Text>
                         <Text style={styles.countText}>{filteredSessions.length}件のセッション</Text>
+                        <Text style={styles.listHintText}>タップで詳細、長押しで削除、AIコピーで相談用テキストを作成</Text>
                         {filteredSessions.length === 0 ? (
                             <View style={styles.emptyContainer}>
                                 <Text style={styles.emptyEmoji}>📭</Text>
@@ -350,6 +374,7 @@ export default function HistoryScreen() {
                                                 activeOpacity={0.7}
                                             >
                                                 <View style={styles.sessionLeft}>
+                                                    <Text style={styles.cardEyebrow}>RUN {String(idx + 1).padStart(2, '0')}</Text>
                                                     <Text style={styles.sessionDate}>{dateLabel}</Text>
                                                     {session.notes && (
                                                         <Text style={styles.sessionNotes} numberOfLines={1}>
@@ -360,7 +385,7 @@ export default function HistoryScreen() {
                                                         <View style={styles.liftTags}>
                                                             {session.lifts.slice(0, 3).map((lift, li) => (
                                                                 <View key={li} style={styles.liftTag}>
-                                                                    <Text style={styles.liftTagText}>{lift}</Text>
+                                                                    <Text style={styles.liftTagText}>{getLocalizedExerciseName(lift)}</Text>
                                                                 </View>
                                                             ))}
                                                         </View>
@@ -376,6 +401,7 @@ export default function HistoryScreen() {
                                                     <Text style={styles.sessionVolume}>{vol.toLocaleString()}</Text>
                                                     <Text style={styles.sessionVolumeUnit}>kg</Text>
                                                     <Text style={styles.sessionSets}>{session.total_sets}セット</Text>
+                                                    <Text style={styles.sessionOpenHint}>詳細を見る →</Text>
                                                 </View>
                                             </TouchableOpacity>
                                         );
@@ -392,7 +418,10 @@ export default function HistoryScreen() {
                 <View style={styles.modalOverlay}>
                     <View style={styles.filterModal}>
                         <View style={styles.filterModalHeader}>
-                            <Text style={styles.filterModalTitle}>⚙️ フィルター設定</Text>
+                            <View>
+                                <Text style={styles.headerEyebrow}>CONTROL PANEL</Text>
+                                <Text style={styles.filterModalTitle}>フィルター設定</Text>
+                            </View>
                             <TouchableOpacity onPress={() => setShowFilterModal(false)}>
                                 <Text style={styles.modalClose}>✕</Text>
                             </TouchableOpacity>
@@ -423,7 +452,7 @@ export default function HistoryScreen() {
                                         onPress={() => setSelectedLift(lift)}
                                     >
                                         <Text style={[styles.filterOptionText, selectedLift === lift && styles.filterOptionTextActive]}>
-                                            {lift}
+                                            {getLocalizedExerciseName(lift)}
                                         </Text>
                                     </TouchableOpacity>
                                 ))}
@@ -475,127 +504,152 @@ export default function HistoryScreen() {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#1a1a1a' },
-    loadingContainer: { flex: 1, backgroundColor: '#1a1a1a', justifyContent: 'center', alignItems: 'center' },
-    loadingText: { color: '#999', marginTop: 12 },
+    container: { flex: 1, backgroundColor: '#080808' },
+    loadingContainer: { flex: 1, backgroundColor: '#080808', justifyContent: 'center', alignItems: 'center' },
+    loadingText: { color: '#b8a79b', marginTop: 12 },
     header: {
-        padding: 16, flexDirection: 'row',
+        paddingHorizontal: 16, paddingBottom: 16, flexDirection: 'row',
         alignItems: 'center', justifyContent: 'space-between',
-        borderBottomWidth: 1, borderBottomColor: '#333',
+        borderBottomWidth: 1, borderBottomColor: '#351911',
+        backgroundColor: '#090909',
     },
-    title: { fontSize: 20, fontWeight: 'bold', color: '#fff' },
+    headerCopy: { gap: 4 },
+    headerEyebrow: { color: '#ff6a2a', fontSize: 10, fontWeight: '800', letterSpacing: 2 },
+    title: { fontSize: 22, fontWeight: '800', color: '#f5f1ec' },
     filterButton: {
-        paddingHorizontal: 12, paddingVertical: 6,
-        backgroundColor: '#2a2a2a', borderRadius: 8,
-        borderWidth: 1, borderColor: '#444',
+        paddingHorizontal: 14, paddingVertical: 8,
+        backgroundColor: '#141414', borderRadius: 999,
+        borderWidth: 1, borderColor: '#5a2b1c',
     },
-    filterButtonText: { color: '#ccc', fontSize: 13 },
+    filterButtonText: { color: '#ffb347', fontSize: 12, fontWeight: '800', letterSpacing: 1 },
+    heroStrip: { flexDirection: 'row', gap: 10, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 10 },
+    heroCard: {
+        flex: 1,
+        backgroundColor: '#111111',
+        borderRadius: 18,
+        borderWidth: 1,
+        borderColor: '#4b2116',
+        paddingVertical: 14,
+        paddingHorizontal: 12,
+    },
+    heroLabel: { color: '#9e7d68', fontSize: 10, fontWeight: '800', letterSpacing: 1.8, marginBottom: 6 },
+    heroValue: { color: '#fff4eb', fontSize: 24, fontWeight: '800' },
     tabBar: {
-        flexDirection: 'row', marginHorizontal: 16, marginTop: 12,
-        backgroundColor: '#2a2a2a', borderRadius: 10, padding: 4,
+        flexDirection: 'row', marginHorizontal: 16, marginTop: 6,
+        backgroundColor: '#141414', borderRadius: 14, padding: 4, borderWidth: 1, borderColor: '#351911',
     },
     tab: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 7 },
-    tabActive: { backgroundColor: '#2196F3' },
-    tabText: { color: '#999', fontSize: 14, fontWeight: '600' },
+    tabActive: { backgroundColor: '#ff5a1f' },
+    tabText: { color: '#9f8c81', fontSize: 14, fontWeight: '700' },
     tabTextActive: { color: '#fff' },
     searchBar: {
         flexDirection: 'row', alignItems: 'center',
         marginHorizontal: 16, marginTop: 10, marginBottom: 4,
-        backgroundColor: '#2a2a2a', borderRadius: 10, paddingHorizontal: 14,
+        backgroundColor: '#111111', borderRadius: 14, paddingHorizontal: 14, borderWidth: 1, borderColor: '#3d2016',
     },
-    searchInput: { flex: 1, color: '#fff', fontSize: 15, paddingVertical: 10 },
-    clearSearch: { color: '#999', fontSize: 16, padding: 4 },
+    searchInput: { flex: 1, color: '#fff', fontSize: 15, paddingVertical: 12 },
+    clearSearch: { color: '#b8a79b', fontSize: 16, padding: 4 },
     activeFilters: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 16, gap: 8, marginBottom: 4 },
     filterTag: {
         flexDirection: 'row', alignItems: 'center',
-        backgroundColor: '#1565C0', borderRadius: 12,
+        backgroundColor: '#4f2014', borderRadius: 999,
         paddingHorizontal: 10, paddingVertical: 4,
     },
-    filterTagText: { color: '#90CAF9', fontSize: 12 },
-    filterTagClose: { color: '#90CAF9', fontSize: 12 },
-    countText: { color: '#666', fontSize: 12, marginLeft: 16, marginBottom: 4, marginTop: 4 },
+    filterTagText: { color: '#ffd3aa', fontSize: 12, fontWeight: '700' },
+    filterTagClose: { color: '#ffd3aa', fontSize: 12 },
+    panelEyebrow: { color: '#ff6a2a', fontSize: 10, fontWeight: '800', letterSpacing: 2, marginBottom: 8 },
+    listEyebrow: { marginLeft: 16, marginTop: 10 },
+    countText: { color: '#c4b3a8', fontSize: 12, marginLeft: 16, marginBottom: 4, marginTop: 4, fontWeight: '700' },
+    listHintText: { color: '#8f7d71', fontSize: 12, marginLeft: 16, marginBottom: 8 },
     section: { padding: 16 },
-    sectionTitle: { fontSize: 16, fontWeight: 'bold', color: '#fff', marginBottom: 12 },
+    sectionTitle: { fontSize: 18, fontWeight: '800', color: '#fff', marginBottom: 12 },
     weekRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10, gap: 8 },
-    weekLabel: { width: 80, fontSize: 11, color: '#999' },
-    weekBarTrack: { flex: 1, height: 16, backgroundColor: '#2a2a2a', borderRadius: 4, overflow: 'hidden' },
-    weekBarFill: { height: '100%', backgroundColor: '#2196F3', borderRadius: 4, minWidth: 4 },
-    weekValue: { width: 52, fontSize: 12, color: '#2196F3', textAlign: 'right' },
-    unitLabel: { fontSize: 11, color: '#555', textAlign: 'right', marginTop: 4 },
+    weekLabel: { width: 80, fontSize: 11, color: '#c5b7ad', fontWeight: '700' },
+    weekBarTrack: { flex: 1, height: 16, backgroundColor: '#1a1a1a', borderRadius: 999, overflow: 'hidden', borderWidth: 1, borderColor: '#3c2015' },
+    weekBarFill: { height: '100%', backgroundColor: '#ff5a1f', borderRadius: 999, minWidth: 4 },
+    weekValue: { width: 52, fontSize: 12, color: '#ffb347', textAlign: 'right', fontWeight: '700' },
+    unitLabel: { fontSize: 11, color: '#7d6b60', textAlign: 'right', marginTop: 4 },
     summaryGrid: {
         flexDirection: 'row', marginTop: 20, gap: 8,
     },
     summaryCard: {
-        flex: 1, backgroundColor: '#2a2a2a',
-        borderRadius: 10, padding: 14, alignItems: 'center',
+        flex: 1, backgroundColor: '#111111',
+        borderRadius: 16, padding: 14, alignItems: 'center', borderWidth: 1, borderColor: '#432117',
     },
-    summaryValue: { fontSize: 22, fontWeight: 'bold', color: '#2196F3', marginBottom: 4 },
-    summaryLabel: { fontSize: 11, color: '#999', textAlign: 'center' },
+    summaryValue: { fontSize: 22, fontWeight: '800', color: '#fff4eb', marginBottom: 4 },
+    summaryLabel: { fontSize: 11, color: '#b8a79b', textAlign: 'center' },
     emptyContainer: { padding: 60, alignItems: 'center' },
     emptyEmoji: { fontSize: 40, marginBottom: 12 },
-    emptyText: { fontSize: 16, color: '#999', marginBottom: 8 },
-    emptySubText: { fontSize: 13, color: '#666', textAlign: 'center' },
+    emptyText: { fontSize: 16, color: '#d7c6b9', marginBottom: 8, fontWeight: '700' },
+    emptySubText: { fontSize: 13, color: '#8b786d', textAlign: 'center' },
     monthHeader: {
         flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
         paddingHorizontal: 16, paddingVertical: 10,
-        backgroundColor: '#121212',
+        backgroundColor: '#090909',
     },
-    monthTitle: { fontSize: 15, fontWeight: 'bold', color: '#aaa' },
-    monthCount: { fontSize: 12, color: '#666' },
+    monthTitle: { fontSize: 15, fontWeight: '800', color: '#ffb347', letterSpacing: 0.5 },
+    monthCount: { fontSize: 12, color: '#907e73' },
     sessionCard: {
         flexDirection: 'row', justifyContent: 'space-between',
         paddingHorizontal: 16, paddingVertical: 14,
-        borderBottomWidth: 1, borderBottomColor: '#1e1e1e',
-        backgroundColor: '#1a1a1a',
+        borderWidth: 1, borderColor: '#3b2015',
+        backgroundColor: '#111111',
+        marginHorizontal: 16,
+        marginBottom: 12,
+        borderRadius: 18,
     },
     sessionLeft: { flex: 1 },
-    sessionDate: { fontSize: 15, fontWeight: '600', color: '#fff', marginBottom: 4 },
-    sessionNotes: { fontSize: 12, color: '#999', marginBottom: 4 },
+    cardEyebrow: { color: '#ff6a2a', fontSize: 10, fontWeight: '800', letterSpacing: 1.8, marginBottom: 6 },
+    sessionDate: { fontSize: 16, fontWeight: '800', color: '#fff7f0', marginBottom: 4 },
+    sessionNotes: { fontSize: 12, color: '#c4b3a8', marginBottom: 4 },
     liftTags: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 2 },
-    liftTag: { backgroundColor: '#1e2a3a', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4 },
-    liftTagText: { color: '#64B5F6', fontSize: 11 },
+    liftTag: { backgroundColor: '#2c1c16', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, borderWidth: 1, borderColor: '#5a2b1c' },
+    liftTagText: { color: '#ffcf96', fontSize: 11, fontWeight: '700' },
     sessionRight: { alignItems: 'flex-end', justifyContent: 'center' },
-    sessionVolume: { fontSize: 20, fontWeight: 'bold', color: '#4CAF50' },
-    sessionVolumeUnit: { fontSize: 11, color: '#4CAF50', marginBottom: 4 },
-    sessionSets: { fontSize: 12, color: '#999' },
+    sessionVolume: { fontSize: 22, fontWeight: '800', color: '#fff7f0' },
+    sessionVolumeUnit: { fontSize: 11, color: '#ffb347', marginBottom: 4, fontWeight: '700' },
+    sessionSets: { fontSize: 12, color: '#baa89c' },
+    sessionOpenHint: { fontSize: 12, color: '#ff6a2a', marginTop: 8, fontWeight: '800', letterSpacing: 0.6 },
     cardCopyBtn: {
-        backgroundColor: '#333',
+        backgroundColor: '#2b1c15',
         paddingHorizontal: 8,
         paddingVertical: 3,
-        borderRadius: 8,
+        borderRadius: 999,
         borderWidth: 1,
-        borderColor: '#444',
+        borderColor: '#5a2b1c',
         marginBottom: 8,
     },
-    cardCopyBtnText: { color: '#2196F3', fontSize: 10, fontWeight: 'bold' },
+    cardCopyBtnText: { color: '#ffb347', fontSize: 10, fontWeight: '800', letterSpacing: 0.6 },
     // フィルターモーダル
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
     filterModal: {
-        backgroundColor: '#1e1e2e',
+        backgroundColor: '#101010',
         borderTopLeftRadius: 20, borderTopRightRadius: 20,
         padding: 24, paddingBottom: 40,
+        borderTopWidth: 1,
+        borderColor: '#4b2116',
     },
     filterModalHeader: {
         flexDirection: 'row', justifyContent: 'space-between',
         alignItems: 'center', marginBottom: 20,
     },
-    filterModalTitle: { fontSize: 18, fontWeight: 'bold', color: '#fff' },
-    modalClose: { color: '#999', fontSize: 20 },
-    filterLabel: { fontSize: 13, color: '#999', marginBottom: 8, marginTop: 16 },
+    filterModalTitle: { fontSize: 20, fontWeight: '800', color: '#fff6ef' },
+    modalClose: { color: '#ffb347', fontSize: 20, fontWeight: '700' },
+    filterLabel: { fontSize: 13, color: '#c0afa4', marginBottom: 8, marginTop: 16, fontWeight: '700' },
     filterOptions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
     filterOption: {
         paddingHorizontal: 14, paddingVertical: 7,
-        backgroundColor: '#2a2a3a', borderRadius: 20,
-        borderWidth: 1, borderColor: '#3a3a4a',
+        backgroundColor: '#171717', borderRadius: 999,
+        borderWidth: 1, borderColor: '#3b2218',
     },
-    filterOptionActive: { backgroundColor: '#1565C0', borderColor: '#2196F3' },
-    filterOptionText: { color: '#999', fontSize: 13 },
+    filterOptionActive: { backgroundColor: '#ff5a1f', borderColor: '#ff5a1f' },
+    filterOptionText: { color: '#a9968a', fontSize: 13, fontWeight: '700' },
     filterOptionTextActive: { color: '#fff', fontWeight: '600' },
     filterApplyButton: {
-        backgroundColor: '#2196F3', padding: 14,
+        backgroundColor: '#ff5a1f', padding: 14,
         borderRadius: 12, alignItems: 'center', marginTop: 24,
     },
-    filterApplyText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+    filterApplyText: { color: '#fff', fontSize: 16, fontWeight: '800', letterSpacing: 0.5 },
     filterResetButton: { padding: 14, alignItems: 'center', marginTop: 8 },
-    filterResetText: { color: '#F44336', fontSize: 14 },
+    filterResetText: { color: '#ffb347', fontSize: 14, fontWeight: '700' },
 });

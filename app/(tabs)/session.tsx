@@ -4,7 +4,7 @@
  * UI is now a "Dumb Component" driven by global state
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -24,12 +24,17 @@ import DatabaseService from '@/src/services/DatabaseService';
 import AICoachService from '@/src/services/AICoachService';
 import { RepDetailModal } from '@/src/components/RepDetailModal';
 import { RepVelocityChart } from '@/src/components/RepVelocityChart';
+import {
+  getExerciseCategoryLabel,
+  getLocalizedExerciseName,
+} from '@/src/utils/exerciseLocalization';
 import { calculateWarmupSteps, isBig3 } from '@/src/utils/WarmupLogic';
-import type { Exercise, PRRecord, SetData } from '@/src/types/index';
+import type { Exercise, PRRecord, RepData, SetData } from '@/src/types/index';
 
 export default function SessionScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const lastNavigateAtRef = useRef(0);
 
   // PR検知時のモーダル状態
   const [prRecord, setPRRecord] = useState<PRRecord | null>(null);
@@ -62,6 +67,7 @@ export default function SessionScreen() {
     sessionStartTime,
     currentLift,
     updateLoad,
+    updateSettings,
     targetWeight,
     setTargetWeight,
     currentHeartRate,
@@ -82,34 +88,92 @@ export default function SessionScreen() {
     suggestedLoad,
     proposedMVT,
     setProposedMVT,
+    settings,
   } = useTrainingStore();
 
   const [showExerciseModal, setShowExerciseModal] = useState(false);
+  const [focusMode, setFocusMode] = useState(true);
 
   // レップ詳細モーダルの状態
   const [repDetailVisible, setRepDetailVisible] = useState(false);
   const [selectedSetIndex, setSelectedSetIndex] = useState<number>(1);
 
   // Fetch all reps on mount or when returning
-  const [sessionAllReps, setSessionAllReps] = useState<any[]>([]);
+  const [sessionAllReps, setSessionAllReps] = useState<RepData[]>([]);
 
   useEffect(() => {
     if (currentSession?.session_id) {
       DatabaseService.getRepsForSession(currentSession.session_id).then(setSessionAllReps);
     }
-  }, [currentSession?.session_id, setHistory]);
+  }, [currentSession?.session_id, setHistory.length]);
+
+  useEffect(() => {
+    if (isSessionActive) {
+      setFocusMode(true);
+    }
+  }, [currentSession?.session_id, isSessionActive]);
 
   const [inputTargetWeight, setInputTargetWeight] = useState('');
   const [inputLoad, setInputLoad] = useState('');
+  const phaseOptions = [
+    { value: 'power', label: 'パワー' },
+    { value: 'hypertrophy', label: '筋肥大' },
+    { value: 'strength', label: '筋力' },
+    { value: 'peaking', label: 'ピーク' },
+  ] as const;
+  const vlOptions = [5, 10, 15, 20, 25, 30];
+  const recommendedVlThreshold = AICoachService.getVlThresholdByExercise(currentExercise?.category || '');
+  const firstRepVelocity = repHistory.length >= 1 ? repHistory[0]?.mean_velocity ?? null : null;
+  const lastRepVelocity =
+    repHistory.length >= 1 ? repHistory[repHistory.length - 1]?.mean_velocity ?? null : null;
+  const currentVelocityLoss =
+    repHistory.length >= 2 &&
+    firstRepVelocity !== null &&
+    firstRepVelocity > 0 &&
+    lastRepVelocity !== null
+      ? ((firstRepVelocity - lastRepVelocity) / firstRepVelocity) * 100
+      : null;
+  const currentSetRepCount = repHistory.filter((rep) => !rep.is_excluded).length;
+  const latestReviewableSetIndex =
+    currentSetRepCount > 0
+      ? currentSetIndex
+      : setHistory.length > 0
+        ? setHistory[setHistory.length - 1].set_index
+        : null;
+  const focusVelocity = liveData?.mean_velocity ?? lastRepVelocity;
+  const focusPeakVelocity = liveData?.peak_velocity ?? repHistory[repHistory.length - 1]?.peak_velocity ?? null;
+  const focusZone = focusVelocity !== null ? AICoachService.getZone(focusVelocity) : null;
+  const localizedExerciseName = getLocalizedExerciseName(currentExercise?.name);
+  const localizedExerciseCategory = getExerciseCategoryLabel(currentExercise?.category);
+  const repModalReps = useMemo(() => {
+    const merged = new Map<string, RepData>();
+
+    for (const rep of sessionAllReps) {
+      merged.set(String(rep.id ?? rep.rep_index), rep);
+    }
+
+    for (const rep of repHistory) {
+      merged.set(String(rep.id ?? rep.rep_index), rep);
+    }
+
+    return Array.from(merged.values()).sort((a, b) => {
+      if (a.set_index === b.set_index) {
+        return a.rep_index - b.rep_index;
+      }
+      return a.set_index - b.set_index;
+    });
+  }, [repHistory, sessionAllReps]);
+  const formatLoad = (value: number) =>
+    Number.isInteger(value) ? value.toString() : value.toFixed(1);
 
   // Sync input with store
   useEffect(() => {
-    setInputLoad(currentLoad.toString());
+    setInputLoad(formatLoad(currentLoad));
   }, [currentLoad]);
 
   useEffect(() => {
     if (targetWeight !== null) {
-      setInputTargetWeight(targetWeight.toString());
+      setInputTargetWeight(formatLoad(targetWeight));
     } else {
       setInputTargetWeight('');
     }
@@ -117,13 +181,13 @@ export default function SessionScreen() {
 
   const handleTargetWeightChange = (text: string) => {
     setInputTargetWeight(text);
-    const val = parseFloat(text);
+    const val = parseFloat(text.replace(',', '.'));
     if (!isNaN(val)) setTargetWeight(val);
     else setTargetWeight(null);
   };
 
   const adjustLoad = (amount: number) => {
-    const newLoad = Math.max(0, currentLoad + amount);
+    const newLoad = Math.max(0, Math.round((currentLoad + amount) * 2) / 2);
     updateLoad(newLoad);
   };
 
@@ -134,7 +198,7 @@ export default function SessionScreen() {
 
   const handleLoadChange = (text: string) => {
     setInputLoad(text);
-    const val = parseFloat(text);
+    const val = parseFloat(text.replace(',', '.'));
     if (!isNaN(val)) updateLoad(val);
   };
 
@@ -245,7 +309,7 @@ export default function SessionScreen() {
           mvt: proposedMVT,
           last_updated: new Date().toISOString()
         });
-        Alert.alert('MVT更新', `${currentLift}の限界速度を ${proposedMVT}m/s に更新しました。`);
+        Alert.alert('MVT更新', `${getLocalizedExerciseName(currentLift)}の限界速度を ${proposedMVT}m/s に更新しました。`);
         setProposedMVT(null); // バナーを閉じる
       }
     } catch (e) {
@@ -253,24 +317,44 @@ export default function SessionScreen() {
     }
   };
 
+  const navigateSafely = (action: () => void) => {
+    const now = Date.now();
+    if (now - lastNavigateAtRef.current < 600) return;
+    lastNavigateAtRef.current = now;
+    action();
+  };
+
   return (
     <ScrollView style={styles.container}>
       <View style={[styles.header, { paddingTop: (insets.top || 0) + 12 }]}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+        <TouchableOpacity onPress={() => navigateSafely(() => router.back())} style={styles.backButton}>
           <Text style={styles.backButtonText}>← 戻る</Text>
         </TouchableOpacity>
-        <Text style={styles.title}>セッション</Text>
-        {/* AIコーチボタン */}
-        <TouchableOpacity
-          style={styles.coachNavButton}
-          onPress={() => router.push('/coach-chat' as any)}
-        >
-          <Text style={styles.coachNavButtonText}>🤖 AI</Text>
-        </TouchableOpacity>
+        <View style={styles.headerTitleBlock}>
+          <Text style={styles.headerEyebrow}>RUN CONTROL</Text>
+          <Text style={styles.title}>セッション</Text>
+        </View>
+        <View style={styles.headerActions}>
+          {isSessionActive && (
+            <TouchableOpacity
+              style={styles.focusToggleButton}
+              onPress={() => setFocusMode((current) => !current)}
+            >
+              <Text style={styles.focusToggleButtonText}>{focusMode ? '詳細' : '集中'}</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity
+            style={styles.coachNavButton}
+            onPress={() => navigateSafely(() => router.push('/coach-chat' as any))}
+          >
+            <Text style={styles.coachNavButtonText}>🤖 AI</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Connection Status */}
       <View style={styles.statusCard}>
+        <Text style={styles.panelEyebrow}>TELEMETRY LINK</Text>
         <View style={styles.statusRow}>
           <View
             style={[
@@ -294,6 +378,7 @@ export default function SessionScreen() {
       {/* セッション開始バナー */}
       {!isSessionActive ? (
         <View style={styles.sessionStartBanner}>
+          <Text style={styles.bannerEyebrow}>GRID READY</Text>
           <Text style={styles.sessionStartText}>セッションを開始してください</Text>
           <TouchableOpacity
             style={[styles.button, styles.startSessionButton]}
@@ -304,6 +389,7 @@ export default function SessionScreen() {
         </View>
       ) : (
         <View style={styles.sessionActiveBanner}>
+          <Text style={styles.bannerEyebrow}>LIVE LAP</Text>
           <Text style={styles.sessionActiveText}>
             ✅ セット {currentSetIndex} 記録中
           </Text>
@@ -383,7 +469,7 @@ export default function SessionScreen() {
             <Text style={styles.suggestionEmoji}>🎯</Text>
             <View>
               <Text style={styles.suggestionText}>
-                {currentLift}の新しい限界速度(MVT)候補:
+                {getLocalizedExerciseName(currentLift)}の新しい限界速度(MVT)候補:
               </Text>
               <Text style={[styles.suggestionWeight, { color: '#C4B5FD', fontSize: 16 }]}>{proposedMVT} m/s</Text>
             </View>
@@ -415,8 +501,96 @@ export default function SessionScreen() {
         </View>
       )}
 
+      {isSessionActive && focusMode && (
+        <View style={styles.focusHud}>
+          <View style={styles.focusHudHeader}>
+            <View>
+              <Text style={styles.panelEyebrow}>FOCUS VIEW</Text>
+              <Text style={styles.focusExerciseName}>{localizedExerciseName}</Text>
+              <Text style={styles.focusExerciseMeta}>
+                {localizedExerciseCategory} · {formatLoad(currentLoad)}kg
+              </Text>
+            </View>
+            <View style={styles.focusSetBadge}>
+              <Text style={styles.focusSetBadgeLabel}>SET</Text>
+              <Text style={styles.focusSetBadgeValue}>{currentSetIndex}</Text>
+            </View>
+          </View>
+
+          <View style={styles.focusMainRow}>
+            <View style={styles.focusVelocityCard}>
+              <Text style={styles.focusMetricLabel}>速度</Text>
+              <Text style={[styles.focusVelocityValue, focusZone ? { color: focusZone.color } : null]}>
+                {focusVelocity !== null ? focusVelocity.toFixed(2) : '--'}
+              </Text>
+              <Text style={styles.focusMetricUnit}>m/s</Text>
+            </View>
+            <View style={styles.focusRepCard}>
+              <Text style={styles.focusMetricLabel}>REP</Text>
+              <Text style={styles.focusRepValue}>{currentSetRepCount}</Text>
+              <Text style={styles.focusMetricUnit}>count</Text>
+            </View>
+          </View>
+
+          <View style={styles.focusStatsRow}>
+            <View style={styles.focusStatPill}>
+              <Text style={styles.focusStatLabel}>Peak</Text>
+              <Text style={styles.focusStatValue}>
+                {focusPeakVelocity !== null ? `${focusPeakVelocity.toFixed(2)} m/s` : '--'}
+              </Text>
+            </View>
+            <View style={styles.focusStatPill}>
+              <Text style={styles.focusStatLabel}>VL</Text>
+              <Text
+                style={[
+                  styles.focusStatValue,
+                  currentVelocityLoss !== null && currentVelocityLoss >= settings.velocity_loss_threshold
+                    ? styles.focusStatValueDanger
+                    : null,
+                ]}
+              >
+                {currentVelocityLoss !== null ? `${currentVelocityLoss.toFixed(1)}%` : '待機中'}
+              </Text>
+            </View>
+            <View style={styles.focusStatPill}>
+              <Text style={styles.focusStatLabel}>ROM</Text>
+              <Text style={styles.focusStatValue}>
+                {liveData ? `${liveData.rom_cm.toFixed(0)} cm` : '--'}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.focusActionRow}>
+            {latestReviewableSetIndex !== null && (
+              <TouchableOpacity
+                style={[styles.focusActionButton, styles.focusActionButtonPrimary]}
+                onPress={() => openRepDetail(latestReviewableSetIndex)}
+              >
+                <Text style={styles.focusActionButtonText}>
+                  {currentSetRepCount > 0 ? '現在セット REP詳細' : '前セット REP詳細'}
+                </Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              style={[styles.focusActionButton, styles.focusActionButtonSecondary]}
+              onPress={handleFinishSet}
+            >
+              <Text style={styles.focusActionButtonText}>セット完了</Text>
+            </TouchableOpacity>
+          </View>
+
+          {repHistory.length > 0 && (
+            <View style={styles.focusChartWrap}>
+              <RepVelocityChart reps={repHistory} setIndex={currentSetIndex} />
+            </View>
+          )}
+        </View>
+      )}
+
       {/* Exercise Selection */}
+      {(!isSessionActive || !focusMode) && (
       <View style={styles.exerciseCard}>
+        <Text style={styles.panelEyebrow}>CURRENT LIFT</Text>
         <Text style={styles.exerciseLabel}>種目</Text>
         {currentExercise ? (
           <TouchableOpacity
@@ -424,9 +598,9 @@ export default function SessionScreen() {
             onPress={() => setShowExerciseModal(true)}
           >
             <View style={styles.exerciseInfo}>
-              <Text style={styles.exerciseName}>{currentExercise.name}</Text>
+              <Text style={styles.exerciseName}>{localizedExerciseName}</Text>
               <Text style={styles.exerciseCategory}>
-                {currentExercise.category}
+                {localizedExerciseCategory}
               </Text>
             </View>
             <Text style={styles.exerciseChange}>変更</Text>
@@ -440,10 +614,12 @@ export default function SessionScreen() {
           </TouchableOpacity>
         )}
       </View>
+      )}
 
       {/* Target Weight Input (Big 3 Only) */}
-      {isBig3(currentExercise?.category) && isSessionActive && (
+      {isBig3(currentExercise?.category) && isSessionActive && !focusMode && (
         <View style={styles.targetWeightCard}>
+          <Text style={styles.panelEyebrow}>TARGET LOAD</Text>
           <Text style={styles.targetWeightLabel}>今日の目標重量 (Top Set)</Text>
           <View style={styles.targetInputRow}>
             <TextInput
@@ -460,7 +636,7 @@ export default function SessionScreen() {
       )}
 
       {/* Warmup Guide */}
-      {isBig3(currentExercise?.category) && targetWeight && isSessionActive && (
+      {isBig3(currentExercise?.category) && targetWeight && isSessionActive && !focusMode && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>ウォームアップガイド</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.warmupScroll}>
@@ -489,10 +665,91 @@ export default function SessionScreen() {
       )}
 
       {/* Set Configuration */}
+      {!focusMode && (
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>セット設定</Text>
+        <View style={styles.protocolCard}>
+          <Text style={styles.panelEyebrow}>VL PROTOCOL</Text>
+          <Text style={styles.protocolLabel}>Velocity Loss 閾値</Text>
+          <Text style={styles.protocolHint}>
+            現在 {settings.velocity_loss_threshold}% / 種目推奨 {recommendedVlThreshold}%
+          </Text>
+          <View style={styles.protocolChipRow}>
+            {vlOptions.map((value) => (
+              <TouchableOpacity
+                key={value}
+                style={[
+                  styles.protocolChip,
+                  settings.velocity_loss_threshold === value && styles.protocolChipActive,
+                ]}
+                onPress={() => updateSettings({ velocity_loss_threshold: value })}
+              >
+                <Text
+                  style={[
+                    styles.protocolChipText,
+                    settings.velocity_loss_threshold === value && styles.protocolChipTextActive,
+                  ]}
+                >
+                  {value}%
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <Text style={[styles.protocolLabel, styles.protocolLabelSpaced]}>トレーニングフェーズ</Text>
+          <View style={styles.protocolChipRow}>
+            {phaseOptions.map((option) => (
+              <TouchableOpacity
+                key={option.value}
+                style={[
+                  styles.protocolChip,
+                  settings.target_training_phase === option.value && styles.protocolChipActive,
+                ]}
+                onPress={() => updateSettings({ target_training_phase: option.value })}
+              >
+                <Text
+                  style={[
+                    styles.protocolChipText,
+                    settings.target_training_phase === option.value && styles.protocolChipTextActive,
+                  ]}
+                >
+                  {option.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <View style={styles.vlLiveRow}>
+            <Text style={styles.vlLiveLabel}>現在のVL</Text>
+            <Text
+              style={[
+                styles.vlLiveValue,
+                currentVelocityLoss !== null && currentVelocityLoss >= settings.velocity_loss_threshold
+                  ? styles.vlLiveValueDanger
+                  : null,
+              ]}
+            >
+              {currentVelocityLoss !== null
+                ? `${currentVelocityLoss.toFixed(1)}% / ${settings.velocity_loss_threshold}%`
+                : `セット開始待ち / ${settings.velocity_loss_threshold}%`}
+            </Text>
+          </View>
+        </View>
         <View style={styles.loadControlContainer}>
+          <Text style={styles.panelEyebrow}>LOAD CONTROL</Text>
           <Text style={styles.loadControlLabel}>負荷 (kg)</Text>
+          <View style={styles.loadInputRow}>
+            <TextInput
+              style={styles.loadInput}
+              value={inputLoad}
+              onChangeText={handleLoadChange}
+              placeholder="重量を直接入力"
+              placeholderTextColor="#666"
+              keyboardType="decimal-pad"
+            />
+            <Text style={styles.unitText}>kg</Text>
+          </View>
+          <Text style={styles.loadControlHint}>0.5kg刻みと直接入力に対応</Text>
           <View style={styles.loadControlWrapper}>
             <View style={styles.loadAdjustRow}>
               <TouchableOpacity style={styles.adjustBtn} onPress={() => adjustLoad(-5)}>
@@ -501,11 +758,17 @@ export default function SessionScreen() {
               <TouchableOpacity style={styles.adjustBtn} onPress={() => adjustLoad(-1)}>
                 <Text style={styles.adjustBtnText}>-1</Text>
               </TouchableOpacity>
+              <TouchableOpacity style={styles.adjustBtn} onPress={() => adjustLoad(-0.5)}>
+                <Text style={styles.adjustBtnText}>-0.5</Text>
+              </TouchableOpacity>
             </View>
             <View style={styles.loadDisplayValue}>
-              <Text style={styles.loadDisplayValueText}>{currentLoad}</Text>
+              <Text style={styles.loadDisplayValueText}>{formatLoad(currentLoad)}</Text>
             </View>
             <View style={styles.loadAdjustRow}>
+              <TouchableOpacity style={styles.adjustBtn} onPress={() => adjustLoad(0.5)}>
+                <Text style={styles.adjustBtnText}>+0.5</Text>
+              </TouchableOpacity>
               <TouchableOpacity style={styles.adjustBtn} onPress={() => adjustLoad(1)}>
                 <Text style={styles.adjustBtnText}>+1</Text>
               </TouchableOpacity>
@@ -516,9 +779,12 @@ export default function SessionScreen() {
           </View>
         </View>
       </View>
+      )}
 
       {/* Live データ表示 */}
+      {!focusMode && (
       <View style={styles.dataCard}>
+        <Text style={styles.panelEyebrow}>LIVE TELEMETRY</Text>
         <Text style={styles.dataTitle}>ライブデータ</Text>
         {liveData ? (
           <>
@@ -555,13 +821,15 @@ export default function SessionScreen() {
           <Text style={styles.noDataText}>レップ待機中...</Text>
         )}
       </View>
+      )}
 
       {/* レップ毎の平均速度推移グラフ */}
-      {isSessionActive && repHistory && repHistory.length > 0 && (
+      {!focusMode && isSessionActive && repHistory && repHistory.length > 0 && (
         <RepVelocityChart reps={repHistory} setIndex={currentSetIndex} />
       )}
 
       {/* Action Buttons */}
+      {!focusMode && (
       <View style={styles.buttonContainer}>
         <TouchableOpacity
           style={[styles.button, styles.recordButton]}
@@ -570,11 +838,12 @@ export default function SessionScreen() {
           <Text style={styles.buttonText}>セット完了</Text>
         </TouchableOpacity>
       </View>
+      )}
 
       {/* AIコーチアドバイスカード */}
-      {setHistory.length > 0 && (() => {
+      {!focusMode && setHistory.length > 0 && (() => {
         const advice = AICoachService.getCoachingAdvice(
-          setHistory, currentSetIndex, currentExercise
+          setHistory, currentSetIndex, currentExercise, settings
         );
         const colorMap = {
           info: '#2196F3',
@@ -598,7 +867,7 @@ export default function SessionScreen() {
       })()}
 
       {/* セッション履歴 */}
-      {setHistory.length > 0 && (
+      {!focusMode && setHistory.length > 0 && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>セッション履歴</Text>
           {setHistory.map((set, idx) => {
@@ -658,7 +927,7 @@ export default function SessionScreen() {
       {/* レップ詳細モーダル */}
       <RepDetailModal
         visible={repDetailVisible}
-        reps={sessionAllReps}
+        reps={repModalReps}
         setIndex={selectedSetIndex}
         onClose={() => setRepDetailVisible(false)}
         onExcludeRep={handleExclude}
@@ -705,26 +974,46 @@ function RestTimer({ startTime, hr, peakHr }: { startTime: number, hr: number | 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#1a1a1a',
+    backgroundColor: '#080808',
   },
   header: {
     padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#333',
+    margin: 16,
+    marginBottom: 12,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    backgroundColor: '#120d0d',
+    borderWidth: 1,
+    borderColor: '#382222',
+    borderRadius: 20,
   },
   backButton: {
     padding: 8,
   },
   backButtonText: {
-    color: '#2196F3',
+    color: '#ff8f5a',
     fontSize: 16,
+  },
+  headerTitleBlock: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  headerEyebrow: {
+    color: '#ff7a18',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1.8,
+    marginBottom: 4,
   },
   title: {
     fontSize: 20,
-    fontWeight: 'bold',
+    fontWeight: '900',
     color: '#fff',
   },
   setNumber: {
@@ -734,8 +1023,17 @@ const styles = StyleSheet.create({
   statusCard: {
     margin: 16,
     padding: 12,
-    backgroundColor: '#2a2a2a',
-    borderRadius: 8,
+    backgroundColor: '#151010',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#3a2424',
+  },
+  panelEyebrow: {
+    color: '#ff6b35',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1.6,
+    marginBottom: 8,
   },
   statusRow: {
     flexDirection: 'row',
@@ -745,7 +1043,7 @@ const styles = StyleSheet.create({
   hrBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#333',
+    backgroundColor: '#281a1a',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 16,
@@ -763,17 +1061,20 @@ const styles = StyleSheet.create({
   statusText: {
     fontSize: 14,
     color: '#fff',
+    fontWeight: '700',
   },
   exerciseCard: {
     marginHorizontal: 16,
     marginBottom: 16,
     padding: 16,
-    backgroundColor: '#2a2a2a',
-    borderRadius: 12,
+    backgroundColor: '#151010',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#3a2424',
   },
   exerciseLabel: {
     fontSize: 14,
-    color: '#999',
+    color: '#b29d95',
     marginBottom: 8,
   },
   exerciseSelector: {
@@ -795,18 +1096,20 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   exerciseChange: {
-    color: '#2196F3',
+    color: '#ff8f5a',
     fontSize: 14,
     fontWeight: 'bold',
   },
   exerciseSelectButton: {
     padding: 12,
-    backgroundColor: '#333',
+    backgroundColor: '#231919',
     borderRadius: 8,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#4d3434',
   },
   exerciseSelectButtonText: {
-    color: '#2196F3',
+    color: '#ff8f5a',
     fontSize: 16,
   },
   section: {
@@ -815,8 +1118,8 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
-    color: '#fff',
+    fontWeight: '900',
+    color: '#fff4ea',
     marginBottom: 12,
   },
   inputRow: {
@@ -833,16 +1136,112 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   loadControlContainer: {
-    backgroundColor: '#2a2a2a',
+    backgroundColor: '#151010',
     padding: 16,
-    borderRadius: 8,
+    borderRadius: 16,
     marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#3a2424',
+  },
+  protocolCard: {
+    backgroundColor: '#151010',
+    padding: 16,
+    borderRadius: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#3a2424',
+  },
+  protocolLabel: {
+    fontSize: 14,
+    color: '#fff4ea',
+    fontWeight: '800',
+    marginBottom: 6,
+  },
+  protocolLabelSpaced: {
+    marginTop: 12,
+  },
+  protocolHint: {
+    color: '#a9938a',
+    fontSize: 12,
+    marginBottom: 10,
+  },
+  protocolChipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  protocolChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#523838',
+    backgroundColor: '#231919',
+  },
+  protocolChipActive: {
+    borderColor: '#ff7a18',
+    backgroundColor: '#3d1c12',
+  },
+  protocolChipText: {
+    color: '#d3c0b9',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  protocolChipTextActive: {
+    color: '#fff5ef',
+  },
+  vlLiveRow: {
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#2d1d1d',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  vlLiveLabel: {
+    color: '#b29d95',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  vlLiveValue: {
+    color: '#4CAF50',
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  vlLiveValueDanger: {
+    color: '#F44336',
   },
   loadControlLabel: {
     fontSize: 14,
     color: '#999',
-    marginBottom: 12,
+    marginBottom: 8,
     textAlign: 'center',
+  },
+  loadInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 8,
+  },
+  loadInput: {
+    flex: 1,
+    backgroundColor: '#0d0d0d',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: '#fff',
+    fontSize: 20,
+    fontWeight: 'bold',
+    borderWidth: 1,
+    borderColor: '#523838',
+    textAlign: 'center',
+  },
+  loadControlHint: {
+    color: '#777',
+    fontSize: 12,
+    textAlign: 'center',
+    marginBottom: 12,
   },
   loadControlWrapper: {
     flexDirection: 'row',
@@ -854,14 +1253,14 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   adjustBtn: {
-    backgroundColor: '#333',
+    backgroundColor: '#231919',
     width: 44,
     height: 44,
     borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#444',
+    borderColor: '#523838',
   },
   adjustBtnText: {
     color: '#fff',
@@ -880,19 +1279,18 @@ const styles = StyleSheet.create({
   dataCard: {
     margin: 16,
     padding: 16,
-    backgroundColor: '#2a2a2a',
-    borderRadius: 12,
+    backgroundColor: '#120f0f',
+    borderRadius: 18,
     borderWidth: 2,
-    borderColor: '#4CAF50',
+    borderColor: '#ff5a36',
     minHeight: 120,
     justifyContent: 'center',
   },
   dataTitle: {
     fontSize: 16,
-    fontWeight: 'bold',
-    color: '#4CAF50',
+    fontWeight: '900',
+    color: '#fff0e7',
     marginBottom: 12,
-    textAlign: 'center',
   },
   dataRow: {
     flexDirection: 'row',
@@ -921,14 +1319,14 @@ const styles = StyleSheet.create({
   },
   button: {
     padding: 16,
-    borderRadius: 12,
+    borderRadius: 14,
     alignItems: 'center',
   },
   recordButton: {
-    backgroundColor: '#4CAF50',
+    backgroundColor: '#b33616',
   },
   finishButton: {
-    backgroundColor: '#FF9800',
+    backgroundColor: '#5b3810',
   },
   buttonText: {
     color: '#fff',
@@ -936,10 +1334,12 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   setCard: {
-    backgroundColor: '#2a2a2a',
+    backgroundColor: '#151010',
     padding: 12,
-    borderRadius: 8,
+    borderRadius: 14,
     marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#352323',
   },
   setHeader: {
     flexDirection: 'row',
@@ -975,50 +1375,56 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginBottom: 16,
     padding: 20,
-    backgroundColor: '#1a2a1a',
-    borderRadius: 12,
+    backgroundColor: '#180f0f',
+    borderRadius: 16,
     borderWidth: 2,
-    borderColor: '#FF9800',
+    borderColor: '#ff7a18',
     alignItems: 'center',
+  },
+  bannerEyebrow: {
+    color: '#ff7a18',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1.6,
+    marginBottom: 8,
   },
   sessionStartText: {
     fontSize: 16,
-    color: '#FF9800',
+    color: '#fff4ea',
     marginBottom: 12,
-    fontWeight: '600',
+    fontWeight: '800',
   },
   startSessionButton: {
-    backgroundColor: '#FF9800',
+    backgroundColor: '#b33616',
     width: '100%',
   },
   sessionActiveBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
     marginHorizontal: 16,
     marginBottom: 8,
-    padding: 12,
-    backgroundColor: '#1a2a1a',
-    borderRadius: 8,
+    padding: 14,
+    backgroundColor: '#141010',
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#4CAF50',
+    borderColor: '#8d3f24',
   },
   sessionActiveText: {
     fontSize: 16,
-    color: '#4CAF50',
-    fontWeight: '600',
+    color: '#fff4ea',
+    fontWeight: '800',
+    marginBottom: 12,
   },
   pauseBtn: {
-    backgroundColor: '#333',
+    backgroundColor: '#231919',
     paddingHorizontal: 16,
     paddingVertical: 8,
-    borderRadius: 20,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#555',
+    borderColor: '#523838',
+    alignSelf: 'flex-start',
   },
   pausedBtnActive: {
-    backgroundColor: '#FF9800',
-    borderColor: '#F57C00',
+    backgroundColor: '#8f5110',
+    borderColor: '#ff9800',
   },
   pauseBtnContent: {
     flexDirection: 'row',
@@ -1037,7 +1443,7 @@ const styles = StyleSheet.create({
   // レストバナー
   restBanner: {
     marginHorizontal: 16, marginBottom: 16, padding: 16,
-    backgroundColor: '#1a1a2e', borderRadius: 12, borderWidth: 1, borderColor: '#3f51b5',
+    backgroundColor: '#121117', borderRadius: 16, borderWidth: 1, borderColor: '#4f5ec7',
   },
   restHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   restLabel: { fontSize: 12, color: '#3f51b5', fontWeight: 'bold' },
@@ -1045,8 +1451,167 @@ const styles = StyleSheet.create({
   timerText: { fontSize: 24, fontWeight: 'bold', color: '#fff', fontVariant: ['tabular-nums'] },
   readyBadge: { backgroundColor: '#4CAF50', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4 },
   readyText: { color: '#fff', fontSize: 12, fontWeight: 'bold' },
+  focusHud: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+    padding: 18,
+    backgroundColor: '#121010',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#ff5a36',
+  },
+  focusHudHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 16,
+  },
+  focusExerciseName: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: '#fff5ef',
+    marginBottom: 4,
+  },
+  focusExerciseMeta: {
+    fontSize: 13,
+    color: '#d7bfb4',
+    fontWeight: '700',
+  },
+  focusSetBadge: {
+    minWidth: 66,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    alignItems: 'center',
+    backgroundColor: '#251513',
+    borderWidth: 1,
+    borderColor: '#6a3224',
+  },
+  focusSetBadgeLabel: {
+    color: '#ff9a6f',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+  },
+  focusSetBadgeValue: {
+    color: '#fff',
+    fontSize: 24,
+    fontWeight: '900',
+  },
+  focusMainRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 12,
+  },
+  focusVelocityCard: {
+    flex: 1.4,
+    minHeight: 170,
+    backgroundColor: '#1a1313',
+    borderRadius: 18,
+    padding: 16,
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#3d2320',
+  },
+  focusRepCard: {
+    flex: 1,
+    minHeight: 170,
+    backgroundColor: '#191616',
+    borderRadius: 18,
+    padding: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#2d2626',
+  },
+  focusMetricLabel: {
+    color: '#bfa79b',
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 1.4,
+    marginBottom: 10,
+  },
+  focusVelocityValue: {
+    fontSize: 54,
+    lineHeight: 58,
+    fontWeight: '900',
+    color: '#fff',
+    fontVariant: ['tabular-nums'],
+  },
+  focusRepValue: {
+    fontSize: 72,
+    lineHeight: 78,
+    fontWeight: '900',
+    color: '#fff2e7',
+    fontVariant: ['tabular-nums'],
+  },
+  focusMetricUnit: {
+    marginTop: 6,
+    color: '#8f8078',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  focusStatsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 14,
+  },
+  focusStatPill: {
+    flex: 1,
+    backgroundColor: '#171414',
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: '#2c2323',
+  },
+  focusStatLabel: {
+    color: '#8f8078',
+    fontSize: 11,
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+  focusStatValue: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  focusStatValueDanger: {
+    color: '#ff6b57',
+  },
+  focusActionRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 4,
+  },
+  focusActionButton: {
+    flex: 1,
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  focusActionButtonPrimary: {
+    backgroundColor: '#1b1717',
+    borderColor: '#5a4940',
+  },
+  focusActionButtonSecondary: {
+    backgroundColor: '#b33616',
+    borderColor: '#ff7a18',
+  },
+  focusActionButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  focusChartWrap: {
+    marginHorizontal: -8,
+    marginBottom: -6,
+  },
   startNextSetButton: {
-    backgroundColor: '#4CAF50',
+    backgroundColor: '#b33616',
     padding: 12,
     borderRadius: 8,
     alignItems: 'center',
@@ -1077,8 +1642,8 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginBottom: 16,
     padding: 16,
-    backgroundColor: '#1e1e2e',
-    borderRadius: 12,
+    backgroundColor: '#141014',
+    borderRadius: 16,
     borderWidth: 2,
     gap: 12,
   },
@@ -1086,29 +1651,42 @@ const styles = StyleSheet.create({
   coachContent: { flex: 1 },
   coachMessage: { fontSize: 15, fontWeight: '600', marginBottom: 6 },
   coachAction: { fontSize: 13, color: '#bbb', lineHeight: 18 },
+  focusToggleButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#5a4b35',
+    backgroundColor: '#1f1a14',
+  },
+  focusToggleButtonText: {
+    color: '#ffd4a0',
+    fontSize: 13,
+    fontWeight: '700',
+  },
   // AIコーチボタン（ヘッダー）
   coachNavButton: {
     paddingHorizontal: 12, paddingVertical: 6,
-    backgroundColor: '#1565C0', borderRadius: 16,
-    borderWidth: 1, borderColor: '#2196F3',
+    backgroundColor: '#20171c', borderRadius: 16,
+    borderWidth: 1, borderColor: '#6d5463',
   },
-  coachNavButtonText: { color: '#2196F3', fontSize: 14, fontWeight: '600' },
+  coachNavButtonText: { color: '#ffb5c7', fontSize: 14, fontWeight: '700' },
   // Target Weight & Warmup UI
   targetWeightCard: {
     marginHorizontal: 16, marginBottom: 16, padding: 16,
-    backgroundColor: '#2a2a2a', borderRadius: 12, borderWidth: 1, borderColor: '#444',
+    backgroundColor: '#151010', borderRadius: 16, borderWidth: 1, borderColor: '#3a2424',
   },
-  targetWeightLabel: { fontSize: 13, color: '#2196F3', fontWeight: 'bold', marginBottom: 10 },
+  targetWeightLabel: { fontSize: 13, color: '#ff8f5a', fontWeight: 'bold', marginBottom: 10 },
   targetInputRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   targetInput: {
-    flex: 1, backgroundColor: '#1a1a1a', borderRadius: 8, padding: 12,
-    color: '#fff', fontSize: 18, fontWeight: 'bold', borderWidth: 1, borderColor: '#333'
+    flex: 1, backgroundColor: '#0d0d0d', borderRadius: 8, padding: 12,
+    color: '#fff', fontSize: 18, fontWeight: 'bold', borderWidth: 1, borderColor: '#523838'
   },
   unitText: { color: '#999', fontSize: 16 },
   warmupScroll: { marginTop: 4, paddingBottom: 8 },
   warmupStep: {
-    backgroundColor: '#2a2a2a', borderRadius: 10, padding: 12,
-    marginRight: 10, minWidth: 85, alignItems: 'center', borderWidth: 1, borderColor: '#333'
+    backgroundColor: '#151010', borderRadius: 12, padding: 12,
+    marginRight: 10, minWidth: 85, alignItems: 'center', borderWidth: 1, borderColor: '#352323'
   },
   warmupStepActive: { backgroundColor: '#1a1a1a', borderColor: '#2196F3', borderWidth: 2 },
   warmupStepLabel: { fontSize: 10, color: '#999', marginBottom: 4 },
@@ -1126,10 +1704,12 @@ const styles = StyleSheet.create({
   },
   cnsBatteryContainer: {
     flex: 1,
-    backgroundColor: '#2a2a2a',
-    borderRadius: 12,
+    backgroundColor: '#151010',
+    borderRadius: 16,
     padding: 12,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#352323',
   },
   cnsLabel: {
     fontSize: 10,
@@ -1140,7 +1720,7 @@ const styles = StyleSheet.create({
   batteryGageBg: {
     width: '100%',
     height: 8,
-    backgroundColor: '#333',
+    backgroundColor: '#261c1c',
     borderRadius: 4,
     overflow: 'hidden',
     marginBottom: 4,
@@ -1156,8 +1736,8 @@ const styles = StyleSheet.create({
   },
   intelligenceBadge: {
     width: 100,
-    backgroundColor: '#2a2a1a',
-    borderRadius: 12,
+    backgroundColor: '#1b1510',
+    borderRadius: 16,
     padding: 12,
     alignItems: 'center',
     borderWidth: 1,
@@ -1198,10 +1778,10 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginBottom: 16,
     padding: 12,
-    backgroundColor: '#1E3A8A',
-    borderRadius: 8,
+    backgroundColor: '#1f1411',
+    borderRadius: 14,
     borderLeftWidth: 4,
-    borderLeftColor: '#3B82F6',
+    borderLeftColor: '#ff7a18',
   },
   suggestionContent: {
     flexDirection: 'row',
@@ -1210,10 +1790,7 @@ const styles = StyleSheet.create({
   },
   suggestionEmoji: { fontSize: 18 },
   suggestionText: { color: '#fff', fontSize: 14 },
-  suggestionWeight: { fontWeight: 'bold', color: '#60A5FA' },
-  applyText: { color: '#60A5FA', fontSize: 12, fontWeight: 'bold' },
+  suggestionWeight: { fontWeight: 'bold', color: '#ff8f5a' },
+  applyText: { color: '#ff8f5a', fontSize: 12, fontWeight: 'bold' },
   setHR: { fontSize: 13, color: '#F44336', marginTop: 2, fontWeight: 'bold' },
 });
-
-
-

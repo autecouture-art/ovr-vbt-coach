@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,11 +10,13 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import DatabaseService from '@/src/services/DatabaseService';
 import AICoachService from '@/src/services/AICoachService';
 import ExerciseService from '@/src/services/ExerciseService';
 import { ExerciseSelectModal } from '@/src/components/ExerciseSelectModal';
+import { useManualDraftStore } from '@/src/store/manualDraftStore';
+import { getLocalizedExerciseName } from '@/src/utils/exerciseLocalization';
 import type { SetData, Exercise } from '@/src/types/index';
 
 interface ManualSet {
@@ -27,10 +29,13 @@ interface ManualSet {
 export default function ManualInputScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const consumeDraft = useManualDraftStore(state => state.consumeDraft);
   const [exercise, setExercise] = useState('ベンチプレス');
   const [saving, setSaving] = useState(false);
   const [masterExercises, setMasterExercises] = useState<Exercise[]>([]);
   const [isModalVisible, setIsModalVisible] = useState(false);
+  const [editingSetIndex, setEditingSetIndex] = useState<number | null>(null);
+  const [draftSourceLabel, setDraftSourceLabel] = useState<string | null>(null);
 
   const [sets, setSets] = useState<ManualSet[]>([{
     exercise: 'ベンチプレス',
@@ -42,6 +47,19 @@ export default function ManualInputScreen() {
   useEffect(() => {
     loadExercises();
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      const draft = consumeDraft();
+      if (!draft || draft.sets.length === 0) {
+        return;
+      }
+
+      setSets(draft.sets);
+      setExercise(draft.sets[0].exercise);
+      setDraftSourceLabel(draft.sourceLabel);
+    }, [consumeDraft])
+  );
 
   const loadExercises = async () => {
     const all = await ExerciseService.getAllExercises();
@@ -74,6 +92,27 @@ export default function ManualInputScreen() {
       return;
     }
     setSets(sets.filter((_, i) => i !== index));
+  };
+
+  const applyExerciseToAll = (exerciseName: string) => {
+    setExercise(exerciseName);
+    setSets(current => current.map(set => ({ ...set, exercise: exerciseName })));
+  };
+
+  const updateSetExercise = (index: number, exerciseName: string) => {
+    setSets(current => current.map((set, setIndex) => (
+      setIndex === index ? { ...set, exercise: exerciseName } : set
+    )));
+  };
+
+  const openExercisePicker = (index: number | null = null) => {
+    setEditingSetIndex(index);
+    setIsModalVisible(true);
+  };
+
+  const closeExercisePicker = () => {
+    setEditingSetIndex(null);
+    setIsModalVisible(false);
   };
 
   const saveSession = async () => {
@@ -136,37 +175,50 @@ export default function ManualInputScreen() {
     }
   };
 
-  return (
+    return (
     <ScrollView style={styles.container}>
       <View style={[styles.header, { paddingTop: (insets.top || 0) + 12 }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <Text style={styles.backButtonText}>← 戻る</Text>
         </TouchableOpacity>
-        <Text style={styles.title}>手動入力</Text>
+        <View style={styles.headerCopy}>
+          <Text style={styles.headerEyebrow}>PIT ENTRY</Text>
+          <Text style={styles.title}>手動入力</Text>
+        </View>
         <View style={styles.placeholder} />
       </View>
 
       {/* 種目選択 */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>種目</Text>
+        <View style={styles.sectionHeader}>
+          <View>
+            <Text style={styles.panelEyebrow}>LOAD PRESET</Text>
+            <Text style={styles.sectionTitle}>種目一括変更</Text>
+            <Text style={styles.sectionHint}>クイック選択は全セットへ反映します。個別変更は各セットカードから行えます。</Text>
+          </View>
+        </View>
+        {draftSourceLabel && (
+          <View style={styles.draftBanner}>
+            <Text style={styles.draftBannerText}>{draftSourceLabel} から下書きを読み込みました</Text>
+          </View>
+        )}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.exerciseScroll}>
           {quickExercises.map((ex) => (
             <TouchableOpacity
               key={ex.id}
               style={[styles.exerciseButton, exercise === ex.name && styles.exerciseButtonActive]}
               onPress={() => {
-                setExercise(ex.name);
-                setSets(sets.map(s => ({ ...s, exercise: ex.name })));
+                applyExerciseToAll(ex.name);
               }}
             >
               <Text style={[styles.exerciseButtonText, exercise === ex.name && styles.exerciseButtonTextActive]}>
-                {ex.name}
+                {getLocalizedExerciseName(ex.name)}
               </Text>
             </TouchableOpacity>
           ))}
           <TouchableOpacity
             style={[styles.exerciseButton, styles.moreButton]}
-            onPress={() => setIsModalVisible(true)}
+            onPress={() => openExercisePicker(null)}
           >
             <Text style={styles.moreButtonText}>すべて見る...</Text>
           </TouchableOpacity>
@@ -175,18 +227,24 @@ export default function ManualInputScreen() {
 
       <ExerciseSelectModal
         visible={isModalVisible}
-        onClose={() => setIsModalVisible(false)}
+        onClose={closeExercisePicker}
         onSelect={(ex) => {
-          setExercise(ex.name);
-          setSets(sets.map(s => ({ ...s, exercise: ex.name })));
-          setIsModalVisible(false);
+          if (editingSetIndex === null) {
+            applyExerciseToAll(ex.name);
+          } else {
+            updateSetExercise(editingSetIndex, ex.name);
+          }
+          closeExercisePicker();
         }}
       />
 
       {/* セット入力 */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>セット</Text>
+          <View>
+            <Text style={styles.panelEyebrow}>RUN SHEET</Text>
+            <Text style={styles.sectionTitle}>セット</Text>
+          </View>
           <TouchableOpacity onPress={addSet} style={styles.addButton}>
             <Text style={styles.addButtonText}>+ セット追加</Text>
           </TouchableOpacity>
@@ -200,12 +258,22 @@ export default function ManualInputScreen() {
           return (
             <View key={index} style={styles.setCard}>
               <View style={styles.setCardHeader}>
-                <Text style={styles.setNumber}>セット {index + 1}</Text>
-                {sets.length > 1 && (
-                  <TouchableOpacity onPress={() => removeSet(index)}>
-                    <Text style={styles.removeButton}>削除</Text>
+                <View>
+                  <Text style={styles.setNumber}>セット {index + 1}</Text>
+                  <TouchableOpacity style={styles.setExerciseButton} onPress={() => openExercisePicker(index)}>
+                    <Text style={styles.setExerciseButtonText}>{getLocalizedExerciseName(set.exercise)}</Text>
                   </TouchableOpacity>
-                )}
+                </View>
+                <View style={styles.setCardActions}>
+                  <TouchableOpacity style={styles.changeExerciseLink} onPress={() => openExercisePicker(index)}>
+                    <Text style={styles.changeExerciseLinkText}>種目変更</Text>
+                  </TouchableOpacity>
+                  {sets.length > 1 && (
+                    <TouchableOpacity onPress={() => removeSet(index)}>
+                      <Text style={styles.removeButton}>削除</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
               </View>
 
               <View style={styles.inputGrid}>
@@ -217,7 +285,7 @@ export default function ManualInputScreen() {
                     onChangeText={(value) => updateSet(index, 'loadKg', value)}
                     placeholder="0"
                     placeholderTextColor="#666"
-                    keyboardType="numeric"
+                    keyboardType="decimal-pad"
                   />
                 </View>
 
@@ -241,7 +309,7 @@ export default function ManualInputScreen() {
                     onChangeText={(value) => updateSet(index, 'rpe', value)}
                     placeholder="8"
                     placeholderTextColor="#666"
-                    keyboardType="numeric"
+                    keyboardType="decimal-pad"
                   />
                 </View>
               </View>
@@ -272,61 +340,131 @@ export default function ManualInputScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#1a1a1a' },
+  container: { flex: 1, backgroundColor: '#080808' },
   header: {
-    padding: 16, borderBottomWidth: 1, borderBottomColor: '#333',
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#341810',
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: '#090909',
   },
   backButton: { padding: 8 },
-  backButtonText: { color: '#2196F3', fontSize: 16 },
-  title: { fontSize: 20, fontWeight: 'bold', color: '#fff' },
+  backButtonText: { color: '#ffb347', fontSize: 15, fontWeight: '700', letterSpacing: 0.6 },
+  headerCopy: { alignItems: 'center', gap: 4 },
+  headerEyebrow: { color: '#ff6a2a', fontSize: 10, fontWeight: '800', letterSpacing: 2 },
+  title: { fontSize: 22, fontWeight: '800', color: '#fff5ee' },
   placeholder: { width: 50 },
   section: { padding: 16 },
   sectionHeader: {
     flexDirection: 'row', justifyContent: 'space-between',
     alignItems: 'center', marginBottom: 12,
   },
-  sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#fff' },
-  addButton: { paddingHorizontal: 12, paddingVertical: 6, backgroundColor: '#2196F3', borderRadius: 6 },
-  addButtonText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  panelEyebrow: { fontSize: 10, color: '#ff6a2a', fontWeight: '800', letterSpacing: 2, marginBottom: 6 },
+  sectionTitle: { fontSize: 18, fontWeight: '800', color: '#fff5ee' },
+  sectionHint: { fontSize: 12, color: '#b7a69b', marginTop: 4, maxWidth: 300, lineHeight: 17 },
+  addButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    backgroundColor: '#ff5a1f',
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#ff7a44',
+  },
+  addButtonText: { color: '#fff', fontSize: 13, fontWeight: '800', letterSpacing: 0.6 },
+  draftBanner: {
+    backgroundColor: '#2a1612',
+    borderWidth: 1,
+    borderColor: '#5a2b1c',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 14,
+    marginBottom: 12,
+  },
+  draftBannerText: { color: '#ffd5af', fontSize: 13, fontWeight: '700' },
   exerciseScroll: { flexDirection: 'row' },
   exerciseButton: {
     paddingHorizontal: 16, paddingVertical: 10,
-    backgroundColor: '#2a2a2a', borderRadius: 20, marginRight: 8,
+    backgroundColor: '#141414', borderRadius: 999, marginRight: 8, borderWidth: 1, borderColor: '#3b2218',
   },
-  exerciseButtonActive: { backgroundColor: '#FF9800' },
-  exerciseButtonText: { color: '#999', fontSize: 14 },
-  exerciseButtonTextActive: { color: '#fff', fontWeight: '600' },
+  exerciseButtonActive: { backgroundColor: '#ff5a1f', borderColor: '#ff7a44' },
+  exerciseButtonText: { color: '#b8a79b', fontSize: 13, fontWeight: '700' },
+  exerciseButtonTextActive: { color: '#fff', fontWeight: '800' },
   moreButton: {
-    backgroundColor: '#333',
+    backgroundColor: '#201713',
     borderWidth: 1,
-    borderColor: '#444',
+    borderColor: '#5a2b1c',
   },
   moreButtonText: {
-    color: '#2196F3',
-    fontSize: 14,
-    fontWeight: '600',
+    color: '#ffb347',
+    fontSize: 13,
+    fontWeight: '800',
   },
-  setCard: { backgroundColor: '#2a2a2a', borderRadius: 12, padding: 16, marginBottom: 12 },
+  setCard: {
+    backgroundColor: '#111111',
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#432117',
+    shadowColor: '#ff5a1f',
+    shadowOpacity: 0.08,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+  },
   setCardHeader: {
     flexDirection: 'row', justifyContent: 'space-between',
     alignItems: 'center', marginBottom: 12,
   },
-  setNumber: { fontSize: 16, fontWeight: 'bold', color: '#fff' },
+  setCardActions: {
+    alignItems: 'flex-end',
+    gap: 8,
+  },
+  setNumber: { fontSize: 16, fontWeight: '800', color: '#fff5ee' },
+  setExerciseButton: {
+    marginTop: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: '#241813',
+    borderRadius: 999,
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: '#5a2b1c',
+  },
+  setExerciseButtonText: {
+    color: '#ffcf96',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  changeExerciseLink: {
+    paddingVertical: 4,
+  },
+  changeExerciseLinkText: {
+    color: '#ffb347',
+    fontSize: 12,
+    fontWeight: '800',
+  },
   zoneTag: { fontSize: 14, fontWeight: '600' },
-  removeButton: { color: '#F44336', fontSize: 14 },
+  removeButton: { color: '#ff7a44', fontSize: 14, fontWeight: '700' },
   inputGrid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 },
   inputWrapper: { width: '48%', marginHorizontal: '1%', marginBottom: 12 },
-  inputLabel: { fontSize: 12, color: '#999', marginBottom: 4 },
+  inputLabel: { fontSize: 12, color: '#b8a79b', marginBottom: 4, fontWeight: '700' },
   input: {
-    backgroundColor: '#3a3a3a', borderRadius: 8,
-    padding: 12, color: '#fff', fontSize: 16, borderColor: 'transparent',
+    backgroundColor: '#181818',
+    borderRadius: 12,
+    padding: 12,
+    color: '#fff',
+    fontSize: 16,
+    borderWidth: 1,
+    borderColor: '#3f2117',
   },
-  volumeText: { fontSize: 13, color: '#4CAF50', textAlign: 'right', marginTop: 4 },
+  volumeText: { fontSize: 13, color: '#ffb347', textAlign: 'right', marginTop: 4, fontWeight: '700' },
   buttonContainer: { padding: 16, paddingBottom: 40 },
   saveButton: {
-    backgroundColor: '#4CAF50', padding: 16, borderRadius: 12,
+    backgroundColor: '#ff5a1f', padding: 16, borderRadius: 18,
     alignItems: 'center', minHeight: 56, justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#ff7a44',
   },
-  buttonText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
+  buttonText: { color: '#fff', fontSize: 18, fontWeight: '800', letterSpacing: 0.5 },
 });

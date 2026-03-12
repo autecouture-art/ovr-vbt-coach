@@ -12,6 +12,7 @@ import {
   TouchableOpacity,
   Animated,
 } from 'react-native';
+import { getLocalizedExerciseName } from '../utils/exerciseLocalization';
 import { PRRecord } from '../types/index';
 
 interface PRNotificationProps {
@@ -95,7 +96,7 @@ const PRNotification: React.FC<PRNotificationProps> = ({
           </View>
 
           <View style={styles.content}>
-            <Text style={styles.liftName}>{prRecord.lift}</Text>
+            <Text style={styles.liftName}>{getLocalizedExerciseName(prRecord.lift)}</Text>
 
             <View style={styles.prTypeContainer}>
               <Text style={styles.prTypeLabel}>{getPRTypeLabel(prRecord.type)}</Text>

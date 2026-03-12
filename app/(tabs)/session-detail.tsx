@@ -27,6 +27,7 @@ import AICoachService from '@/src/services/AICoachService';
 import { formatSessionForAI } from '@/src/utils/formatDataForAI';
 import { RepVelocityChart } from '@/src/components/RepVelocityChart';
 import { RepDetailModal } from '@/src/components/RepDetailModal';
+import { getLocalizedExerciseName } from '@/src/utils/exerciseLocalization';
 import type { SessionData, SetData, RepData, PRRecord, LVPData } from '@/src/types/index';
 
 export default function SessionDetailScreen() {
@@ -74,6 +75,10 @@ export default function SessionDetailScreen() {
     };
 
     const reload = () => loadSessionDetail(session_id as string);
+    const openRepDetail = (setIndex: number) => {
+        setSelectedSetIndex(setIndex);
+        setRepDetailVisible(true);
+    };
 
     // --- セッションのメモ保存 ---
     const saveSessionNotes = async () => {
@@ -113,7 +118,7 @@ export default function SessionDetailScreen() {
     const confirmDeleteSet = (setData: SetData) => {
         Alert.alert(
             `Set ${setData.set_index} を削除`,
-            `${setData.lift} ${setData.load_kg}kg × ${setData.reps}rep を削除しますか？`,
+            `${getLocalizedExerciseName(setData.lift)} ${setData.load_kg}kg × ${setData.reps}rep を削除しますか？`,
             [
                 { text: 'キャンセル', style: 'cancel' },
                 {
@@ -329,7 +334,7 @@ export default function SessionDetailScreen() {
                 {/* セット一覧 */}
                 <View style={styles.section}>
                     <Text style={styles.sectionTitle}>セット詳細</Text>
-                    <Text style={styles.sectionHint}>長押しで削除 / タップで編集</Text>
+                    <Text style={styles.sectionHint}>REP詳細でレップを確認 / 編集で重量・RPE・メモを変更</Text>
 
                     {sets.length === 0 ? (
                         <Text style={styles.emptyText}>セットデータがありません</Text>
@@ -337,19 +342,13 @@ export default function SessionDetailScreen() {
                         sets.map((setData, idx) => {
                             const zone = getZone(setData.avg_velocity);
                             return (
-                                <TouchableOpacity
+                                <View
                                     key={idx}
                                     style={[styles.setCard, zone && { borderLeftColor: zone.color }]}
-                                    onPress={() => {
-                                        setSelectedSetIndex(setData.set_index);
-                                        setRepDetailVisible(true);
-                                    }}
-                                    onLongPress={() => openEditSet(setData)}
-                                    activeOpacity={0.7}
                                 >
                                     <View style={styles.setHeader}>
                                         <Text style={styles.setNumber}>Set {setData.set_index}</Text>
-                                        <Text style={styles.setLift}>{setData.lift}</Text>
+                                        <Text style={styles.setLift}>{getLocalizedExerciseName(setData.lift)}</Text>
                                         {zone && (
                                             <Text style={[styles.setZone, { color: zone.color }]}>
                                                 {zone.emoji} {zone.name}
@@ -402,7 +401,21 @@ export default function SessionDetailScreen() {
                                             <RepVelocityChart reps={allReps} setIndex={setData.set_index} />
                                         </View>
                                     )}
-                                </TouchableOpacity>
+                                    <View style={styles.setActionRow}>
+                                        <TouchableOpacity
+                                            style={[styles.setActionButton, styles.setActionPrimary]}
+                                            onPress={() => openRepDetail(setData.set_index)}
+                                        >
+                                            <Text style={styles.setActionButtonText}>REP詳細</Text>
+                                        </TouchableOpacity>
+                                        <TouchableOpacity
+                                            style={[styles.setActionButton, styles.setActionSecondary]}
+                                            onPress={() => openEditSet(setData)}
+                                        >
+                                            <Text style={styles.setActionButtonText}>編集</Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                </View>
                             );
                         })
                     )}
@@ -563,6 +576,31 @@ const styles = StyleSheet.create({
     setStatLabel: { fontSize: 10, color: '#666' },
     e1rmText: { fontSize: 12, color: '#9C27B0', textAlign: 'right' },
     setNotesText: { fontSize: 12, color: '#999', marginTop: 6, fontStyle: 'italic' },
+    setActionRow: {
+        flexDirection: 'row',
+        gap: 10,
+        marginTop: 12,
+    },
+    setActionButton: {
+        flex: 1,
+        borderRadius: 8,
+        paddingVertical: 10,
+        alignItems: 'center',
+        borderWidth: 1,
+    },
+    setActionPrimary: {
+        backgroundColor: '#1E3A8A',
+        borderColor: '#2563EB',
+    },
+    setActionSecondary: {
+        backgroundColor: '#333',
+        borderColor: '#555',
+    },
+    setActionButtonText: {
+        color: '#fff',
+        fontSize: 13,
+        fontWeight: '700',
+    },
     // 編集モーダル
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'flex-end' },
     editModal: {

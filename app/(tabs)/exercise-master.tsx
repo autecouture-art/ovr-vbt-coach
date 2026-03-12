@@ -13,6 +13,11 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import ExerciseService from '@/src/services/ExerciseService';
+import {
+    getExerciseCategoryLabel,
+    getLocalizedExerciseName,
+    matchesExerciseQuery,
+} from '@/src/utils/exerciseLocalization';
 import type { Exercise } from '@/src/types/index';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 
@@ -52,7 +57,7 @@ export default function ExerciseMasterScreen() {
 
     const filteredExercises = exercises.filter(exercise => {
         const matchesCategory = selectedCategory === 'all' || exercise.category === selectedCategory;
-        const matchesSearch = exercise.name.toLowerCase().includes(searchQuery.toLowerCase());
+        const matchesSearch = matchesExerciseQuery(exercise.name, searchQuery);
         return matchesCategory && matchesSearch;
     });
 
@@ -91,10 +96,10 @@ export default function ExerciseMasterScreen() {
         try {
             if (editingExercise) {
                 await ExerciseService.updateExercise(editingExercise.id, payload);
-                Alert.alert('更新完了', `${editName}を更新しました`);
+                Alert.alert('更新完了', `${getLocalizedExerciseName(editName)}を更新しました`);
             } else {
                 await ExerciseService.addExercise(payload);
-                Alert.alert('追加完了', `${editName}を追加しました`);
+                Alert.alert('追加完了', `${getLocalizedExerciseName(editName)}を追加しました`);
             }
             setIsModalVisible(false);
             loadExercises();
@@ -107,7 +112,7 @@ export default function ExerciseMasterScreen() {
     const handleDelete = async (id: string, name: string) => {
         Alert.alert(
             '種目を削除',
-            `${name} を削除しますか？\n(過去のデータには影響しません)`,
+            `${getLocalizedExerciseName(name)} を削除しますか？\n(過去のデータには影響しません)`,
             [
                 { text: 'キャンセル', style: 'cancel' },
                 {
@@ -161,10 +166,10 @@ export default function ExerciseMasterScreen() {
                 {filteredExercises.map((exercise) => (
                     <View key={exercise.id} style={styles.exerciseItem}>
                         <View style={styles.exerciseInfo}>
-                            <Text style={styles.exerciseName}>{exercise.name}</Text>
+                            <Text style={styles.exerciseName}>{getLocalizedExerciseName(exercise.name)}</Text>
                             <View style={styles.exerciseMeta}>
                                 <Text style={styles.exerciseCategory}>
-                                    {categories.find(c => c.id === exercise.category)?.name || exercise.category}
+                                    {getExerciseCategoryLabel(exercise.category)}
                                 </Text>
                                 <Text style={styles.exerciseRom}>ROM: {exercise.min_rom_threshold || 10}cm</Text>
                                 <Text style={styles.exerciseMode}>
