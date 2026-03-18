@@ -6,6 +6,7 @@ import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
+import { ENV } from "./env";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise((resolve) => {
@@ -29,8 +30,9 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 async function startServer() {
   const app = express();
   const server = createServer(app);
+  const preferredPort = parseInt(process.env.PORT || "3000", 10);
+  const port = await findAvailablePort(preferredPort);
 
-  // Enable CORS for all routes - reflect the request origin to support credentials
   app.use((req, res, next) => {
     const origin = req.headers.origin;
     if (origin) {
@@ -43,7 +45,6 @@ async function startServer() {
     );
     res.header("Access-Control-Allow-Credentials", "true");
 
-    // Handle preflight requests
     if (req.method === "OPTIONS") {
       res.sendStatus(200);
       return;
@@ -57,7 +58,17 @@ async function startServer() {
   registerOAuthRoutes(app);
 
   app.get("/api/health", (_req, res) => {
-    res.json({ ok: true, timestamp: Date.now() });
+    res.json({
+      ok: true,
+      timestamp: Date.now(),
+      port,
+      llm: {
+        configured: Boolean(ENV.zaiApiKey),
+        hasApiKey: Boolean(ENV.zaiApiKey),
+        model: ENV.zaiModel || null,
+        apiBaseUrlConfigured: Boolean(ENV.zaiApiUrl),
+      },
+    });
   });
 
   app.use(
@@ -67,9 +78,6 @@ async function startServer() {
       createContext,
     }),
   );
-
-  const preferredPort = parseInt(process.env.PORT || "3000");
-  const port = await findAvailablePort(preferredPort);
 
   if (port !== preferredPort) {
     console.log(`Port ${preferredPort} is busy, using port ${port} instead`);

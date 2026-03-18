@@ -12,6 +12,7 @@ import type {
   PRRecord,
   Exercise,
 } from '../types/index';
+import { getSessionDate } from '../utils/session';
 
 const DB_NAME = 'ovr_vbt_coach.db';
 
@@ -159,6 +160,45 @@ class DatabaseService {
   }
 
   /**
+   * Ensure a session exists before saving sets or reps
+   */
+  async ensureSession(sessionId: string, notes?: string): Promise<SessionData> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const existing = await this.getSession(sessionId);
+    if (existing) return existing;
+
+    const session: SessionData = {
+      session_id: sessionId,
+      date: getSessionDate(sessionId),
+      total_volume: 0,
+      total_sets: 0,
+      lifts: [],
+      notes: notes || undefined,
+    };
+
+    await this.insertSession(session);
+    return session;
+  }
+
+  /**
+   * Recalculate session totals from saved sets
+   */
+  async syncSessionSummary(sessionId: string): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const sets = await this.getSetsForSession(sessionId);
+    const totalVolume = sets.reduce((sum, set) => sum + set.load_kg * set.reps, 0);
+
+    await this.db.runAsync(
+      `UPDATE sessions
+       SET total_volume = ?, total_sets = ?
+       WHERE session_id = ?`,
+      [totalVolume, sets.length, sessionId]
+    );
+  }
+
+  /**
    * Insert a new set
    */
   async insertSet(setData: SetData): Promise<void> {
@@ -282,7 +322,7 @@ class DatabaseService {
     if (!this.db) throw new Error('Database not initialized');
 
     const results = await this.db.getAllAsync<SessionData>(
-      'SELECT * FROM sessions ORDER BY date DESC'
+      'SELECT * FROM sessions ORDER BY date DESC, session_id DESC'
     );
 
     return results;
@@ -312,6 +352,22 @@ class DatabaseService {
       'SELECT * FROM sets WHERE session_id = ? ORDER BY set_index',
       [sessionId]
     );
+
+    return results;
+  }
+
+  /**
+   * Get recent sets for a lift
+   */
+  async getRecentSetsForLift(lift: string, limit: number = 3, excludeSessionId?: string): Promise<SetData[]> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const query = excludeSessionId
+      ? `SELECT * FROM sets WHERE lift = ? AND session_id != ? ORDER BY timestamp DESC LIMIT ?`
+      : `SELECT * FROM sets WHERE lift = ? ORDER BY timestamp DESC LIMIT ?`;
+    const params = excludeSessionId ? [lift, excludeSessionId, limit] : [lift, limit];
+
+    const results = await this.db.getAllAsync<SetData>(query, params);
 
     return results;
   }

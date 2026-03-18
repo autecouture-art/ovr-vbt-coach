@@ -54,6 +54,7 @@ export type ToolChoice = ToolChoicePrimitive | ToolChoiceByName | ToolChoiceExpl
 
 export type InvokeParams = {
   messages: Message[];
+  model?: string;
   tools?: Tool[];
   toolChoice?: ToolChoice;
   tool_choice?: ToolChoice;
@@ -201,14 +202,19 @@ const normalizeToolChoice = (
   return toolChoice;
 };
 
-const resolveApiUrl = () =>
-  ENV.forgeApiUrl && ENV.forgeApiUrl.trim().length > 0
-    ? `${ENV.forgeApiUrl.replace(/\/$/, "")}/v1/chat/completions`
-    : "https://forge.manus.im/v1/chat/completions";
+const resolveApiBaseUrl = () => {
+  const configuredUrl = ENV.zaiApiUrl?.trim();
+  if (!configuredUrl) {
+    return "https://api.z.ai/api/paas/v4";
+  }
+  return configuredUrl.replace(/\/$/, "");
+};
+
+const resolveApiUrl = () => `${resolveApiBaseUrl()}/chat/completions`;
 
 const assertApiKey = () => {
   if (!ENV.forgeApiKey) {
-    throw new Error("OPENAI_API_KEY is not configured");
+    throw new Error("ZAI_API_KEY is not configured");
   }
 };
 
@@ -257,6 +263,7 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
 
   const {
     messages,
+    model,
     tools,
     toolChoice,
     tool_choice,
@@ -267,7 +274,7 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
   } = params;
 
   const payload: Record<string, unknown> = {
-    model: "gemini-2.5-flash",
+    model: model || ENV.zaiModel || "glm-4.7",
     messages: messages.map(normalizeMessage),
   };
 
@@ -280,9 +287,9 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     payload.tool_choice = normalizedToolChoice;
   }
 
-  payload.max_tokens = 32768;
+  payload.max_tokens = 700;
   payload.thinking = {
-    budget_tokens: 128,
+    type: "disabled",
   };
 
   const normalizedResponseFormat = normalizeResponseFormat({
@@ -307,6 +314,15 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
 
   if (!response.ok) {
     const errorText = await response.text();
+    if (response.status === 401 && /invalid api key/i.test(errorText)) {
+      throw new Error("ZAI_API_KEY is invalid");
+    }
+    if (
+      response.status === 429 &&
+      /Insufficient balance|no resource package|recharge/i.test(errorText)
+    ) {
+      throw new Error("ZAI_API_BALANCE_EXHAUSTED");
+    }
     throw new Error(`LLM invoke failed: ${response.status} ${response.statusText} – ${errorText}`);
   }
 

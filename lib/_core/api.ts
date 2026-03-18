@@ -1,5 +1,5 @@
 import { Platform } from "react-native";
-import { getApiBaseUrl } from "@/constants/oauth";
+import { fetchWithApiFallback, getApiBaseUrl } from "@/constants/oauth";
 import * as Auth from "./auth";
 
 type ApiResponse<T> = {
@@ -41,7 +41,7 @@ export async function apiCall<T>(endpoint: string, options: RequestInit = {}): P
 
   try {
     console.log("[API] Making request...");
-    const response = await fetch(url, {
+    const response = await fetchWithApiFallback(url, {
       ...options,
       headers,
       credentials: "include",
@@ -149,7 +149,7 @@ export async function establishSession(token: string): Promise<boolean> {
     const baseUrl = getApiBaseUrl();
     const url = `${baseUrl}/api/auth/session`;
 
-    const response = await fetch(url, {
+    const response = await fetchWithApiFallback(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

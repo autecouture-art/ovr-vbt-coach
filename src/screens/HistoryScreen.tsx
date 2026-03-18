@@ -3,7 +3,7 @@
  * Calendar view of training sessions
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -15,23 +15,48 @@ import {
 import DatabaseService from '../services/DatabaseService';
 import { SessionData, SetData } from '../types/index';
 import { format, parseISO } from 'date-fns';
+import { formatSessionLabel } from '../utils/session';
 
 interface HistoryScreenProps {
   navigation: any;
 }
 
+type HistorySession = SessionData & {
+  lifts: string[];
+  derivedTotalSets: number;
+  derivedTotalVolume: number;
+  sets: SetData[];
+};
+
 const HistoryScreen: React.FC<HistoryScreenProps> = ({ navigation }) => {
-  const [sessions, setSessions] = useState<SessionData[]>([]);
+  const [sessions, setSessions] = useState<HistorySession[]>([]);
   const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
-    loadSessions();
+    void loadSessions();
   }, []);
+
+  const enrichSession = async (session: SessionData): Promise<HistorySession> => {
+    const sets = await DatabaseService.getSetsForSession(session.session_id);
+    const lifts = Array.from(new Set(sets.map((set) => set.lift).filter(Boolean)));
+    const derivedTotalSets = sets.length || session.total_sets || 0;
+    const derivedTotalVolume =
+      sets.reduce((sum, set) => sum + set.load_kg * set.reps, 0) || session.total_volume || 0;
+
+    return {
+      ...session,
+      lifts,
+      derivedTotalSets,
+      derivedTotalVolume,
+      sets,
+    };
+  };
 
   const loadSessions = async () => {
     try {
       const allSessions = await DatabaseService.getSessions();
-      setSessions(allSessions);
+      const enriched = await Promise.all(allSessions.map(enrichSession));
+      setSessions(enriched);
     } catch (error) {
       console.error('Failed to load sessions:', error);
     }
@@ -43,26 +68,45 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ navigation }) => {
     setRefreshing(false);
   };
 
-  const handleSessionPress = async (session: SessionData) => {
-    try {
-      const sets = await DatabaseService.getSetsForSession(session.session_id);
-      navigation.navigate('SessionDetail', { session, sets });
-    } catch (error) {
-      console.error('Failed to load session details:', error);
-    }
+  const handleSessionPress = async (session: HistorySession) => {
+    navigation.navigate('SessionDetail', { session, sets: session.sets });
   };
 
-  const formatDate = (dateStr: string): string => {
+  const handleHistoryCoachPress = () => {
+    const totalSets = sessions.reduce((sum, session) => sum + session.derivedTotalSets, 0);
+    const totalVolume = sessions.reduce((sum, session) => sum + session.derivedTotalVolume, 0);
+    navigation.navigate('CoachChat', {
+      source: 'history',
+      message: '最近のトレーニング履歴を要約して',
+      totalSets,
+      totalVolume: Math.round(totalVolume),
+      currentExercise: sessions[0]?.lifts?.[0] ?? '',
+    });
+  };
+
+  const handleSessionCoachPress = (session: HistorySession) => {
+    navigation.navigate('CoachChat', {
+      source: 'history-session',
+      sessionId: session.session_id,
+      currentExercise: session.lifts[0] ?? '',
+      totalSets: session.derivedTotalSets,
+      totalVolume: Math.round(session.derivedTotalVolume),
+      message: 'このセッションを振り返って改善点を教えて',
+    });
+  };
+
+  const formatDate = (dateStr: string, sessionId?: string): string => {
     try {
       const date = parseISO(dateStr);
-      return format(date, 'yyyy/MM/dd (E)');
+      const formatted = format(date, 'yyyy/MM/dd (E)');
+      return sessionId ? formatSessionLabel(sessionId, formatted) : formatted;
     } catch {
       return dateStr;
     }
   };
 
-  const groupSessionsByMonth = () => {
-    const grouped = new Map<string, SessionData[]>();
+  const groupedSessions = useMemo(() => {
+    const grouped = new Map<string, HistorySession[]>();
 
     sessions.forEach((session) => {
       try {
@@ -72,16 +116,14 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ navigation }) => {
         if (!grouped.has(monthKey)) {
           grouped.set(monthKey, []);
         }
-        grouped.get(monthKey)!.push(session);
+        grouped.get(monthKey)?.push(session);
       } catch {
-        // Skip invalid dates
+        // ignore invalid date
       }
     });
 
     return grouped;
-  };
-
-  const groupedSessions = groupSessionsByMonth();
+  }, [sessions]);
 
   return (
     <ScrollView
@@ -91,7 +133,13 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ navigation }) => {
       }
     >
       <View style={styles.header}>
-        <Text style={styles.title}>トレーニング履歴</Text>
+        <View>
+          <Text style={styles.title}>トレーニング履歴</Text>
+          <Text style={styles.subtitle}>セッション詳細と AI 振り返りをここから確認</Text>
+        </View>
+        <TouchableOpacity style={styles.headerCoachButton} onPress={handleHistoryCoachPress}>
+          <Text style={styles.headerCoachButtonText}>AI要約</Text>
+        </TouchableOpacity>
       </View>
 
       {sessions.length === 0 ? (
@@ -111,41 +159,49 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ navigation }) => {
                 onPress={() => handleSessionPress(session)}
               >
                 <View style={styles.sessionHeader}>
-                  <Text style={styles.sessionDate}>{formatDate(session.date)}</Text>
-                  {session.duration_minutes && (
-                    <Text style={styles.sessionDuration}>
-                      {session.duration_minutes}分
-                    </Text>
-                  )}
+                  <Text style={styles.sessionDate}>{formatDate(session.date, session.session_id)}</Text>
+                  {session.duration_minutes ? (
+                    <Text style={styles.sessionDuration}>{session.duration_minutes}分</Text>
+                  ) : null}
                 </View>
+
+                <Text style={styles.liftText} numberOfLines={2}>
+                  {session.lifts.length > 0 ? session.lifts.join(' / ') : '種目情報なし'}
+                </Text>
 
                 <View style={styles.sessionStats}>
                   <View style={styles.statBox}>
-                    <Text style={styles.statValue}>{session.total_sets}</Text>
+                    <Text style={styles.statValue}>{session.derivedTotalSets}</Text>
                     <Text style={styles.statLabel}>セット</Text>
                   </View>
 
                   <View style={styles.statBox}>
                     <Text style={styles.statValue}>
-                      {Math.round(session.total_volume).toLocaleString()}
+                      {Math.round(session.derivedTotalVolume).toLocaleString()}
                     </Text>
                     <Text style={styles.statLabel}>kg</Text>
                   </View>
 
                   <View style={styles.statBox}>
-                    <Text style={styles.statValue}>{session.lifts?.length || 0}</Text>
+                    <Text style={styles.statValue}>{session.lifts.length}</Text>
                     <Text style={styles.statLabel}>種目</Text>
                   </View>
                 </View>
 
-                {session.notes && (
+                {session.notes ? (
                   <Text style={styles.sessionNotes} numberOfLines={2}>
                     {session.notes}
                   </Text>
-                )}
+                ) : null}
 
-                <View style={styles.arrowContainer}>
-                  <Text style={styles.arrow}>→</Text>
+                <View style={styles.cardActions}>
+                  <Text style={styles.detailLink}>詳細を見る →</Text>
+                  <TouchableOpacity
+                    style={styles.sessionCoachButton}
+                    onPress={() => handleSessionCoachPress(session)}
+                  >
+                    <Text style={styles.sessionCoachButtonText}>AIコーチ</Text>
+                  </TouchableOpacity>
                 </View>
               </TouchableOpacity>
             ))}
@@ -153,7 +209,7 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ navigation }) => {
         ))
       )}
 
-      {sessions.length > 0 && (
+      {sessions.length > 0 ? (
         <View style={styles.summaryCard}>
           <Text style={styles.summaryTitle}>統計</Text>
           <View style={styles.summaryStats}>
@@ -163,21 +219,21 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ navigation }) => {
             </View>
             <View style={styles.summaryItem}>
               <Text style={styles.summaryValue}>
-                {sessions.reduce((sum, s) => sum + s.total_sets, 0)}
+                {sessions.reduce((sum, s) => sum + s.derivedTotalSets, 0)}
               </Text>
               <Text style={styles.summaryLabel}>総セット数</Text>
             </View>
             <View style={styles.summaryItem}>
               <Text style={styles.summaryValue}>
                 {Math.round(
-                  sessions.reduce((sum, s) => sum + s.total_volume, 0)
+                  sessions.reduce((sum, s) => sum + s.derivedTotalVolume, 0),
                 ).toLocaleString()}
               </Text>
               <Text style={styles.summaryLabel}>総ボリューム(kg)</Text>
             </View>
           </View>
         </View>
-      )}
+      ) : null}
     </ScrollView>
   );
 };
@@ -191,11 +247,33 @@ const styles = StyleSheet.create({
     padding: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#333',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
   },
   title: {
     fontSize: 24,
     fontWeight: 'bold',
     color: '#fff',
+  },
+  subtitle: {
+    fontSize: 12,
+    color: '#8d8d8d',
+    marginTop: 4,
+  },
+  headerCoachButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 999,
+    backgroundColor: '#1f1512',
+    borderWidth: 1,
+    borderColor: '#ff6a2a',
+  },
+  headerCoachButtonText: {
+    color: '#ffb347',
+    fontSize: 12,
+    fontWeight: '700',
   },
   emptyContainer: {
     padding: 40,
@@ -247,6 +325,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#999',
   },
+  liftText: {
+    color: '#f1eee9',
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 10,
+  },
   sessionStats: {
     flexDirection: 'row',
     justifyContent: 'space-around',
@@ -271,14 +355,30 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     marginTop: 8,
   },
-  arrowContainer: {
-    position: 'absolute',
-    right: 16,
-    top: '50%',
+  cardActions: {
+    marginTop: 14,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
   },
-  arrow: {
-    fontSize: 20,
-    color: '#666',
+  detailLink: {
+    fontSize: 13,
+    color: '#9ad0ff',
+    fontWeight: '600',
+  },
+  sessionCoachButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: '#1a1311',
+    borderWidth: 1,
+    borderColor: '#ff6a2a',
+  },
+  sessionCoachButtonText: {
+    color: '#ffb347',
+    fontSize: 12,
+    fontWeight: '700',
   },
   summaryCard: {
     margin: 16,
@@ -299,6 +399,7 @@ const styles = StyleSheet.create({
   },
   summaryItem: {
     alignItems: 'center',
+    flex: 1,
   },
   summaryValue: {
     fontSize: 24,
