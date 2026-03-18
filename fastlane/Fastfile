@@ -1,0 +1,61 @@
+default_platform(:ios)
+
+platform :ios do
+  desc 'Build and upload to TestFlight'
+  lane :beta do
+    key_path = File.expand_path("~/.appstoreconnect/private_keys/AuthKey_#{ENV.fetch('ASC_KEY_ID')}.p8")
+
+    api_key = app_store_connect_api_key(
+      key_id: ENV.fetch('ASC_KEY_ID'),
+      issuer_id: ENV.fetch('ASC_ISSUER_ID'),
+      key_filepath: key_path,
+      duration: 1200,
+      in_house: false
+    )
+
+    build_app(
+      workspace: 'ios/OVRVBTCoach.xcworkspace',
+      scheme: 'OVRVBTCoach',
+      configuration: 'Release',
+      export_method: 'app-store-connect',
+      clean: true,
+      output_directory: 'ios/fastlane_export',
+      output_name: 'RepVeloCoach.ipa',
+      build_path: 'ios/build',
+      archive_path: 'ios/build/OVRVBTCoach.xcarchive',
+      export_team_id: 'NN9FMT4BC9',
+      xcargs: 'DEVELOPMENT_TEAM=NN9FMT4BC9 CODE_SIGN_STYLE=Automatic -allowProvisioningUpdates',
+      export_xcargs: '-allowProvisioningUpdates',
+      export_options: {
+        signingStyle: 'automatic'
+      }
+    )
+
+    upload_to_testflight(
+      api_key: api_key,
+      ipa: 'ios/fastlane_export/RepVeloCoach.ipa',
+      skip_waiting_for_build_processing: true,
+      distribute_external: false
+    )
+  end
+
+  desc 'Upload existing IPA to TestFlight'
+  lane :upload_only do
+    key_path = File.expand_path("~/.appstoreconnect/private_keys/AuthKey_#{ENV.fetch('ASC_KEY_ID')}.p8")
+
+    api_key = app_store_connect_api_key(
+      key_id: ENV.fetch('ASC_KEY_ID'),
+      issuer_id: ENV.fetch('ASC_ISSUER_ID'),
+      key_filepath: key_path,
+      duration: 1200,
+      in_house: false
+    )
+
+    upload_to_testflight(
+      api_key: api_key,
+      ipa: 'ios/fastlane_export/RepVeloCoach.ipa',
+      skip_waiting_for_build_processing: true,
+      distribute_external: false
+    )
+  end
+end
