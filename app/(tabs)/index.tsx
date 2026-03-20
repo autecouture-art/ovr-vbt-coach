@@ -281,7 +281,7 @@ export default function HomeScreen() {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>CONTROL TRACKS</Text>
 
-        <TouchableOpacity style={[styles.trackCard, styles.trackPrimary]} onPress={() => router.push('/(tabs)/session')}>
+        <TouchableOpacity style={[styles.trackCard, styles.trackPrimary]} onPress={() => router.navigate('/(tabs)/session')}>
           <View style={styles.trackHeader}>
             <Text style={styles.trackCode}>TRACK 01</Text>
             <Text style={styles.trackAction}>ENTER</Text>
@@ -290,7 +290,7 @@ export default function HomeScreen() {
           <Text style={styles.trackDescription}>ライブ計測でトレーニング進行を開始</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={[styles.trackCard, styles.trackSecondary]} onPress={() => router.push('/(tabs)/manual')}>
+        <TouchableOpacity style={[styles.trackCard, styles.trackSecondary]} onPress={() => router.navigate('/(tabs)/manual')}>
           <View style={styles.trackHeader}>
             <Text style={styles.trackCode}>TRACK 02</Text>
             <Text style={styles.trackAction}>EDIT</Text>
@@ -299,7 +299,7 @@ export default function HomeScreen() {
           <Text style={styles.trackDescription}>セットログを手早く入力</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={[styles.trackCard, styles.trackTertiary]} onPress={() => router.push('/(tabs)/graph')}>
+        <TouchableOpacity style={[styles.trackCard, styles.trackTertiary]} onPress={() => router.navigate('/(tabs)/graph')}>
           <View style={styles.trackHeader}>
             <Text style={styles.trackCode}>TRACK 03</Text>
             <Text style={styles.trackAction}>VIEW</Text>

@@ -377,30 +377,38 @@ export const useSessionLogic = (onPRDetected?: PRCallback) => {
     setConnectionStatus(connected);
   }, [setConnectionStatus]);
 
+  const dataReceivedRef = useRef(handleDataReceived);
+  const connectionChangedRef = useRef(handleConnectionChanged);
+
+  useEffect(() => {
+    dataReceivedRef.current = handleDataReceived;
+    connectionChangedRef.current = handleConnectionChanged;
+  }, [handleDataReceived, handleConnectionChanged]);
+
   // --- Setup & Teardown ---
 
   useEffect(() => {
     isMounted.current = true;
-    // Initialize Services
-    AudioService.initialize();
+    void AudioService.initialize();
 
-    // Set BLE Callbacks
     BLEService.setCallbacks({
-      onDataReceived: handleDataReceived,
-      onConnectionStatusChanged: handleConnectionChanged,
+      onDataReceived: (data) => {
+        void dataReceivedRef.current(data);
+      },
+      onConnectionStatusChanged: (connected) => {
+        connectionChangedRef.current(connected);
+      },
       onError: (error) => console.error('BLE Error:', error),
     });
 
-    // Check initial connection
     BLEService.isConnected().then(result => {
       if (isMounted.current) setConnectionStatus(result);
     });
 
     return () => {
       isMounted.current = false;
-      // Cleanup callbacks? (Optional if singleton persists)
     };
-  }, [handleDataReceived, handleConnectionChanged, setConnectionStatus]);
+  }, [setConnectionStatus]);
   // --- Heart Rate Monitoring (Polling when Active) ---
   useEffect(() => {
     let hrTimerId: any = null;
