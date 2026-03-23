@@ -1,38 +1,53 @@
+# Constants
+APP_IDENTIFIER = 'com.autecouture.repvelocoach.hh'
+TEAM_ID = 'NN9FMT4BC9'
+WORKSPACE = 'ios/RepVeloCoach.xcworkspace'
+SCHEME = 'RepVeloCoach'
+OUTPUT_DIRECTORY = 'ios/fastlane_export'
+OUTPUT_NAME = 'RepVeloCoach.ipa'
+BUILD_PATH = 'ios/build'
+ARCHIVE_PATH = 'ios/build/RepVeloCoach.xcarchive'
+
 default_platform(:ios)
 
 platform :ios do
-  desc 'Build and upload to TestFlight'
-  lane :beta do
+  # Helper method to create App Store Connect API key
+  private_lane :create_api_key do
     key_path = File.expand_path("~/.appstoreconnect/private_keys/AuthKey_#{ENV.fetch('ASC_KEY_ID')}.p8")
 
-    api_key = app_store_connect_api_key(
+    app_store_connect_api_key(
       key_id: ENV.fetch('ASC_KEY_ID'),
       issuer_id: ENV.fetch('ASC_ISSUER_ID'),
       key_filepath: key_path,
       duration: 1200,
       in_house: false
     )
+  end
+
+  desc 'Build and upload to TestFlight'
+  lane :beta do
+    api_key = create_api_key
 
     sigh(
-      app_identifier: 'com.autecouture.repvelocoach.hh',
+      app_identifier: APP_IDENTIFIER,
       api_key: api_key,
-      team_id: 'NN9FMT4BC9',
+      team_id: TEAM_ID,
       skip_certificate_verification: true,
       filename: 'RepVeloCoach_AppStore.mobileprovision'
     )
 
     build_app(
-      workspace: 'ios/RepVeloCoach.xcworkspace',
-      scheme: 'RepVeloCoach',
+      workspace: WORKSPACE,
+      scheme: SCHEME,
       configuration: 'Release',
       export_method: 'app-store',
       clean: true,
-      output_directory: 'ios/fastlane_export',
-      output_name: 'RepVeloCoach.ipa',
-      build_path: 'ios/build',
-      archive_path: 'ios/build/RepVeloCoach.xcarchive',
-      export_team_id: 'NN9FMT4BC9',
-      xcargs: 'DEVELOPMENT_TEAM=NN9FMT4BC9 CODE_SIGN_STYLE=Automatic -allowProvisioningUpdates',
+      output_directory: OUTPUT_DIRECTORY,
+      output_name: OUTPUT_NAME,
+      build_path: BUILD_PATH,
+      archive_path: ARCHIVE_PATH,
+      export_team_id: TEAM_ID,
+      xcargs: "DEVELOPMENT_TEAM=#{TEAM_ID} CODE_SIGN_STYLE=Automatic -allowProvisioningUpdates",
       export_xcargs: '-allowProvisioningUpdates',
       export_options: {
         signingStyle: 'automatic'
@@ -41,7 +56,7 @@ platform :ios do
 
     upload_to_testflight(
       api_key: api_key,
-      ipa: 'ios/fastlane_export/RepVeloCoach.ipa',
+      ipa: "#{OUTPUT_DIRECTORY}/#{OUTPUT_NAME}",
       skip_waiting_for_build_processing: true,
       distribute_external: false
     )
@@ -49,19 +64,11 @@ platform :ios do
 
   desc 'Upload existing IPA to TestFlight'
   lane :upload_only do
-    key_path = File.expand_path("~/.appstoreconnect/private_keys/AuthKey_#{ENV.fetch('ASC_KEY_ID')}.p8")
-
-    api_key = app_store_connect_api_key(
-      key_id: ENV.fetch('ASC_KEY_ID'),
-      issuer_id: ENV.fetch('ASC_ISSUER_ID'),
-      key_filepath: key_path,
-      duration: 1200,
-      in_house: false
-    )
+    api_key = create_api_key
 
     upload_to_testflight(
       api_key: api_key,
-      ipa: 'ios/fastlane_export/RepVeloCoach.ipa',
+      ipa: "#{OUTPUT_DIRECTORY}/#{OUTPUT_NAME}",
       skip_waiting_for_build_processing: true,
       distribute_external: false
     )
