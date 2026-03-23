@@ -68,7 +68,10 @@ export function ExerciseSelectModal({
     () =>
       exercises.filter((exercise) => {
         const matchesGroup = matchesExerciseSelectionGroup(exercise, selectedGroup);
-        const matchesSearch = exercise.name.toLowerCase().includes(searchQuery.toLowerCase());
+        const searchLower = searchQuery.toLowerCase().trim();
+        const matchesSearch = !searchLower ||
+          exercise.name.toLowerCase().includes(searchLower) ||
+          (exercise.description && exercise.description.toLowerCase().includes(searchLower));
         return matchesGroup && matchesSearch;
       }),
     [exercises, searchQuery, selectedGroup],
@@ -102,27 +105,38 @@ export function ExerciseSelectModal({
       return;
     }
 
-    const preset = inferExercisePreset(newExerciseName.trim());
-    const newExercise = await ExerciseService.addExercise({
-      name: newExerciseName.trim(),
-      category: preset.category ?? 'accessory',
-      subcategory: preset.subcategory,
-      has_lvp: preset.has_lvp ?? true,
-      machine_weight_steps: preset.machine_weight_steps,
-      min_rom_threshold: preset.min_rom_threshold,
-      rep_detection_mode: preset.rep_detection_mode,
-      target_pause_ms: preset.target_pause_ms,
-      rom_range_min_cm: preset.rom_range_min_cm,
-      rom_range_max_cm: preset.rom_range_max_cm,
-      rom_data_points: 0,
-      description: preset.description,
-      mvt: preset.mvt,
-    });
+    try {
+      const preset = inferExercisePreset(newExerciseName.trim());
+      const newExercise = await ExerciseService.addExercise({
+        name: newExerciseName.trim(),
+        category: preset.category ?? 'accessory',
+        subcategory: preset.subcategory,
+        has_lvp: preset.has_lvp ?? true,
+        machine_weight_steps: preset.machine_weight_steps,
+        min_rom_threshold: preset.min_rom_threshold,
+        rep_detection_mode: preset.rep_detection_mode,
+        target_pause_ms: preset.target_pause_ms,
+        rom_range_min_cm: preset.rom_range_min_cm,
+        rom_range_max_cm: preset.rom_range_max_cm,
+        rom_data_points: 0,
+        description: preset.description,
+        mvt: preset.mvt,
+      });
 
-    setNewExerciseName('');
-    setIsAddMode(false);
-    await loadExercises();
-    Alert.alert('追加完了', `${newExercise.name} を追加しました`);
+      setNewExerciseName('');
+      setIsAddMode(false);
+      setSearchQuery(''); // 検索をリセット
+      await loadExercises();
+
+      // 新しい種目を選択状態にする
+      onSelect(newExercise);
+      onClose();
+
+      Alert.alert('追加完了', `${newExercise.name} を選択しました`);
+    } catch (error) {
+      console.error('Failed to add exercise:', error);
+      Alert.alert('エラー', '種目の追加に失敗しました');
+    }
   };
 
   const renderExerciseCard = (exercise: Exercise) => {
@@ -215,13 +229,36 @@ export function ExerciseSelectModal({
 
                 {presetPreview ? (
                   <View style={styles.previewCard}>
-                    <Text style={styles.previewTitle}>推定カテゴリ</Text>
-                    <Text style={styles.previewMain}>{getExerciseCategoryLabel(presetPreview.category)}</Text>
-                    <Text style={styles.previewMeta}>
-                      {MODE_LABELS[presetPreview.rep_detection_mode ?? 'standard']} / 最小ROM {formatLoadKg(presetPreview.min_rom_threshold ?? 10)}cm
-                    </Text>
+                    <Text style={styles.previewTitle}>推定設定</Text>
+                    <View style={styles.previewRow}>
+                      <Text style={styles.previewLabel}>カテゴリ:</Text>
+                      <Text style={styles.previewMain}>{getExerciseCategoryLabel(presetPreview.category)}</Text>
+                    </View>
+                    <View style={styles.previewRow}>
+                      <Text style={styles.previewLabel}>検出モード:</Text>
+                      <Text style={styles.previewMeta}>{MODE_LABELS[presetPreview.rep_detection_mode ?? 'standard']}</Text>
+                    </View>
+                    <View style={styles.previewRow}>
+                      <Text style={styles.previewLabel}>最小ROM:</Text>
+                      <Text style={styles.previewMeta}>{formatLoadKg(presetPreview.min_rom_threshold ?? 10)}cm</Text>
+                    </View>
+                    <View style={styles.previewRow}>
+                      <Text style={styles.previewLabel}>ROM範囲:</Text>
+                      <Text style={styles.previewMeta}>
+                        {formatLoadKg(presetPreview.rom_range_min_cm)}-{formatLoadKg(presetPreview.rom_range_max_cm)}cm
+                      </Text>
+                    </View>
+                    {presetPreview.has_lvp && (
+                      <View style={styles.lvpIndicator}>
+                        <Text style={styles.lvpIndicatorText}>LVP対応</Text>
+                      </View>
+                    )}
                   </View>
-                ) : null}
+                ) : (
+                  <View style={styles.previewCard}>
+                    <Text style={styles.previewPlaceholder}>種目名を入力すると推定設定が表示されます</Text>
+                  </View>
+                )}
 
                 <View style={styles.addFormButtons}>
                   <TouchableOpacity
@@ -544,7 +581,18 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '800',
     letterSpacing: 1,
-    marginBottom: 6,
+    marginBottom: 10,
+  },
+  previewRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  previewLabel: {
+    color: GarageTheme.textMuted,
+    fontSize: 13,
+    fontWeight: '600',
   },
   previewMain: {
     color: GarageTheme.textStrong,
@@ -553,8 +601,31 @@ const styles = StyleSheet.create({
   },
   previewMeta: {
     color: GarageTheme.accentSoft,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  previewPlaceholder: {
+    color: GarageTheme.textMuted,
+    fontSize: 13,
+    fontStyle: 'italic',
+    textAlign: 'center',
+    padding: 8,
+  },
+  lvpIndicator: {
+    marginTop: 8,
+    backgroundColor: '#1d3020',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: GarageTheme.success,
+  },
+  lvpIndicatorText: {
+    color: GarageTheme.success,
     fontSize: 12,
-    marginTop: 6,
+    fontWeight: '800',
+    letterSpacing: 0.5,
   },
   addFormButtons: {
     flexDirection: 'row',
