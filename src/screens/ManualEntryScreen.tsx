@@ -53,6 +53,36 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({ navigation }) => 
   const parsedLoadKg = loadKg ? parseFloat(loadKg) : null;
   const parsedReps = reps ? parseInt(reps, 10) : null;
 
+  // 種目別プリセット重量
+  const exercisePresets: Record<string, number[]> = {
+    'ベンチプレス': [40, 60, 80, 100, 120, 140],
+    'スクワット': [60, 80, 100, 120, 140, 160, 180, 200],
+    'デッドリフト': [60, 80, 100, 120, 140, 160, 180, 200, 220],
+    'ショルダープレス': [20, 30, 40, 50, 60, 70, 80],
+    'バーベルロウ': [40, 50, 60, 70, 80, 90, 100],
+    'チンニング': [0, 10, 20, 30, 40],
+    'ディップス': [0, 10, 20, 30, 40],
+  };
+
+  const currentPresets = exercisePresets[lift] || exercisePresets['ベンチプレス'];
+
+  // 重量調整関数
+  const adjustLoad = (amount: number) => {
+    const current = parsedLoadKg || 0;
+    const newLoad = Math.max(0, current + amount);
+    setLoadKg(newLoad % 1 === 0 ? newLoad.toString() : newLoad.toFixed(1));
+  };
+
+  // プリセット選択
+  const selectPreset = (weight: number) => {
+    setLoadKg(weight.toString());
+  };
+
+  // 直近の同種目の重量をQuick選択
+  const selectRecentWeight = (weight: number) => {
+    setLoadKg(weight.toString());
+  };
+
   const sessionSummary = useMemo(() => {
     const totalVolume = savedSets.reduce((sum, set) => sum + set.load_kg * set.reps, 0);
     return {
@@ -306,14 +336,85 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({ navigation }) => 
         </View>
 
         <Text style={styles.label}>負荷 (kg)</Text>
-        <TextInput
-          style={styles.input}
-          value={loadKg}
-          onChangeText={setLoadKg}
-          keyboardType="decimal-pad"
-          placeholder="80.0"
-          placeholderTextColor="#666"
-        />
+        <View style={styles.weightInputContainer}>
+          <TouchableOpacity
+            style={styles.adjustButton}
+            onPress={() => adjustLoad(-0.5)}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Text style={styles.adjustButtonText}>−</Text>
+          </TouchableOpacity>
+
+          <TextInput
+            style={[styles.input, styles.weightInput]}
+            value={loadKg}
+            onChangeText={setLoadKg}
+            keyboardType="decimal-pad"
+            placeholder="80.0"
+            placeholderTextColor="#666"
+          />
+
+          <TouchableOpacity
+            style={styles.adjustButton}
+            onPress={() => adjustLoad(0.5)}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Text style={styles.adjustButtonText}>+</Text>
+          </TouchableOpacity>
+        </View>
+
+        {currentPresets.length > 0 && (
+          <>
+            <Text style={styles.label}>プリセット重量 ({lift})</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.presetScrollView}>
+              <View style={styles.presetContainer}>
+                {currentPresets.map((weight) => (
+                  <TouchableOpacity
+                    key={weight}
+                    style={[
+                      styles.presetButton,
+                      parsedLoadKg === weight && styles.presetButtonActive,
+                    ]}
+                    onPress={() => selectPreset(weight)}
+                  >
+                    <Text style={[
+                      styles.presetButtonText,
+                      parsedLoadKg === weight && styles.presetButtonTextActive,
+                    ]}>
+                      {weight}kg
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
+          </>
+        )}
+
+        {recentLiftSets.length > 0 && (
+          <>
+            <Text style={styles.label}>直近の重量から選択</Text>
+            <View style={styles.recentWeightContainer}>
+              {recentLiftSets.slice(0, 3).map((set) => (
+                <TouchableOpacity
+                  key={`${set.session_id}_${set.set_index}`}
+                  style={[
+                    styles.recentWeightButton,
+                    parsedLoadKg === set.load_kg && styles.recentWeightButtonActive,
+                  ]}
+                  onPress={() => selectRecentWeight(set.load_kg)}
+                >
+                  <Text style={[
+                    styles.recentWeightButtonText,
+                    parsedLoadKg === set.load_kg && styles.recentWeightButtonTextActive,
+                  ]}>
+                    {set.load_kg}kg
+                  </Text>
+                  <Text style={styles.recentWeightButtonSub}>×{set.reps}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </>
+        )}
 
         <Text style={styles.label}>レップ数</Text>
         <TextInput
@@ -677,6 +778,88 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#4CAF50',
     fontWeight: '600',
+  },
+  weightInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  adjustButton: {
+    backgroundColor: '#2a2a2a',
+    width: 48,
+    height: 48,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#444',
+  },
+  adjustButtonText: {
+    color: '#fff',
+    fontSize: 24,
+    fontWeight: '600',
+  },
+  weightInput: {
+    flex: 1,
+    textAlign: 'center',
+  },
+  presetScrollView: {
+    marginBottom: 8,
+  },
+  presetContainer: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  presetButton: {
+    backgroundColor: '#2a2a2a',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#444',
+  },
+  presetButtonActive: {
+    backgroundColor: '#2196F3',
+    borderColor: '#2196F3',
+  },
+  presetButtonText: {
+    color: '#999',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  presetButtonTextActive: {
+    color: '#fff',
+  },
+  recentWeightContainer: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 8,
+  },
+  recentWeightButton: {
+    backgroundColor: '#2a2a2a',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#444',
+    alignItems: 'center',
+  },
+  recentWeightButtonActive: {
+    backgroundColor: '#FF9800',
+    borderColor: '#FF9800',
+  },
+  recentWeightButtonText: {
+    color: '#999',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  recentWeightButtonTextActive: {
+    color: '#fff',
+  },
+  recentWeightButtonSub: {
+    color: '#666',
+    fontSize: 12,
   },
 });
 
