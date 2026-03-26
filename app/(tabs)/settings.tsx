@@ -11,6 +11,7 @@ import {
   View,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useRouter } from 'expo-router';
 
 import {
   getResolvedApiHealth,
@@ -73,6 +74,7 @@ const MODE_LABELS: Record<NonNullable<Exercise['rep_detection_mode']>, string> =
 };
 
 export default function SettingsTab() {
+  const router = useRouter();
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
   const [apiBaseUrlInput, setApiBaseUrlInput] = useState('');
   const [apiStatusText, setApiStatusText] = useState('未確認');
@@ -462,7 +464,7 @@ export default function SettingsTab() {
 
         <View style={styles.masterActionsRow}>
           <TouchableOpacity
-            style={[styles.actionButton, styles.syncButton]}
+            style={[styles.actionButton, styles.actionSyncButton]}
             onPress={handleSyncExerciseMaster}
             disabled={syncingExerciseMaster}
           >
@@ -895,7 +897,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1.5,
   },
-  syncButton: {
+  actionSyncButton: {
     backgroundColor: '#4b2416',
     borderColor: GarageTheme.accent,
   },

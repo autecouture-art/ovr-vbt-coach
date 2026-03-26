@@ -13,6 +13,7 @@ import {
   ScrollView,
   TextInput,
   Alert,
+  Keyboard,
 } from 'react-native';
 import ExerciseService from '@/src/services/ExerciseService';
 import { GarageTheme } from '@/src/constants/garageTheme';
@@ -205,7 +206,10 @@ export function ExerciseSelectModal({
               <TouchableOpacity
                 key={group.id}
                 style={[styles.categoryChip, selectedGroup === group.id && styles.categoryChipActive]}
-                onPress={() => setSelectedGroup(group.id)}
+                onPress={() => {
+                  Keyboard.dismiss();
+                  setSelectedGroup(group.id);
+                }}
               >
                 <Text style={[styles.categoryChipText, selectedGroup === group.id && styles.categoryChipTextActive]}>
                   {group.label}
@@ -214,7 +218,12 @@ export function ExerciseSelectModal({
             ))}
           </ScrollView>
 
-          <ScrollView style={styles.exerciseList} contentContainerStyle={styles.exerciseListContent}>
+          <ScrollView
+            style={styles.exerciseList}
+            contentContainerStyle={styles.exerciseListContent}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+          >
             {isAddMode ? (
               <View style={styles.addForm}>
                 <Text style={styles.addFormTitle}>新しい種目を追加</Text>
@@ -245,7 +254,7 @@ export function ExerciseSelectModal({
                     <View style={styles.previewRow}>
                       <Text style={styles.previewLabel}>ROM範囲:</Text>
                       <Text style={styles.previewMeta}>
-                        {formatLoadKg(presetPreview.rom_range_min_cm)}-{formatLoadKg(presetPreview.rom_range_max_cm)}cm
+                        {formatLoadKg(presetPreview.rom_range_min_cm ?? 0)}-{formatLoadKg(presetPreview.rom_range_max_cm ?? 0)}cm
                       </Text>
                     </View>
                     {presetPreview.has_lvp && (
