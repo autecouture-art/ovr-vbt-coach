@@ -155,9 +155,19 @@ export const useSessionLogic = (onPRDetected?: PRCallback) => {
       suggestedLoad = suggestion.suggestedLoad;
     }
 
+    const estimatedConfidence = e1rm
+      ? validReps.length >= 5
+        ? 'high'
+        : validReps.length >= 3
+          ? 'medium'
+          : 'low'
+      : undefined;
+
     updateVBTIntelligence({
       cnsBattery,
-      suggestedLoad
+      suggestedLoad,
+      estimated1RM: e1rm ?? undefined,
+      estimated1RM_confidence: estimatedConfidence,
     });
 
     // DBに保存 (Async)

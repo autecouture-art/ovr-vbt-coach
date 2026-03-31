@@ -14,7 +14,8 @@ class AudioService {
     try {
       await Audio.setAudioModeAsync({
         playsInSilentModeIOS: true,
-        staysActiveInBackground: true,
+        staysActiveInBackground: false,
+        allowsRecordingIOS: false,
         shouldDuckAndroid: true,
       });
       console.log('Audio Service initialized');

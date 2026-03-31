@@ -220,7 +220,10 @@ export function ExerciseSelectModal({
 
           <ScrollView
             style={styles.exerciseList}
-            contentContainerStyle={styles.exerciseListContent}
+            contentContainerStyle={[
+              styles.exerciseListContent,
+              !isAddMode && filteredExercises.length === 0 && styles.exerciseListEmpty,
+            ]}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
           >
@@ -325,7 +328,7 @@ const styles = StyleSheet.create({
     backgroundColor: GarageTheme.background,
     borderTopLeftRadius: 26,
     borderTopRightRadius: 26,
-    maxHeight: '86%',
+    height: '86%',
     borderTopWidth: 1,
     borderColor: GarageTheme.borderStrong,
   },
@@ -381,16 +384,20 @@ const styles = StyleSheet.create({
   },
   categoryScroll: {
     paddingHorizontal: 18,
-    paddingBottom: 12,
+    paddingBottom: 8,
+    maxHeight: 44,
   },
   categoryChip: {
-    paddingHorizontal: 18,
-    paddingVertical: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    minHeight: 32,
     borderRadius: 999,
     backgroundColor: GarageTheme.chip,
-    marginRight: 10,
-    borderWidth: 1.5,
+    marginRight: 8,
+    borderWidth: 1.2,
     borderColor: GarageTheme.borderStrong,
+    alignItems: 'center',
+    justifyContent: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.3,
@@ -407,7 +414,7 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   categoryChipText: {
-    fontSize: 14,
+    fontSize: 11,
     color: GarageTheme.textMuted,
     fontWeight: '700',
     letterSpacing: 0.5,
@@ -423,6 +430,10 @@ const styles = StyleSheet.create({
     padding: 18,
     paddingTop: 10,
     paddingBottom: 28,
+  },
+  exerciseListEmpty: {
+    flexGrow: 1,
+    justifyContent: 'center',
   },
   groupSection: {
     marginBottom: 18,

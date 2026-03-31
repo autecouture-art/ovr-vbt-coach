@@ -16,7 +16,7 @@ import DatabaseService from '@/src/services/DatabaseService';
 import { getApiBaseUrl, getResolvedApiHealth, type ApiHealthPayload } from '@/constants/oauth';
 import { useTrainingStore } from '@/src/store/trainingStore';
 import { trpc } from '@/lib/trpc';
-import { getLocalLLMHealth, invokeDirectCoachChat } from '@/src/services/LocalLLMService';
+import { getLocalLLMHealth, invokeDirectCoachChat, verifyLocalLLMConnection } from '@/src/services/LocalLLMService';
 import { firstRouteParam, numberRouteParam } from '@/src/utils/routeParams';
 import type { SessionData, SetData } from '@/src/types/index';
 
@@ -126,8 +126,15 @@ export default function AICoachChatScreen() {
     if (localHealth?.hasApiKey) {
       setResolvedApiBaseUrl(localHealth.apiUrl);
       setApiHealth(null);
-      setApiStatus('ok');
-      setApiStatusDetail(`ローカル直接接続 / ${localHealth.model} (${localHealth.apiUrl})`);
+
+      const verifyResult = await verifyLocalLLMConnection().catch(() => null);
+      if (verifyResult?.ok) {
+        setApiStatus('ok');
+        setApiStatusDetail(`${verifyResult.detail} (${localHealth.apiUrl})`);
+      } else {
+        setApiStatus('error');
+        setApiStatusDetail(`${verifyResult?.detail ?? 'ローカル直接接続に失敗しました。'} (${localHealth.apiUrl})`);
+      }
       return;
     }
 
@@ -284,10 +291,13 @@ export default function AICoachChatScreen() {
 
     try {
       const context = await buildTrainingContext();
-      const history = messages.slice(-10).map((message) => ({
-        role: message.role,
-        text: message.text,
-      }));
+      const history = messages
+        .filter((message) => message.id !== 'welcome')
+        .slice(-12)
+        .map((message) => ({
+          role: message.role,
+          text: message.text,
+        }));
       const localHealth = await getLocalLLMHealth().catch(() => null);
 
       if (localHealth?.hasApiKey) {
@@ -306,17 +316,20 @@ export default function AICoachChatScreen() {
         addCoachMessage(result.text);
       }
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
       const fallback = await generateFallback(msgText);
       const reason =
-        error instanceof Error && error.message.includes('ZAI_API_KEY is invalid')
+        errorMessage.includes('ZAI_API_KEY is invalid')
           ? 'ZAI APIキーが無効です。'
-          : error instanceof Error && error.message.includes('ZAI_API_BALANCE_EXHAUSTED')
+          : errorMessage.includes('ZAI_API_BALANCE_EXHAUSTED')
             ? 'ZAI API の残高またはパッケージが不足しています。'
-            : error instanceof Error && error.message.includes('ZAI_API_KEY')
+            : errorMessage.includes('ZAI_API_KEY')
               ? 'ZAI APIキーが未設定です。'
-              : error instanceof Error && error.message.includes('fetch')
+              : errorMessage.includes('fetch')
                 ? `接続先に到達できません。現在の接続先: ${resolvedApiBaseUrl}`
-                : 'GLM接続に失敗しました。';
+                : `GLM接続に失敗しました。(${errorMessage.slice(0, 120)})`;
+
+      void checkApiHealth();
       addCoachMessage(`${reason}\n\n${fallback}`);
     } finally {
       setLoading(false);

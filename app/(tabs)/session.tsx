@@ -4,7 +4,7 @@
  * UI is now a "Dumb Component" driven by global state
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -108,13 +108,29 @@ export default function SessionScreen() {
   // Fetch all reps on mount or when returning
   const [sessionAllReps, setSessionAllReps] = useState<any[]>([]);
 
-  useEffect(() => {
-    if (currentSession?.session_id) {
-      DatabaseService.getRepsForSession(currentSession.session_id).then(setSessionAllReps);
+  const refreshSessionAllReps = useCallback(async () => {
+    if (!currentSession?.session_id) {
+      setSessionAllReps([]);
+      return;
     }
-  }, [currentSession?.session_id, setHistory]);
+
+    const reps = await DatabaseService.getRepsForSession(currentSession.session_id);
+    setSessionAllReps(reps);
+  }, [currentSession?.session_id]);
+
+  useEffect(() => {
+    void refreshSessionAllReps();
+
+    // セット保存直後はDB書き込みが少し遅延するため、短い再読込を入れて詳細を即時参照可能にする
+    const timerId = setTimeout(() => {
+      void refreshSessionAllReps();
+    }, 450);
+
+    return () => clearTimeout(timerId);
+  }, [refreshSessionAllReps, setHistory.length, currentSetIndex]);
 
   const [inputTargetWeight, setInputTargetWeight] = useState('');
+  const [inputLoad, setInputLoad] = useState(formatLoadKg(currentLoad));
 
 
   useEffect(() => {
@@ -124,6 +140,10 @@ export default function SessionScreen() {
       setInputTargetWeight('');
     }
   }, [targetWeight]);
+
+  useEffect(() => {
+    setInputLoad(formatLoadKg(currentLoad));
+  }, [currentLoad]);
 
   const handleTargetWeightChange = (text: string) => {
     setInputTargetWeight(text);
@@ -137,8 +157,25 @@ export default function SessionScreen() {
     updateLoad(newLoad);
   };
 
-  const openRepDetail = (setIndex: number) => {
+  const commitLoadInput = (text: string) => {
+    const normalized = text.trim().replace(',', '.');
+    if (!normalized) {
+      setInputLoad(formatLoadKg(currentLoad));
+      return;
+    }
+
+    const val = Number.parseFloat(normalized);
+    if (Number.isNaN(val)) {
+      setInputLoad(formatLoadKg(currentLoad));
+      return;
+    }
+
+    updateLoad(roundToHalfKg(Math.max(0, val)));
+  };
+
+  const openRepDetail = async (setIndex: number) => {
     setSelectedSetIndex(setIndex);
+    await refreshSessionAllReps();
     setRepDetailVisible(true);
   };
 
@@ -212,13 +249,17 @@ export default function SessionScreen() {
     }
   };
 
-  const handleFinishSet = () => {
+  const handleFinishSet = async () => {
     if (!isSessionActive) {
       Alert.alert('セッション未開始', 'まずセッションを開始してください。');
       return;
     }
-    finishSet();
+
+    await finishSet();
+    await refreshSessionAllReps();
   };
+
+  const isMeasuring = isSessionActive && !isPaused;
 
   // セッション終了 & DBへの集計保存
   const handleFinishSession = async () => {
@@ -296,7 +337,8 @@ export default function SessionScreen() {
   };
 
   return (
-    <ScrollView style={styles.container}>
+    <View style={[styles.screenFrame, isMeasuring && styles.screenFrameRecording]}>
+      <ScrollView style={styles.container}>
       <View style={[styles.header, { paddingTop: (insets.top || 0) + 12 }]}>
         <TouchableOpacity onPress={() => (navigationState.canGoBack() ? router.back() : router.replace('/(tabs)'))} style={styles.backButton}>
           <Text style={styles.backButtonText}>← 戻る</Text>
@@ -390,7 +432,7 @@ export default function SessionScreen() {
       ) : (
         <View style={styles.sessionActiveBanner}>
           <Text style={styles.sessionActiveText}>
-            SET {currentSetIndex} RECORDING
+            {isPaused ? `SET ${Math.max(1, currentSetIndex - 1)} PAUSED` : `SET ${currentSetIndex} RECORDING`}
           </Text>
           <TouchableOpacity
             style={[styles.pauseBtn, isPaused && styles.pausedBtnActive]}
@@ -577,6 +619,20 @@ export default function SessionScreen() {
               </TouchableOpacity>
             </View>
           </View>
+          <View style={styles.loadInputRow}>
+            <TextInput
+              style={styles.loadInput}
+              value={inputLoad}
+              onChangeText={setInputLoad}
+              onEndEditing={(event) => commitLoadInput(event.nativeEvent.text)}
+              onBlur={() => commitLoadInput(inputLoad)}
+              keyboardType="decimal-pad"
+              placeholder="重量を入力"
+              placeholderTextColor={GarageTheme.textSubtle}
+              returnKeyType="done"
+            />
+            <Text style={styles.unitText}>kg</Text>
+          </View>
         </View>
       </View>
 
@@ -670,7 +726,7 @@ export default function SessionScreen() {
           {setHistory.map((set, idx) => {
             const zone = set.avg_velocity ? AICoachService.getZone(set.avg_velocity) : null;
             return (
-              <TouchableOpacity key={idx} style={styles.setCard} onPress={() => openRepDetail(set.set_index)}>
+              <TouchableOpacity key={idx} style={styles.setCard} onPress={() => { void openRepDetail(set.set_index); }}>
                 <View style={styles.setHeader}>
                   <Text style={styles.setNumberText}>Set {set.set_index}</Text>
                   <Text style={styles.setLoad}>{formatLoadKg(set.load_kg)} kg × {set.reps}</Text>
@@ -744,7 +800,8 @@ export default function SessionScreen() {
         />
       )}
 
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 
@@ -782,6 +839,18 @@ function RestTimer({ startTime, hr, peakHr }: { startTime: number, hr: number | 
 }
 
 const styles = StyleSheet.create({
+  screenFrame: {
+    flex: 1,
+    backgroundColor: GarageTheme.background,
+  },
+  screenFrameRecording: {
+    borderWidth: 2,
+    borderColor: '#ff3b30',
+    shadowColor: '#ff3b30',
+    shadowOpacity: 0.5,
+    shadowRadius: 6,
+    elevation: 5,
+  },
   container: {
     flex: 1,
     backgroundColor: GarageTheme.background,
@@ -954,6 +1023,26 @@ const styles = StyleSheet.create({
     color: GarageTheme.success,
     fontSize: 32,
     fontWeight: 'bold',
+  },
+  loadInputRow: {
+    marginTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  loadInput: {
+    minWidth: 120,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: GarageTheme.border,
+    backgroundColor: GarageTheme.background,
+    color: GarageTheme.textStrong,
+    textAlign: 'center',
+    fontSize: 18,
+    fontWeight: '700',
   },
   dataCard: {
     margin: 16,
@@ -1307,5 +1396,3 @@ const styles = StyleSheet.create({
   setHR: { fontSize: 13, color: GarageTheme.danger, marginTop: 2, fontWeight: 'bold' },
   setZoneTag: { fontSize: 11, fontWeight: '800', borderWidth: 1, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3, overflow: 'hidden' },
 });
-
-
