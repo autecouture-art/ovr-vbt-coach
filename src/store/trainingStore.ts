@@ -3,7 +3,7 @@
  * Manages VBT training session state, ensuring data persistence across screens.
  */
 
-import { create } from 'zustand';
+import { create } from "zustand";
 import type {
   TrainingSession,
   SessionData,
@@ -14,14 +14,15 @@ import type {
   PRRecord,
   AppSettings,
   RepVeloData,
-} from '../types/index';
+} from "../types/index";
+import { DEFAULT_APP_SETTINGS } from "../services/AppSettingsService";
 
 interface TrainingState {
   // Session State
   currentSession: TrainingSession | null;
   isSessionActive: boolean;
   isPaused: boolean;
-  pauseReason?: 'manual' | 'rest';
+  pauseReason?: "manual" | "rest";
   sessionStartTime: number | null; // ms
   sessionStartTimeStamp: string | null; // ISO
 
@@ -46,7 +47,7 @@ interface TrainingState {
   // Latest VBT Intelligence State
   cnsBattery: number; // 0-100%
   estimated1RM: number | null; // 本日の予想 1RM
-  estimated1RM_confidence: 'high' | 'medium' | 'low' | null; // 予測1RMの信頼度
+  estimated1RM_confidence: "high" | "medium" | "low" | null; // 予測1RMの信頼度
   suggestedLoad: number | null; // 適応型エンジンによる推奨重量
   proposedMVT: number | null; // AIによるMVT更新提案
 
@@ -68,10 +69,19 @@ interface TrainingState {
   resetSetData: () => void;
   removeRepFromHistory: (repId: string) => void; // Changed from repIndex to repId
   markRepFailedInHistory: (repId: string, isFailed: boolean) => void; // Changed from repIndex to repId
-  updateSetHistory: (setIndex: number, setData: Partial<SetData>) => void;
+  updateSetHistory: (
+    setIndex: number,
+    lift: string,
+    setData: Partial<SetData>,
+  ) => void;
 
   // New Actions for VBT Intelligence
-  updateVBTIntelligence: (data: { cnsBattery?: number; estimated1RM?: number; estimated1RM_confidence?: 'high' | 'medium' | 'low'; suggestedLoad?: number }) => void;
+  updateVBTIntelligence: (data: {
+    cnsBattery?: number;
+    estimated1RM?: number;
+    estimated1RM_confidence?: "high" | "medium" | "low";
+    suggestedLoad?: number;
+  }) => void;
   setProposedMVT: (mvt: number | null) => void;
 
   // New Actions for HR & Timer
@@ -79,7 +89,7 @@ interface TrainingState {
   startSet: () => void;
   startRest: () => void;
   resumeSet: () => void; // 休憩再開専用（履歴を保持）
-  setPaused: (paused: boolean, reason?: 'manual' | 'rest') => void;
+  setPaused: (paused: boolean, reason?: "manual" | "rest") => void;
 }
 
 export const useTrainingStore = create<TrainingState>((set, get) => ({
@@ -115,13 +125,8 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
 
   currentExercise: null,
   settings: {
-    use_metric: true,
-    velocity_loss_threshold: 20, // Default 20%
-    enable_audio_feedback: true,
-    enable_voice_commands: false,
-    enable_video_recording: false,
-    target_training_phase: 'strength',
-    audio_volume: 1.0, // Default 100%
+    ...DEFAULT_APP_SETTINGS,
+    target_training_phase: "strength",
   },
 
   // Actions
@@ -186,7 +191,9 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
     set((state) => ({
       repHistory: [...state.repHistory, rep],
       // 心拍数があれば記録ポイントに追加
-      setHRPoints: state.currentHeartRate ? [...state.setHRPoints, state.currentHeartRate] : state.setHRPoints,
+      setHRPoints: state.currentHeartRate
+        ? [...state.setHRPoints, state.currentHeartRate]
+        : state.setHRPoints,
     }));
   },
 
@@ -203,15 +210,23 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
 
   removeRepFromHistory: (repId: string) => {
     set((state) => ({
-      repHistory: state.repHistory.map(rep => {
+      repHistory: state.repHistory.map((rep) => {
         // Try exact ID match first (UUID or stringified number)
         if (rep.id === repId) {
-          return { ...rep, is_excluded: true, exclusion_reason: 'user_removed' };
+          return {
+            ...rep,
+            is_excluded: true,
+            exclusion_reason: "user_removed",
+          };
         }
         // Fallback: check if repId is a numeric string and match by rep_index for backward compatibility
         const numericId = parseInt(repId, 10);
         if (!isNaN(numericId) && rep.rep_index === numericId) {
-          return { ...rep, is_excluded: true, exclusion_reason: 'user_removed' };
+          return {
+            ...rep,
+            is_excluded: true,
+            exclusion_reason: "user_removed",
+          };
         }
         return rep;
       }),
@@ -220,7 +235,7 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
 
   markRepFailedInHistory: (repId: string, isFailed: boolean) => {
     set((state) => ({
-      repHistory: state.repHistory.map(rep => {
+      repHistory: state.repHistory.map((rep) => {
         // Try exact ID match first (UUID or stringified number)
         if (rep.id === repId) {
           return { ...rep, is_failed: isFailed };
@@ -235,10 +250,16 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
     }));
   },
 
-  updateSetHistory: (setIndex: number, setData: Partial<SetData>) => {
+  updateSetHistory: (
+    setIndex: number,
+    lift: string,
+    setData: Partial<SetData>,
+  ) => {
     set((state) => ({
-      setHistory: state.setHistory.map(set =>
-        set.set_index === setIndex ? { ...set, ...setData } : set
+      setHistory: state.setHistory.map((setItem) =>
+        setItem.set_index === setIndex && setItem.lift === lift
+          ? { ...setItem, ...setData }
+          : setItem,
       ),
     }));
   },
@@ -252,12 +273,16 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
   },
 
   setCurrentExercise: (exercise: Exercise) => {
-    set({
-      currentExercise: exercise,
-      currentLift: exercise.name,
-      // Reset set counter if switching exercises? Maybe optional.
-      // For now, keep session flow simple.
-      setStartTimeStamp: new Date().toISOString(),
+    set((state) => {
+      const nextSetIndex =
+        state.setHistory.filter((setItem) => setItem.lift === exercise.name)
+          .length + 1;
+      return {
+        currentExercise: exercise,
+        currentLift: exercise.name,
+        currentSetIndex: nextSetIndex,
+        setStartTimeStamp: new Date().toISOString(),
+      };
     });
   },
 
@@ -265,7 +290,8 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
     set((state) => ({
       cnsBattery: data.cnsBattery ?? state.cnsBattery,
       estimated1RM: data.estimated1RM ?? state.estimated1RM,
-      estimated1RM_confidence: data.estimated1RM_confidence ?? state.estimated1RM_confidence,
+      estimated1RM_confidence:
+        data.estimated1RM_confidence ?? state.estimated1RM_confidence,
       suggestedLoad: data.suggestedLoad ?? state.suggestedLoad,
     }));
   },
@@ -305,11 +331,11 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
     set({
       restStartTime: Date.now(),
       isPaused: true, // 休憩開始時に一時停止
-      pauseReason: 'rest',
+      pauseReason: "rest",
     });
   },
 
-  setPaused: (paused: boolean, reason?: 'manual' | 'rest') => {
+  setPaused: (paused: boolean, reason?: "manual" | "rest") => {
     set({ isPaused: paused, pauseReason: reason });
   },
 
@@ -328,5 +354,5 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
     set((state) => ({
       settings: { ...state.settings, ...newSettings },
     }));
-  }
+  },
 }));

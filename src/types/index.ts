@@ -6,8 +6,8 @@
 // Core VBT Types
 // ========================================
 
-export type DeviceType = 'VBT' | 'manual' | 'OVR Velocity';
-export type SetType = 'normal' | 'amrap' | 'drop' | 'superset_A' | 'superset_B';
+export type DeviceType = "VBT" | "manual" | "OVR Velocity";
+export type SetType = "normal" | "amrap" | "drop" | "superset_A" | "superset_B";
 
 export interface RepData {
   id?: string; // Unique identifier for the rep (UUID)
@@ -54,6 +54,7 @@ export interface SetData {
   avg_hr?: number; // 平均心拍数
   peak_hr?: number; // 最大心拍数
   notes?: string;
+  avg_power_w?: number | null;
 }
 
 export interface SessionData {
@@ -87,7 +88,7 @@ export interface LVPData {
 }
 
 export interface VelocityZone {
-  name: 'power' | 'strength_speed' | 'hypertrophy' | 'strength';
+  name: "power" | "strength_speed" | "hypertrophy" | "strength";
   min_velocity: number;
   max_velocity: number;
   load_range: string;
@@ -110,8 +111,8 @@ export interface RepVeloData {
   peak_velocity: number;
   rom_cm: number;
   rep_duration_ms: number;
-  mean_power_w?: number;   // 平均パワー (W)
-  peak_power_w?: number;   // ピークパワー (W)
+  mean_power_w?: number; // 平均パワー (W)
+  peak_power_w?: number; // ピークパワー (W)
   timestamp: number;
   // Raw data for debugging
   raw_peak_v?: number;
@@ -129,37 +130,38 @@ export interface Exercise {
   id: string;
   name: string;
   category:
-    | 'squat'
-    | 'bench'
-    | 'deadlift'
-    | 'press'
-    | 'pull'
-    | 'row'
-    | 'vertical_pull'
-    | 'single_leg'
-    | 'quad'
-    | 'hamstring'
-    | 'adductor'
-    | 'glute'
-    | 'triceps'
-    | 'biceps'
-    | 'core'
-    | 'accessory';
+    | "squat"
+    | "bench"
+    | "deadlift"
+    | "press"
+    | "pull"
+    | "row"
+    | "vertical_pull"
+    | "single_leg"
+    | "quad"
+    | "hamstring"
+    | "adductor"
+    | "glute"
+    | "triceps"
+    | "biceps"
+    | "core"
+    | "accessory";
   subcategory?: string;
   has_lvp: boolean;
   machine_weight_steps?: number[];
   min_rom_threshold?: number; // 最小ROM (cm) - デフォルト 10
-  rep_detection_mode?: 'standard' | 'tempo' | 'pause' | 'short_rom';
+  rep_detection_mode?: "standard" | "tempo" | "pause" | "short_rom";
   target_pause_ms?: number; // 目標静止時間 (ms)
   rom_range_min_cm?: number;
   rom_range_max_cm?: number;
   rom_data_points?: number;
   description?: string;
   mvt?: number; // Minimum Velocity Threshold (e.g., 0.15 for bench, 0.3 for squat)
+  ignore_first_rep_as_setup?: boolean;
 }
 
 export interface TrainingSession {
-  session_id: string;  // DBとの整合性のためのセッションID
+  session_id: string; // DBとの整合性のためのセッションID
   id: string;
   date: string;
   exercises: Exercise[];
@@ -176,7 +178,14 @@ export interface TrainingSession {
 // PR (Personal Record) Types
 // ========================================
 
-export type PRType = 'e1rm' | 'speed' | 'set' | 'volume' | '1rm' | 'velocity' | 'power';
+export type PRType =
+  | "e1rm"
+  | "speed"
+  | "set"
+  | "volume"
+  | "1rm"
+  | "velocity"
+  | "power";
 
 export interface PRRecord {
   id: string;
@@ -196,7 +205,7 @@ export interface PRRecord {
 
 export interface ReadinessAssessment {
   delta_v: number; // Velocity difference from baseline
-  readiness_level: 'excellent' | 'good' | 'normal' | 'fatigued';
+  readiness_level: "excellent" | "good" | "normal" | "fatigued";
   load_adjustment: number; // Percentage adjustment
   recommendation: string;
 }
@@ -230,7 +239,7 @@ export interface AppState {
 
 export interface NotificationData {
   id: string;
-  type: 'pr' | 'warning' | 'info' | 'success';
+  type: "pr" | "warning" | "info" | "success";
   title: string;
   message: string;
   timestamp: string;
@@ -264,8 +273,12 @@ export interface AppSettings {
   enable_audio_feedback: boolean;
   enable_voice_commands: boolean;
   enable_video_recording: boolean;
-  target_training_phase: 'power' | 'hypertrophy' | 'strength' | 'peaking';
+  target_training_phase: "power" | "hypertrophy" | "strength" | "peaking";
   audio_volume: number; // 0.0 to 1.0
+  enable_warmup_recommendations: boolean;
+  enable_audio_rep_count: boolean;
+  enable_audio_velocity_readout: boolean;
+  enable_audio_faster_cue: boolean;
 }
 
 // ========================================
@@ -281,5 +294,3 @@ export interface DBSchema {
   exercises: Exercise[];
   settings: AppSettings;
 }
-
-

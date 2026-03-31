@@ -37,3 +37,24 @@ Remaining:
 - Commit or amend the current working tree after deciding whether to keep the GLM send fix as-is.
 - Bump native build number above 71 and keep all build-number sources aligned before the next TestFlight upload.
 - Verify AI Coach live send on device after the next build.
+
+
+## 2026-03-31 (Codex / GPT-5)
+Scope: Session history expansion, audio/warmup settings, direct-GLM send hardening.
+Actions:
+- Added app-level persisted settings defaults/service and hydrated them into the Zustand store so session logic reads the same settings the Settings tab edits.
+- Added settings toggles for warmup recommendations, rep count readout, velocity readout, and the "もっと速く" cue.
+- Added per-exercise `ignore_first_rep_as_setup` support in DB schema/service/catalog and exposed the toggle inside Settings > 種目マスタ.
+- Updated session logic to auto-exclude the first rep as `setup_reaction` when the exercise flag is enabled, and to scope set-history updates by `lift + set_index`.
+- Expanded session history cards with exercise name, derived average power, and a mini velocity graph.
+- Added post-hoc set weight editing from session history and propagated the new load to both `sets` and `reps`.
+- Updated rep detail modal to filter by `lift + set_index`, show setup/fail/excluded state, and allow marking a rep as setup.
+- Added HR display next to the rest timer when heart-rate data is available.
+- Hardened direct GLM chat send by compacting context/history and retrying once with a minimal prompt if the full payload fails.
+Results:
+- `pnpm -s tsc --noEmit` passed after these changes.
+- Session history and settings flow are materially improved and ready for device verification.
+Remaining:
+- AirPods heart-rate acquisition is still limited by the current `HealthService` stub; UI is ready but true HealthKit/AirPods ingestion is not yet implemented.
+- Direct GLM send should be re-tested on device to confirm the new minimal retry path resolves the remaining failure.
+- Build number still needs alignment/bump before the next TestFlight upload.

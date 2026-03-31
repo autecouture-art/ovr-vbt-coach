@@ -56,7 +56,9 @@ class ExerciseService {
     if (!this.initialized) {
       await this.initialize();
     }
-    return [...this.exercises].sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+    return [...this.exercises].sort((a, b) =>
+      a.name.localeCompare(b.name, "ja"),
+    );
   }
 
   async getExerciseById(id: string): Promise<Exercise | null> {
@@ -73,7 +75,7 @@ class ExerciseService {
     return this.exercises.filter((exercise) => exercise.category === category);
   }
 
-  async addExercise(exercise: Omit<Exercise, 'id'>): Promise<Exercise> {
+  async addExercise(exercise: Omit<Exercise, "id">): Promise<Exercise> {
     if (!this.initialized) {
       await this.initialize();
     }
@@ -83,12 +85,20 @@ class ExerciseService {
       ...preset,
       ...exercise,
       id: toStableExerciseId(exercise.name),
-      min_rom_threshold: exercise.min_rom_threshold ?? preset.min_rom_threshold ?? DEFAULT_MIN_ROM_THRESHOLD,
-      machine_weight_steps: exercise.machine_weight_steps ?? preset.machine_weight_steps,
+      min_rom_threshold:
+        exercise.min_rom_threshold ??
+        preset.min_rom_threshold ??
+        DEFAULT_MIN_ROM_THRESHOLD,
+      machine_weight_steps:
+        exercise.machine_weight_steps ?? preset.machine_weight_steps,
       rom_range_min_cm: exercise.rom_range_min_cm ?? preset.rom_range_min_cm,
       rom_range_max_cm: exercise.rom_range_max_cm ?? preset.rom_range_max_cm,
       rom_data_points: exercise.rom_data_points ?? 0,
       mvt: exercise.mvt ?? preset.mvt,
+      ignore_first_rep_as_setup:
+        exercise.ignore_first_rep_as_setup ??
+        preset.ignore_first_rep_as_setup ??
+        false,
     };
 
     await DatabaseService.saveExercise(newExercise);
@@ -96,7 +106,10 @@ class ExerciseService {
     return newExercise;
   }
 
-  async updateExercise(id: string, updates: Partial<Exercise>): Promise<boolean> {
+  async updateExercise(
+    id: string,
+    updates: Partial<Exercise>,
+  ): Promise<boolean> {
     if (!this.initialized) {
       await this.initialize();
     }
@@ -138,8 +151,9 @@ class ExerciseService {
       await this.initialize();
     }
 
-    const exercise = this.exercises.find((item) => item.name === lift)
-      || (await DatabaseService.getExercises()).find((item) => item.name === lift);
+    const exercise =
+      this.exercises.find((item) => item.name === lift) ||
+      (await DatabaseService.getExercises()).find((item) => item.name === lift);
     if (!exercise) return null;
 
     return this.applyRomInference(exercise, true);
@@ -148,29 +162,46 @@ class ExerciseService {
   private async syncCatalog(): Promise<void> {
     const current = await DatabaseService.getExercises();
     const byId = new Map(current.map((exercise) => [exercise.id, exercise]));
-    const byName = new Map(current.map((exercise) => [exercise.name, exercise]));
+    const byName = new Map(
+      current.map((exercise) => [exercise.name, exercise]),
+    );
 
     for (const defaultExercise of DEFAULT_EXERCISES) {
-      const existing = byId.get(defaultExercise.id) || byName.get(defaultExercise.name);
-      const merged = mergeExerciseWithPreset(existing ? { ...defaultExercise, ...existing } : defaultExercise);
+      const existing =
+        byId.get(defaultExercise.id) || byName.get(defaultExercise.name);
+      const merged = mergeExerciseWithPreset(
+        existing ? { ...defaultExercise, ...existing } : defaultExercise,
+      );
       const nextExercise: Exercise = existing
         ? {
             ...merged,
             id: existing.id,
-            name: existing.name === defaultExercise.name ? existing.name : defaultExercise.name,
+            name:
+              existing.name === defaultExercise.name
+                ? existing.name
+                : defaultExercise.name,
             has_lvp: existing.has_lvp ?? merged.has_lvp,
-            machine_weight_steps: existing.machine_weight_steps ?? merged.machine_weight_steps,
+            machine_weight_steps:
+              existing.machine_weight_steps ?? merged.machine_weight_steps,
             min_rom_threshold:
-              existing.min_rom_threshold && existing.min_rom_threshold !== DEFAULT_MIN_ROM_THRESHOLD
+              existing.min_rom_threshold &&
+              existing.min_rom_threshold !== DEFAULT_MIN_ROM_THRESHOLD
                 ? existing.min_rom_threshold
                 : merged.min_rom_threshold,
-            rep_detection_mode: existing.rep_detection_mode ?? merged.rep_detection_mode,
+            rep_detection_mode:
+              existing.rep_detection_mode ?? merged.rep_detection_mode,
             target_pause_ms: existing.target_pause_ms ?? merged.target_pause_ms,
             description: existing.description ?? merged.description,
             mvt: existing.mvt ?? merged.mvt,
+            ignore_first_rep_as_setup:
+              existing.ignore_first_rep_as_setup ??
+              merged.ignore_first_rep_as_setup ??
+              false,
             subcategory: existing.subcategory ?? merged.subcategory,
-            rom_range_min_cm: existing.rom_range_min_cm ?? merged.rom_range_min_cm,
-            rom_range_max_cm: existing.rom_range_max_cm ?? merged.rom_range_max_cm,
+            rom_range_min_cm:
+              existing.rom_range_min_cm ?? merged.rom_range_min_cm,
+            rom_range_max_cm:
+              existing.rom_range_max_cm ?? merged.rom_range_max_cm,
             rom_data_points: existing.rom_data_points ?? merged.rom_data_points,
           }
         : merged;
@@ -180,7 +211,10 @@ class ExerciseService {
     }
   }
 
-  private async applyRomInference(exercise: Exercise, refreshAfterSave: boolean): Promise<Exercise> {
+  private async applyRomInference(
+    exercise: Exercise,
+    refreshAfterSave: boolean,
+  ): Promise<Exercise> {
     const stats = await DatabaseService.getExerciseRomStats(exercise.name);
     if (!stats || stats.count < 4) {
       return exercise;

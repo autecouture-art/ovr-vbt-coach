@@ -3,9 +3,9 @@
  * Handles all database operations for VBT data
  */
 
-import Constants from 'expo-constants';
-import { VBTLogic } from './VBTLogic';
-import VBTCalculations from '../utils/VBTCalculations';
+import Constants from "expo-constants";
+import { VBTLogic } from "./VBTLogic";
+import VBTCalculations from "../utils/VBTCalculations";
 import type {
   SessionData,
   SetData,
@@ -13,9 +13,9 @@ import type {
   LVPData,
   PRRecord,
   Exercise,
-} from '../types/index';
+} from "../types/index";
 
-const DB_NAME = 'repvelo.db';
+const DB_NAME = "repvelo.db";
 
 // Lazy-load expo-sqlite to avoid native module initialization at import time.
 let SQLite: any = null;
@@ -25,9 +25,9 @@ function getSQLite(): any {
   if (!sqliteLoadAttempted) {
     sqliteLoadAttempted = true;
     try {
-      SQLite = require('expo-sqlite');
+      SQLite = require("expo-sqlite");
     } catch (e) {
-      console.warn('expo-sqlite not found or failed to load:', e);
+      console.warn("expo-sqlite not found or failed to load:", e);
     }
   }
   return SQLite;
@@ -35,7 +35,7 @@ function getSQLite(): any {
 
 class DatabaseService {
   private db: any = null;
-  private isExpoGo = Constants.appOwnership === 'expo';
+  private isExpoGo = Constants.appOwnership === "expo";
   private initializationPromise: Promise<void> | null = null;
 
   /**
@@ -49,16 +49,20 @@ class DatabaseService {
     }
 
     // Allow Development Builds (which technically have appOwnership='expo' but different env)
-    const isStandardExpoGo = Constants.appOwnership === 'expo' && Constants.executionEnvironment === 'storeClient';
+    const isStandardExpoGo =
+      Constants.appOwnership === "expo" &&
+      Constants.executionEnvironment === "storeClient";
 
     if (isStandardExpoGo) {
-      console.warn('Standard Expo Go detected: persistence is disabled. Data will not be saved.');
+      console.warn(
+        "Standard Expo Go detected: persistence is disabled. Data will not be saved.",
+      );
       return;
     }
 
     const sqlite = getSQLite();
     if (!sqlite) {
-      console.warn('SQLite module not available. skipping initialization.');
+      console.warn("SQLite module not available. skipping initialization.");
       return;
     }
 
@@ -67,13 +71,13 @@ class DatabaseService {
         this.db = await sqlite.openDatabaseAsync(DB_NAME);
         await this.createTables();
         await this.migrate(); // カラム追加などのマイグレーション
-        console.log('Database initialized successfully');
+        console.log("Database initialized successfully");
       } catch (error) {
         this.db = null;
-        console.error('Failed to initialize database:', error);
+        console.error("Failed to initialize database:", error);
         // In Expo Go, we want to fail gracefully rather than crashing the whole app
         if (this.isExpoGo) {
-          console.warn('Silencing DB error for Expo Go compatibility');
+          console.warn("Silencing DB error for Expo Go compatibility");
           return;
         }
         throw error;
@@ -90,7 +94,7 @@ class DatabaseService {
     try {
       await this.initialize();
     } catch (error) {
-      console.error('Database ensureReady failed:', error);
+      console.error("Database ensureReady failed:", error);
       return false;
     }
     return !!this.db;
@@ -221,11 +225,12 @@ class DatabaseService {
         rom_range_max_cm REAL,
         rom_data_points INTEGER DEFAULT 0,
         description TEXT,
-        mvt REAL
+        mvt REAL,
+        ignore_first_rep_as_setup INTEGER DEFAULT 0
       );
     `);
 
-    console.log('Database tables created successfully');
+    console.log("Database tables created successfully");
   }
 
   /**
@@ -236,40 +241,55 @@ class DatabaseService {
 
     const migrations = [
       // Sessions
-      { table: 'sessions', column: 'duration_seconds', type: 'INTEGER' },
-      { table: 'sessions', column: 'start_timestamp', type: 'TEXT' },
-      { table: 'sessions', column: 'end_timestamp', type: 'TEXT' },
-      { table: 'sessions', column: 'avg_hr', type: 'REAL' },
+      { table: "sessions", column: "duration_seconds", type: "INTEGER" },
+      { table: "sessions", column: "start_timestamp", type: "TEXT" },
+      { table: "sessions", column: "end_timestamp", type: "TEXT" },
+      { table: "sessions", column: "avg_hr", type: "REAL" },
       // Sets
-      { table: 'sets', column: 'start_timestamp', type: 'TEXT' },
-      { table: 'sets', column: 'end_timestamp', type: 'TEXT' },
-      { table: 'sets', column: 'rest_duration_s', type: 'REAL' },
-      { table: 'sets', column: 'avg_hr', type: 'REAL' },
-      { table: 'sets', column: 'peak_hr', type: 'REAL' },
+      { table: "sets", column: "start_timestamp", type: "TEXT" },
+      { table: "sets", column: "end_timestamp", type: "TEXT" },
+      { table: "sets", column: "rest_duration_s", type: "REAL" },
+      { table: "sets", column: "avg_hr", type: "REAL" },
+      { table: "sets", column: "peak_hr", type: "REAL" },
       // Reps 追加カラム
-      { table: 'reps', column: 'is_excluded', type: 'INTEGER DEFAULT 0' },
-      { table: 'reps', column: 'exclusion_reason', type: 'TEXT' },
-      { table: 'reps', column: 'edited_at', type: 'INTEGER' },
-      { table: 'reps', column: 'is_short_rom', type: 'INTEGER DEFAULT 0' },
-      { table: 'reps', column: 'is_failed', type: 'INTEGER DEFAULT 0' },
-      { table: 'reps', column: 'rep_id', type: 'TEXT' }, // UUID for consistent rep tracking
+      { table: "reps", column: "is_excluded", type: "INTEGER DEFAULT 0" },
+      { table: "reps", column: "exclusion_reason", type: "TEXT" },
+      { table: "reps", column: "edited_at", type: "INTEGER" },
+      { table: "reps", column: "is_short_rom", type: "INTEGER DEFAULT 0" },
+      { table: "reps", column: "is_failed", type: "INTEGER DEFAULT 0" },
+      { table: "reps", column: "rep_id", type: "TEXT" }, // UUID for consistent rep tracking
       // Exercises 追加カラム
-      { table: 'exercises', column: 'description', type: 'TEXT' },
-      { table: 'exercises', column: 'category', type: 'TEXT' },
-      { table: 'exercises', column: 'subcategory', type: 'TEXT' },
-      { table: 'exercises', column: 'rom_range_min_cm', type: 'REAL' },
-      { table: 'exercises', column: 'rom_range_max_cm', type: 'REAL' },
-      { table: 'exercises', column: 'rom_data_points', type: 'INTEGER DEFAULT 0' },
-      { table: 'exercises', column: 'mvt', type: 'REAL' },
+      { table: "exercises", column: "description", type: "TEXT" },
+      {
+        table: "exercises",
+        column: "ignore_first_rep_as_setup",
+        type: "INTEGER DEFAULT 0",
+      },
+      { table: "exercises", column: "category", type: "TEXT" },
+      { table: "exercises", column: "subcategory", type: "TEXT" },
+      { table: "exercises", column: "rom_range_min_cm", type: "REAL" },
+      { table: "exercises", column: "rom_range_max_cm", type: "REAL" },
+      {
+        table: "exercises",
+        column: "rom_data_points",
+        type: "INTEGER DEFAULT 0",
+      },
+      { table: "exercises", column: "mvt", type: "REAL" },
       // LVP Profiles 追加カラム
-      { table: 'lvp_profiles', column: 'sample_count', type: 'INTEGER DEFAULT 0' },
-      { table: 'lvp_profiles', column: 'r_squared', type: 'REAL' },
-      { table: 'lvp_profiles', column: 'mvt', type: 'REAL' },
+      {
+        table: "lvp_profiles",
+        column: "sample_count",
+        type: "INTEGER DEFAULT 0",
+      },
+      { table: "lvp_profiles", column: "r_squared", type: "REAL" },
+      { table: "lvp_profiles", column: "mvt", type: "REAL" },
     ];
 
     for (const m of migrations) {
       try {
-        await this.db.execAsync(`ALTER TABLE ${m.table} ADD COLUMN ${m.column} ${m.type};`);
+        await this.db.execAsync(
+          `ALTER TABLE ${m.table} ADD COLUMN ${m.column} ${m.type};`,
+        );
         console.log(`Added column ${m.column} to ${m.table}`);
       } catch (e) {
         // すでにカラムが存在する場合はエラーになるが、無視して続行
@@ -297,7 +317,7 @@ class DatabaseService {
         session.end_timestamp || null,
         session.avg_hr || null,
         session.notes || null,
-      ]
+      ],
     );
   }
 
@@ -323,7 +343,7 @@ class DatabaseService {
         session.avg_hr || null,
         session.notes || null,
         session.session_id,
-      ]
+      ],
     );
   }
 
@@ -356,7 +376,7 @@ class DatabaseService {
         setData.avg_hr || null,
         setData.peak_hr || null,
         setData.notes || null,
-      ]
+      ],
     );
   }
 
@@ -394,7 +414,7 @@ class DatabaseService {
         repData.exclusion_reason || null,
         repData.edited_at || null,
         repData.is_failed ? 1 : 0,
-      ]
+      ],
     );
   }
 
@@ -405,15 +425,15 @@ class DatabaseService {
     if (!(await this.ensureReady())) return;
     // rep_id (UUID) で検索、見つからなければフォールバックして id (INTEGER) で検索
     await this.db.runAsync(
-      'UPDATE reps SET is_excluded = 1, exclusion_reason = ?, edited_at = ? WHERE rep_id = ?',
-      [reason, Date.now(), repId]
+      "UPDATE reps SET is_excluded = 1, exclusion_reason = ?, edited_at = ? WHERE rep_id = ?",
+      [reason, Date.now(), repId],
     );
     // フォールバック: rep_idで該当しなかった場合、旧データのid(整数)で試行
     const numericId = parseInt(repId, 10);
     if (!isNaN(numericId)) {
       await this.db.runAsync(
-        'UPDATE reps SET is_excluded = 1, exclusion_reason = ?, edited_at = ? WHERE id = ? AND rep_id IS NULL',
-        [reason, Date.now(), numericId]
+        "UPDATE reps SET is_excluded = 1, exclusion_reason = ?, edited_at = ? WHERE id = ? AND rep_id IS NULL",
+        [reason, Date.now(), numericId],
       );
     }
   }
@@ -425,15 +445,15 @@ class DatabaseService {
     if (!(await this.ensureReady())) return;
     // rep_id (UUID) で検索、見つからなければフォールバックして id (INTEGER) で検索
     await this.db.runAsync(
-      'UPDATE reps SET is_failed = ?, edited_at = ? WHERE rep_id = ?',
-      [isFailed ? 1 : 0, Date.now(), repId]
+      "UPDATE reps SET is_failed = ?, edited_at = ? WHERE rep_id = ?",
+      [isFailed ? 1 : 0, Date.now(), repId],
     );
     // フォールバック: rep_idで該当しなかった場合、旧データのid(整数)で試行
     const numericId = parseInt(repId, 10);
     if (!isNaN(numericId)) {
       await this.db.runAsync(
-        'UPDATE reps SET is_failed = ?, edited_at = ? WHERE id = ? AND rep_id IS NULL',
-        [isFailed ? 1 : 0, Date.now(), numericId]
+        "UPDATE reps SET is_failed = ?, edited_at = ? WHERE id = ? AND rep_id IS NULL",
+        [isFailed ? 1 : 0, Date.now(), numericId],
       );
     }
   }
@@ -441,28 +461,49 @@ class DatabaseService {
   /**
    * セット情報の修正 (除外後などの再計算時に使用)
    */
-  async updateSetMetrics(sessionId: string, setIndex: number, setData: Partial<SetData>, lift?: string): Promise<void> {
+  async updateSetMetrics(
+    sessionId: string,
+    setIndex: number,
+    setData: Partial<SetData>,
+    lift?: string,
+  ): Promise<void> {
     if (!(await this.ensureReady())) return;
 
     // Partial updates based on what is provided
-    let query = 'UPDATE sets SET ';
+    let query = "UPDATE sets SET ";
     const queryParams: any[] = [];
     const updateFields: string[] = [];
 
-    if (setData.reps !== undefined) { updateFields.push('reps = ?'); queryParams.push(setData.reps); }
-    if (setData.avg_velocity !== undefined) { updateFields.push('avg_velocity = ?'); queryParams.push(setData.avg_velocity); }
-    if (setData.velocity_loss !== undefined) { updateFields.push('velocity_loss = ?'); queryParams.push(setData.velocity_loss); }
-    if (setData.rpe !== undefined) { updateFields.push('rpe = ?'); queryParams.push(setData.rpe); }
-    if (setData.e1rm !== undefined) { updateFields.push('e1rm = ?'); queryParams.push(setData.e1rm); }
+    if (setData.reps !== undefined) {
+      updateFields.push("reps = ?");
+      queryParams.push(setData.reps);
+    }
+    if (setData.avg_velocity !== undefined) {
+      updateFields.push("avg_velocity = ?");
+      queryParams.push(setData.avg_velocity);
+    }
+    if (setData.velocity_loss !== undefined) {
+      updateFields.push("velocity_loss = ?");
+      queryParams.push(setData.velocity_loss);
+    }
+    if (setData.rpe !== undefined) {
+      updateFields.push("rpe = ?");
+      queryParams.push(setData.rpe);
+    }
+    if (setData.e1rm !== undefined) {
+      updateFields.push("e1rm = ?");
+      queryParams.push(setData.e1rm);
+    }
 
     if (updateFields.length === 0) return;
 
-    query += updateFields.join(', ') + ' WHERE session_id = ? AND set_index = ?';
+    query +=
+      updateFields.join(", ") + " WHERE session_id = ? AND set_index = ?";
     queryParams.push(sessionId, setIndex);
 
     // liftが指定されている場合はWHERE句に追加（種目切り替え時の更新ミス防止）
     if (lift) {
-      query += ' AND lift = ?';
+      query += " AND lift = ?";
       queryParams.push(lift);
     }
 
@@ -479,20 +520,29 @@ class DatabaseService {
   async recalculateSetMetrics(
     sessionId: string,
     lift: string,
-    setIndex: number
-  ): Promise<{ reps: number; avg_velocity: number; velocity_loss: number; e1rm?: number | null } | null> {
+    setIndex: number,
+  ): Promise<{
+    reps: number;
+    avg_velocity: number;
+    velocity_loss: number;
+    e1rm?: number | null;
+  } | null> {
     if (!(await this.ensureReady())) return null;
 
     // 1. セットデータを取得
     const sets = await this.getSetsForSession(sessionId);
-    const setData = sets.find(s => s.set_index === setIndex && s.lift === lift);
+    const setData = sets.find(
+      (s) => s.set_index === setIndex && s.lift === lift,
+    );
     if (!setData) return null;
 
     // 2. このセットの全レップを取得
     const allSetReps = await this.getRepsForSet(sessionId, lift, setIndex);
 
     // 3. 有効なレップのみを抽出（除外・失敗・無効レップを除外）
-    const validReps = allSetReps.filter(r => !r.is_excluded && !r.is_failed && r.is_valid_rep);
+    const validReps = allSetReps.filter(
+      (r) => !r.is_excluded && !r.is_failed && r.is_valid_rep,
+    );
 
     if (validReps.length === 0) {
       // 有効なレップがない場合、0として扱う
@@ -505,13 +555,16 @@ class DatabaseService {
     }
 
     // 4. 平均速度を計算
-    const avgVel = validReps.reduce((sum, r) => sum + (r.mean_velocity ?? 0), 0) / validReps.length;
+    const avgVel =
+      validReps.reduce((sum, r) => sum + (r.mean_velocity ?? 0), 0) /
+      validReps.length;
 
     // 5. Velocity Lossを計算（セット内最高速度 vs 平均速度）
     const vLoss = VBTCalculations.calculateSetVelocityLoss(validReps) ?? 0;
 
     // 6. e1RMを計算（reps <= 0の場合はnull）
-    const e1rm = VBTLogic.calculateE1RM(setData.load_kg, validReps.length) ?? null;
+    const e1rm =
+      VBTLogic.calculateE1RM(setData.load_kg, validReps.length) ?? null;
 
     return {
       reps: validReps.length,
@@ -527,7 +580,11 @@ class DatabaseService {
    * @param lift 種目名
    * @param setIndex セットインデックス
    */
-  async recalculateAndUpdateSet(sessionId: string, lift: string, setIndex: number): Promise<void> {
+  async recalculateAndUpdateSet(
+    sessionId: string,
+    lift: string,
+    setIndex: number,
+  ): Promise<void> {
     if (!(await this.ensureReady())) return;
 
     // 1. メトリクスを再計算
@@ -560,7 +617,7 @@ class DatabaseService {
         prRecord.date,
         prRecord.previous_value || null,
         prRecord.improvement,
-      ]
+      ],
     );
   }
 
@@ -569,23 +626,27 @@ class DatabaseService {
    * @param lift 種目名
    * @param limit_sessions 参照する直近セッション数 (default: 5)
    */
-  async getHighLoadRepsForMVT(lift: string, limit_sessions: number = 5): Promise<RepData[]> {
+  async getHighLoadRepsForMVT(
+    lift: string,
+    limit_sessions: number = 5,
+  ): Promise<RepData[]> {
     if (!(await this.ensureReady())) return [];
 
     // 直近 N 件のセッションIDを取得
     const sessionRows = (await this.db.getAllAsync(
       `SELECT DISTINCT session_id FROM sets WHERE lift = ? ORDER BY timestamp DESC LIMIT ?`,
-      [lift, limit_sessions]
+      [lift, limit_sessions],
     )) as { session_id: string }[];
 
     if (sessionRows.length === 0) return [];
 
     // SQL IN句をプレースホルダ化
-    const placeholders = sessionRows.map(() => '?').join(',');
-    const sessionIds = sessionRows.map(r => r.session_id);
+    const placeholders = sessionRows.map(() => "?").join(",");
+    const sessionIds = sessionRows.map((r) => r.session_id);
 
     // 該当セッションの中から、速度が低く（高負荷を示唆）有効なレップを抽出
-    const reps = (await this.db.getAllAsync(`
+    const reps = (await this.db.getAllAsync(
+      `
       SELECT * FROM reps
       WHERE lift = ?
         AND session_id IN (${placeholders})
@@ -595,7 +656,9 @@ class DatabaseService {
         AND mean_velocity > 0.05
         AND mean_velocity < 0.35
       ORDER BY mean_velocity ASC
-    `, [lift, ...sessionIds])) as any[];
+    `,
+      [lift, ...sessionIds],
+    )) as any[];
 
     // Map rep_id to id property for consistent tracking
     return reps.map((row: any) => ({
@@ -615,7 +678,7 @@ class DatabaseService {
     if (!(await this.ensureReady())) return [];
 
     const results = await (this.db.getAllAsync(
-      'SELECT * FROM sessions ORDER BY date DESC'
+      "SELECT * FROM sessions ORDER BY date DESC",
     ) as Promise<SessionData[]>);
 
     return results;
@@ -628,8 +691,8 @@ class DatabaseService {
     if (!(await this.ensureReady())) return null;
 
     const result = await (this.db.getFirstAsync(
-      'SELECT * FROM sessions WHERE session_id = ?',
-      [sessionId]
+      "SELECT * FROM sessions WHERE session_id = ?",
+      [sessionId],
     ) as Promise<SessionData | null>);
 
     return result || null;
@@ -646,7 +709,7 @@ class DatabaseService {
     if (!(await this.ensureReady())) {
       return {
         session_id: sessionId,
-        date: new Date().toISOString().split('T')[0],
+        date: new Date().toISOString().split("T")[0],
         total_volume: 0,
         total_sets: 0,
         lifts: [],
@@ -659,7 +722,7 @@ class DatabaseService {
 
     const session: SessionData = {
       session_id: sessionId,
-      date: new Date().toISOString().split('T')[0],
+      date: new Date().toISOString().split("T")[0],
       total_volume: 0,
       total_sets: 0,
       lifts: [],
@@ -677,23 +740,32 @@ class DatabaseService {
     if (!(await this.ensureReady())) return;
 
     const sets = await this.getSetsForSession(sessionId);
-    const totalVolume = sets.reduce((sum, set) => sum + set.load_kg * set.reps, 0);
+    const totalVolume = sets.reduce(
+      (sum, set) => sum + set.load_kg * set.reps,
+      0,
+    );
     await this.db.runAsync(
       `UPDATE sessions SET total_volume = ?, total_sets = ? WHERE session_id = ?`,
-      [totalVolume, sets.length, sessionId]
+      [totalVolume, sets.length, sessionId],
     );
   }
 
   /**
    * Get recent sets for a specific lift
    */
-  async getRecentSetsForLift(lift: string, limit: number = 3, excludeSessionId?: string): Promise<SetData[]> {
+  async getRecentSetsForLift(
+    lift: string,
+    limit: number = 3,
+    excludeSessionId?: string,
+  ): Promise<SetData[]> {
     if (!(await this.ensureReady())) return [];
 
     const query = excludeSessionId
       ? `SELECT * FROM sets WHERE lift = ? AND session_id != ? ORDER BY timestamp DESC LIMIT ?`
       : `SELECT * FROM sets WHERE lift = ? ORDER BY timestamp DESC LIMIT ?`;
-    const params = excludeSessionId ? [lift, excludeSessionId, limit] : [lift, limit];
+    const params = excludeSessionId
+      ? [lift, excludeSessionId, limit]
+      : [lift, limit];
 
     return (await this.db.getAllAsync(query, params)) as SetData[];
   }
@@ -702,8 +774,8 @@ class DatabaseService {
     if (!(await this.ensureReady())) return [];
 
     const results = await (this.db.getAllAsync(
-      'SELECT * FROM sets WHERE session_id = ? ORDER BY set_index',
-      [sessionId]
+      "SELECT * FROM sets WHERE session_id = ? ORDER BY set_index",
+      [sessionId],
     ) as Promise<SetData[]>);
 
     return results;
@@ -730,19 +802,25 @@ class DatabaseService {
          AND is_excluded = 0
          AND is_failed = 0
        ORDER BY rom_cm ASC`,
-      [lift]
+      [lift],
     )) as Array<{ rom_cm: number | null }>;
 
     const values = rows
       .map((row) => row.rom_cm)
-      .filter((value): value is number => typeof value === 'number' && Number.isFinite(value) && value > 0);
+      .filter(
+        (value): value is number =>
+          typeof value === "number" && Number.isFinite(value) && value > 0,
+      );
 
     if (values.length === 0) {
       return null;
     }
 
     const percentile = (ratio: number) => {
-      const index = Math.min(values.length - 1, Math.max(0, Math.floor((values.length - 1) * ratio)));
+      const index = Math.min(
+        values.length - 1,
+        Math.max(0, Math.floor((values.length - 1) * ratio)),
+      );
       return values[index];
     };
 
@@ -762,12 +840,16 @@ class DatabaseService {
   /**
    * Get reps for a set
    */
-  async getRepsForSet(sessionId: string, lift: string, setIndex: number): Promise<RepData[]> {
+  async getRepsForSet(
+    sessionId: string,
+    lift: string,
+    setIndex: number,
+  ): Promise<RepData[]> {
     if (!(await this.ensureReady())) return [];
 
     const results = await (this.db.getAllAsync(
-      'SELECT * FROM reps WHERE session_id = ? AND lift = ? AND set_index = ? ORDER BY rep_index',
-      [sessionId, lift, setIndex]
+      "SELECT * FROM reps WHERE session_id = ? AND lift = ? AND set_index = ? ORDER BY rep_index",
+      [sessionId, lift, setIndex],
     ) as Promise<any[]>);
 
     // Map rep_id to id property for consistent tracking, ensure string type
@@ -788,8 +870,8 @@ class DatabaseService {
     if (!(await this.ensureReady())) return [];
 
     const results = await (this.db.getAllAsync(
-      'SELECT * FROM reps WHERE session_id = ? ORDER BY lift, set_index, rep_index',
-      [sessionId]
+      "SELECT * FROM reps WHERE session_id = ? ORDER BY lift, set_index, rep_index",
+      [sessionId],
     ) as Promise<any[]>);
 
     // Map rep_id to id property for consistent tracking
@@ -810,8 +892,8 @@ class DatabaseService {
     if (!(await this.ensureReady())) return null;
 
     const result = await (this.db.getFirstAsync(
-      'SELECT * FROM pr_records WHERE lift = ? AND type = ? ORDER BY value DESC LIMIT 1',
-      [lift, type]
+      "SELECT * FROM pr_records WHERE lift = ? AND type = ? ORDER BY value DESC LIMIT 1",
+      [lift, type],
     ) as Promise<PRRecord | null>);
 
     return result || null;
@@ -830,9 +912,9 @@ class DatabaseService {
     await this.db.runAsync(
       `INSERT OR REPLACE INTO exercises (
         id, name, category, subcategory, has_lvp, machine_weight_steps, 
-        min_rom_threshold, rep_detection_mode, target_pause_ms, rom_range_min_cm, rom_range_max_cm, rom_data_points, description, mvt
+        min_rom_threshold, rep_detection_mode, target_pause_ms, rom_range_min_cm, rom_range_max_cm, rom_data_points, description, mvt, ignore_first_rep_as_setup
       )
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         exercise.id,
         exercise.name,
@@ -841,14 +923,15 @@ class DatabaseService {
         exercise.has_lvp ? 1 : 0,
         stepsJson,
         exercise.min_rom_threshold ?? 10.0,
-        exercise.rep_detection_mode ?? 'standard',
+        exercise.rep_detection_mode ?? "standard",
         exercise.target_pause_ms ?? 0,
         exercise.rom_range_min_cm ?? null,
         exercise.rom_range_max_cm ?? null,
         exercise.rom_data_points ?? 0,
         exercise.description || null,
         exercise.mvt || null,
-      ]
+        exercise.ignore_first_rep_as_setup ? 1 : 0,
+      ],
     );
   }
 
@@ -858,7 +941,9 @@ class DatabaseService {
   async getExercises(): Promise<Exercise[]> {
     if (!(await this.ensureReady())) return [];
 
-    const results = await (this.db.getAllAsync('SELECT * FROM exercises ORDER BY name') as Promise<any[]>);
+    const results = await (this.db.getAllAsync(
+      "SELECT * FROM exercises ORDER BY name",
+    ) as Promise<any[]>);
 
     return results.map((row: any) => ({
       ...row,
@@ -874,6 +959,7 @@ class DatabaseService {
       rom_data_points: row.rom_data_points ?? undefined,
       description: row.description || undefined,
       mvt: row.mvt || undefined,
+      ignore_first_rep_as_setup: row.ignore_first_rep_as_setup === 1,
     }));
   }
 
@@ -883,8 +969,8 @@ class DatabaseService {
   async updateSessionNotes(sessionId: string, notes: string): Promise<void> {
     if (!(await this.ensureReady())) return;
     await this.db.runAsync(
-      'UPDATE sessions SET notes = ? WHERE session_id = ?',
-      [notes, sessionId]
+      "UPDATE sessions SET notes = ? WHERE session_id = ?",
+      [notes, sessionId],
     );
   }
 
@@ -894,9 +980,15 @@ class DatabaseService {
   async deleteSession(sessionId: string): Promise<void> {
     if (!(await this.ensureReady())) return;
     // 関連データを先に削除
-    await this.db.runAsync('DELETE FROM reps WHERE session_id = ?', [sessionId]);
-    await this.db.runAsync('DELETE FROM sets WHERE session_id = ?', [sessionId]);
-    await this.db.runAsync('DELETE FROM sessions WHERE session_id = ?', [sessionId]);
+    await this.db.runAsync("DELETE FROM reps WHERE session_id = ?", [
+      sessionId,
+    ]);
+    await this.db.runAsync("DELETE FROM sets WHERE session_id = ?", [
+      sessionId,
+    ]);
+    await this.db.runAsync("DELETE FROM sessions WHERE session_id = ?", [
+      sessionId,
+    ]);
   }
 
   /**
@@ -904,56 +996,101 @@ class DatabaseService {
    */
   async deleteExercise(id: string): Promise<void> {
     if (!(await this.ensureReady())) return;
-    await this.db.runAsync('DELETE FROM exercises WHERE id = ?', [id]);
+    await this.db.runAsync("DELETE FROM exercises WHERE id = ?", [id]);
   }
 
   /**
    * セットを削除（関連するrepも全削除）
    */
-  async deleteSet(sessionId: string, setIndex: number, lift: string): Promise<void> {
+  async deleteSet(
+    sessionId: string,
+    setIndex: number,
+    lift: string,
+  ): Promise<void> {
     if (!(await this.ensureReady())) return;
     await this.db.runAsync(
-      'DELETE FROM reps WHERE session_id = ? AND set_index = ? AND lift = ?',
-      [sessionId, setIndex, lift]
+      "DELETE FROM reps WHERE session_id = ? AND set_index = ? AND lift = ?",
+      [sessionId, setIndex, lift],
     );
     await this.db.runAsync(
-      'DELETE FROM sets WHERE session_id = ? AND set_index = ? AND lift = ?',
-      [sessionId, setIndex, lift]
+      "DELETE FROM sets WHERE session_id = ? AND set_index = ? AND lift = ?",
+      [sessionId, setIndex, lift],
     );
   }
 
   /**
    * セットのメモを更新
    */
-  async updateSetNotes(sessionId: string, setIndex: number, notes: string): Promise<void> {
+  async updateSetNotes(
+    sessionId: string,
+    setIndex: number,
+    notes: string,
+  ): Promise<void> {
     if (!(await this.ensureReady())) return;
     await this.db.runAsync(
-      'UPDATE sets SET notes = ? WHERE session_id = ? AND set_index = ?',
-      [notes, sessionId, setIndex]
+      "UPDATE sets SET notes = ? WHERE session_id = ? AND set_index = ?",
+      [notes, sessionId, setIndex],
     );
   }
 
   /**
    * セットの負荷とRPEを更新
    */
-  async updateSet(sessionId: string, setIndex: number, updates: { load_kg?: number; rpe?: number; notes?: string; lift?: string }): Promise<void> {
+  async updateSet(
+    sessionId: string,
+    setIndex: number,
+    updates: { load_kg?: number; rpe?: number; notes?: string; lift?: string },
+  ): Promise<void> {
     if (!(await this.ensureReady())) return;
     const parts: string[] = [];
     const values: any[] = [];
-    if (updates.load_kg !== undefined) { parts.push('load_kg = ?'); values.push(updates.load_kg); }
-    if (updates.rpe !== undefined) { parts.push('rpe = ?'); values.push(updates.rpe); }
-    if (updates.notes !== undefined) { parts.push('notes = ?'); values.push(updates.notes); }
+    if (updates.load_kg !== undefined) {
+      parts.push("load_kg = ?");
+      values.push(updates.load_kg);
+    }
+    if (updates.rpe !== undefined) {
+      parts.push("rpe = ?");
+      values.push(updates.rpe);
+    }
+    if (updates.notes !== undefined) {
+      parts.push("notes = ?");
+      values.push(updates.notes);
+    }
     if (parts.length === 0) return;
     values.push(sessionId, setIndex);
 
     // liftが指定されている場合はWHERE句に追加（種目切り替え時の更新ミス防止）
-    const liftCondition = updates.lift ? ' AND lift = ?' : '';
+    const liftCondition = updates.lift ? " AND lift = ?" : "";
     if (updates.lift) values.push(updates.lift);
 
     await this.db.runAsync(
-      `UPDATE sets SET ${parts.join(', ')} WHERE session_id = ? AND set_index = ?${liftCondition}`,
-      values
+      `UPDATE sets SET ${parts.join(", ")} WHERE session_id = ? AND set_index = ?${liftCondition}`,
+      values,
     );
+  }
+
+  /**
+   * セット重量を後から修正し、関連するrepとセッション集計も揃える
+   */
+  async updateSetLoad(
+    sessionId: string,
+    setIndex: number,
+    lift: string,
+    loadKg: number,
+  ): Promise<void> {
+    if (!(await this.ensureReady())) return;
+
+    await this.db.runAsync(
+      "UPDATE sets SET load_kg = ? WHERE session_id = ? AND set_index = ? AND lift = ?",
+      [loadKg, sessionId, setIndex, lift],
+    );
+
+    await this.db.runAsync(
+      "UPDATE reps SET load_kg = ?, edited_at = ? WHERE session_id = ? AND set_index = ? AND lift = ?",
+      [loadKg, Date.now(), sessionId, setIndex, lift],
+    );
+
+    await this.recalcSessionVolume(sessionId);
   }
 
   /**
@@ -966,28 +1103,43 @@ class DatabaseService {
 
     // 各セットのe1RMを再計算
     for (const setData of sets) {
-      const reps = await this.getRepsForSet(sessionId, setData.lift, setData.set_index);
-      const validReps = reps.filter(r => !r.is_excluded && !r.is_failed && r.is_valid_rep);
+      const reps = await this.getRepsForSet(
+        sessionId,
+        setData.lift,
+        setData.set_index,
+      );
+      const validReps = reps.filter(
+        (r) => !r.is_excluded && !r.is_failed && r.is_valid_rep,
+      );
       const actualRepsCount = validReps.length;
 
       // e1RMを再計算 (VBTLogic.calculateE1RM使用 - reps <= 0の場合はnull)
-      const recalculatedE1RM = VBTLogic.calculateE1RM(setData.load_kg, actualRepsCount) ?? null;
+      const recalculatedE1RM =
+        VBTLogic.calculateE1RM(setData.load_kg, actualRepsCount) ?? null;
 
       // セットのe1RMとrepsを更新（liftを含めて種目切り替え時の更新ミスを防止）
-      await this.updateSetMetrics(sessionId, setData.set_index, {
-        reps: actualRepsCount,
-        e1rm: recalculatedE1RM,
-      }, setData.lift);
+      await this.updateSetMetrics(
+        sessionId,
+        setData.set_index,
+        {
+          reps: actualRepsCount,
+          e1rm: recalculatedE1RM,
+        },
+        setData.lift,
+      );
     }
 
     // セッション全体のボリュームとセット数を再集計 (更新後のセット情報を再取得)
     const updatedSets = await this.getSetsForSession(sessionId);
-    const totalVolume = updatedSets.reduce((sum, s) => sum + s.load_kg * s.reps, 0);
+    const totalVolume = updatedSets.reduce(
+      (sum, s) => sum + s.load_kg * s.reps,
+      0,
+    );
     const totalSets = updatedSets.length;
 
     await this.db.runAsync(
-      'UPDATE sessions SET total_volume = ?, total_sets = ? WHERE session_id = ?',
-      [totalVolume, totalSets, sessionId]
+      "UPDATE sessions SET total_volume = ?, total_sets = ? WHERE session_id = ?",
+      [totalVolume, totalSets, sessionId],
     );
   }
 
@@ -998,8 +1150,8 @@ class DatabaseService {
     if (!(await this.ensureReady())) return [];
     if (lift) {
       const setRows = (await this.db.getAllAsync(
-        'SELECT DISTINCT session_id FROM sets WHERE lift = ? ORDER BY timestamp DESC',
-        [lift]
+        "SELECT DISTINCT session_id FROM sets WHERE lift = ? ORDER BY timestamp DESC",
+        [lift],
       )) as { session_id: string }[];
       const sessions: SessionData[] = [];
       for (const row of setRows) {
@@ -1010,8 +1162,8 @@ class DatabaseService {
     }
     if (query) {
       return (await this.db.getAllAsync(
-        'SELECT * FROM sessions WHERE notes LIKE ? ORDER BY date DESC',
-        [`%${query}%`]
+        "SELECT * FROM sessions WHERE notes LIKE ? ORDER BY date DESC",
+        [`%${query}%`],
       )) as SessionData[];
     }
     return this.getSessions();
@@ -1020,7 +1172,9 @@ class DatabaseService {
   /**
    * 週間集計を返す（過去4週間）
    */
-  async getWeeklyStats(): Promise<{ week: string; volume: number; sets: number }[]> {
+  async getWeeklyStats(): Promise<
+    { week: string; volume: number; sets: number }[]
+  > {
     if (!(await this.ensureReady())) return [];
     const results = (await this.db.getAllAsync(`
       SELECT
@@ -1056,7 +1210,7 @@ class DatabaseService {
         lvp.r_squared,
         lvp.last_updated,
         lvp.sample_count || 0,
-      ]
+      ],
     );
   }
 
@@ -1067,8 +1221,8 @@ class DatabaseService {
     if (!(await this.ensureReady())) return null;
 
     const result = await (this.db.getFirstAsync(
-      'SELECT * FROM lvp_profiles WHERE lift = ?',
-      [lift]
+      "SELECT * FROM lvp_profiles WHERE lift = ?",
+      [lift],
     ) as Promise<any>);
 
     if (!result) return null;
@@ -1092,7 +1246,9 @@ class DatabaseService {
   async getAllLVPProfiles(): Promise<LVPData[]> {
     if (!(await this.ensureReady())) return [];
 
-    const results = await (this.db.getAllAsync('SELECT * FROM lvp_profiles ORDER BY lift') as Promise<any[]>);
+    const results = await (this.db.getAllAsync(
+      "SELECT * FROM lvp_profiles ORDER BY lift",
+    ) as Promise<any[]>);
 
     return results.map((row: any) => ({
       lift: row.lift,
@@ -1114,7 +1270,7 @@ class DatabaseService {
     if (this.db) {
       await this.db.closeAsync();
       this.db = null;
-      console.log('Database closed');
+      console.log("Database closed");
     }
   }
 }

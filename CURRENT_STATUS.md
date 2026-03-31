@@ -20,19 +20,27 @@
 - Before the next release, keep the effective build number consistent and bump to a value higher than `71`.
 
 ## Current Working Tree
-Uncommitted changes exist in these files:
+Uncommitted changes currently exist in these app files:
 - `app/(tabs)/session.tsx`
-- `app/coach-chat.tsx`
-- `src/components/ExerciseSelectModal.tsx`
+- `app/(tabs)/settings.tsx`
+- `src/components/RepDetailModal.tsx`
+- `src/constants/exerciseCatalog.ts`
 - `src/hooks/useSessionLogic.ts`
-- `src/services/AudioService.ts`
+- `src/screens/SettingsScreen.tsx`
+- `src/services/AppSettingsService.ts`
+- `src/services/DatabaseService.ts`
+- `src/services/ExerciseService.ts`
 - `src/services/LocalLLMService.ts`
+- `src/store/trainingStore.ts`
+- `src/types/index.ts`
 
-Untracked but relevant repo files/folders exist:
-- `docs/AGENT_WALKTHROUGH.md`
-- `AGENTS.md`
+Untracked auxiliary repo files/folders still exist:
+- `.last_build_configuration`
+- `.restore-backups/`
 - `fastlane/README.md`
 - `fastlane/export-options.plist`
+- `fastlane/report.xml`
+- `hermes-engine/`
 
 ## What Was Implemented Recently
 - Added direct GLM mode using locally stored API key and API URL.
@@ -44,6 +52,10 @@ Untracked but relevant repo files/folders exist:
 - Added recording-state visual frame in session mode.
 - Reduced exercise category chip height and improved exercise selection behavior.
 - Adjusted audio session behavior to reduce music interruption side effects.
+- Added persisted settings toggles for warmup recommendations, rep count readout, velocity readout, and the "もっと速く" cue.
+- Added per-exercise setup-rep handling with `ignore_first_rep_as_setup` and session-side setup exclusion.
+- Expanded session history with exercise labels, power, and mini velocity charts.
+- Added post-hoc set weight editing and tied set-history updates to `lift + set_index`.
 
 ## Known Problems To Continue From
 - AI Coach can show `GLM 接続可能` while actual message send still fails on device.
@@ -54,6 +66,7 @@ Untracked but relevant repo files/folders exist:
   - exclude the welcome message from outbound history
 - This fix passed `pnpm -s tsc --noEmit` locally, but still needs commit/build/device verification.
 - Exercise selection ergonomics were improved, but user feedback should still verify category chip sizing and list visibility.
+- AirPods/HealthKit heart-rate ingestion is still backed by a stub `HealthService`; the rest-timer UI is ready, but actual live HR capture still needs native integration.
 - Audio/music resume behavior after voice prompts still needs real-device confirmation.
 
 ## Validation Status

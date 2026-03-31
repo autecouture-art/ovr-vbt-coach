@@ -36,7 +36,10 @@ export const EXERCISE_CATEGORY_LABELS: Record<Exercise["category"], string> = {
   accessory: "補助種目",
 };
 
-export const EXERCISE_SELECTION_GROUPS: Array<{ id: ExerciseSelectionGroupId; label: string }> = [
+export const EXERCISE_SELECTION_GROUPS: Array<{
+  id: ExerciseSelectionGroupId;
+  label: string;
+}> = [
   { id: "all", label: "すべて" },
   { id: "big3", label: "BIG3" },
   { id: "bench_family", label: "ベンチ系" },
@@ -150,7 +153,8 @@ const DEFAULT_EXERCISE_SEEDS: ExerciseSeed[] = [
     target_pause_ms: 250,
     rom_range_min_cm: 14,
     rom_range_max_cm: 30,
-    description: "ボトムでパルスを入れるベンチ。誤検知防止のため pause モード。",
+    description:
+      "ボトムでパルスを入れるベンチ。誤検知防止のため pause モード。",
     aliases: ["larsen bottom pulse bench", "bottom pulse bench"],
   },
   {
@@ -431,7 +435,9 @@ const DEFAULT_EXERCISE_SEEDS: ExerciseSeed[] = [
   },
 ];
 
-export const DEFAULT_EXERCISES: Exercise[] = DEFAULT_EXERCISE_SEEDS.map(({ aliases: _aliases, ...exercise }) => exercise);
+export const DEFAULT_EXERCISES: Exercise[] = DEFAULT_EXERCISE_SEEDS.map(
+  ({ aliases: _aliases, ...exercise }) => exercise,
+);
 
 const normalizeKey = (value: string) =>
   value
@@ -443,22 +449,122 @@ const normalizeKey = (value: string) =>
     .trim();
 
 const CATEGORY_DEFAULTS: Record<Exercise["category"], Partial<Exercise>> = {
-  squat: { has_lvp: true, min_rom_threshold: 22, rep_detection_mode: "standard", rom_range_min_cm: 32, rom_range_max_cm: 58, mvt: 0.3 },
-  bench: { has_lvp: true, min_rom_threshold: 12, rep_detection_mode: "standard", rom_range_min_cm: 16, rom_range_max_cm: 32, mvt: 0.15 },
-  deadlift: { has_lvp: true, min_rom_threshold: 18, rep_detection_mode: "standard", rom_range_min_cm: 24, rom_range_max_cm: 44, mvt: 0.28 },
-  press: { has_lvp: true, min_rom_threshold: 14, rep_detection_mode: "standard", rom_range_min_cm: 18, rom_range_max_cm: 34, mvt: 0.2 },
-  pull: { has_lvp: true, min_rom_threshold: 16, rep_detection_mode: "standard", rom_range_min_cm: 18, rom_range_max_cm: 38 },
-  row: { has_lvp: true, min_rom_threshold: 12, rep_detection_mode: "short_rom", rom_range_min_cm: 14, rom_range_max_cm: 30 },
-  vertical_pull: { has_lvp: true, min_rom_threshold: 16, rep_detection_mode: "standard", rom_range_min_cm: 18, rom_range_max_cm: 36 },
-  single_leg: { has_lvp: true, min_rom_threshold: 18, rep_detection_mode: "standard", rom_range_min_cm: 22, rom_range_max_cm: 40 },
-  quad: { has_lvp: false, min_rom_threshold: 10, rep_detection_mode: "short_rom", rom_range_min_cm: 12, rom_range_max_cm: 26 },
-  hamstring: { has_lvp: false, min_rom_threshold: 10, rep_detection_mode: "short_rom", rom_range_min_cm: 12, rom_range_max_cm: 24 },
-  adductor: { has_lvp: false, min_rom_threshold: 8, rep_detection_mode: "short_rom", rom_range_min_cm: 10, rom_range_max_cm: 22 },
-  glute: { has_lvp: true, min_rom_threshold: 12, rep_detection_mode: "short_rom", rom_range_min_cm: 14, rom_range_max_cm: 28 },
-  triceps: { has_lvp: false, min_rom_threshold: 8, rep_detection_mode: "short_rom", rom_range_min_cm: 10, rom_range_max_cm: 24 },
-  biceps: { has_lvp: false, min_rom_threshold: 8, rep_detection_mode: "short_rom", rom_range_min_cm: 10, rom_range_max_cm: 22 },
-  core: { has_lvp: false, min_rom_threshold: 6, rep_detection_mode: "short_rom", rom_range_min_cm: 8, rom_range_max_cm: 18 },
-  accessory: { has_lvp: false, min_rom_threshold: 10, rep_detection_mode: "standard", rom_range_min_cm: 12, rom_range_max_cm: 24 },
+  squat: {
+    has_lvp: true,
+    min_rom_threshold: 22,
+    rep_detection_mode: "standard",
+    rom_range_min_cm: 32,
+    rom_range_max_cm: 58,
+    mvt: 0.3,
+  },
+  bench: {
+    has_lvp: true,
+    min_rom_threshold: 12,
+    rep_detection_mode: "standard",
+    rom_range_min_cm: 16,
+    rom_range_max_cm: 32,
+    mvt: 0.15,
+  },
+  deadlift: {
+    has_lvp: true,
+    min_rom_threshold: 18,
+    rep_detection_mode: "standard",
+    rom_range_min_cm: 24,
+    rom_range_max_cm: 44,
+    mvt: 0.28,
+  },
+  press: {
+    has_lvp: true,
+    min_rom_threshold: 14,
+    rep_detection_mode: "standard",
+    rom_range_min_cm: 18,
+    rom_range_max_cm: 34,
+    mvt: 0.2,
+  },
+  pull: {
+    has_lvp: true,
+    min_rom_threshold: 16,
+    rep_detection_mode: "standard",
+    rom_range_min_cm: 18,
+    rom_range_max_cm: 38,
+  },
+  row: {
+    has_lvp: true,
+    min_rom_threshold: 12,
+    rep_detection_mode: "short_rom",
+    rom_range_min_cm: 14,
+    rom_range_max_cm: 30,
+  },
+  vertical_pull: {
+    has_lvp: true,
+    min_rom_threshold: 16,
+    rep_detection_mode: "standard",
+    rom_range_min_cm: 18,
+    rom_range_max_cm: 36,
+  },
+  single_leg: {
+    has_lvp: true,
+    min_rom_threshold: 18,
+    rep_detection_mode: "standard",
+    rom_range_min_cm: 22,
+    rom_range_max_cm: 40,
+  },
+  quad: {
+    has_lvp: false,
+    min_rom_threshold: 10,
+    rep_detection_mode: "short_rom",
+    rom_range_min_cm: 12,
+    rom_range_max_cm: 26,
+  },
+  hamstring: {
+    has_lvp: false,
+    min_rom_threshold: 10,
+    rep_detection_mode: "short_rom",
+    rom_range_min_cm: 12,
+    rom_range_max_cm: 24,
+  },
+  adductor: {
+    has_lvp: false,
+    min_rom_threshold: 8,
+    rep_detection_mode: "short_rom",
+    rom_range_min_cm: 10,
+    rom_range_max_cm: 22,
+  },
+  glute: {
+    has_lvp: true,
+    min_rom_threshold: 12,
+    rep_detection_mode: "short_rom",
+    rom_range_min_cm: 14,
+    rom_range_max_cm: 28,
+  },
+  triceps: {
+    has_lvp: false,
+    min_rom_threshold: 8,
+    rep_detection_mode: "short_rom",
+    rom_range_min_cm: 10,
+    rom_range_max_cm: 24,
+  },
+  biceps: {
+    has_lvp: false,
+    min_rom_threshold: 8,
+    rep_detection_mode: "short_rom",
+    rom_range_min_cm: 10,
+    rom_range_max_cm: 22,
+  },
+  core: {
+    has_lvp: false,
+    min_rom_threshold: 6,
+    rep_detection_mode: "short_rom",
+    rom_range_min_cm: 8,
+    rom_range_max_cm: 18,
+  },
+  accessory: {
+    has_lvp: false,
+    min_rom_threshold: 10,
+    rep_detection_mode: "standard",
+    rom_range_min_cm: 12,
+    rom_range_max_cm: 24,
+  },
 };
 
 const seedByAlias = new Map<string, ExerciseSeed>();
@@ -477,12 +583,19 @@ export function formatLoadKg(value: number): string {
   return Number.isInteger(value) ? `${value}` : value.toFixed(1);
 }
 
-export function getExerciseCategoryLabel(category: Exercise["category"] | string | undefined): string {
+export function getExerciseCategoryLabel(
+  category: Exercise["category"] | string | undefined,
+): string {
   if (!category) return "未分類";
-  return EXERCISE_CATEGORY_LABELS[category as Exercise["category"]] ?? String(category);
+  return (
+    EXERCISE_CATEGORY_LABELS[category as Exercise["category"]] ??
+    String(category)
+  );
 }
 
-export function getExerciseSelectionGroup(exercise: Exercise): ExerciseSelectionGroupId {
+export function getExerciseSelectionGroup(
+  exercise: Exercise,
+): ExerciseSelectionGroupId {
   if (["squat", "bench", "deadlift"].includes(exercise.category)) {
     if (exercise.category === "bench") return "bench_family";
     if (exercise.category === "squat") return "squat_family";
@@ -511,18 +624,27 @@ export function getExerciseSelectionGroup(exercise: Exercise): ExerciseSelection
   }
 }
 
-export function matchesExerciseSelectionGroup(exercise: Exercise, groupId: ExerciseSelectionGroupId): boolean {
+export function matchesExerciseSelectionGroup(
+  exercise: Exercise,
+  groupId: ExerciseSelectionGroupId,
+): boolean {
   if (groupId === "all") return true;
-  if (groupId === "big3") return ["squat", "bench", "deadlift"].includes(exercise.category);
+  if (groupId === "big3")
+    return ["squat", "bench", "deadlift"].includes(exercise.category);
   return getExerciseSelectionGroup(exercise) === groupId;
 }
 
 export function getExerciseSelectionGroupLabel(exercise: Exercise): string {
-  const group = EXERCISE_SELECTION_GROUPS.find((item) => item.id === getExerciseSelectionGroup(exercise));
+  const group = EXERCISE_SELECTION_GROUPS.find(
+    (item) => item.id === getExerciseSelectionGroup(exercise),
+  );
   return group?.label ?? "その他";
 }
 
-export function inferExercisePreset(name: string, fallbackCategory: Exercise["category"] = "accessory"): Partial<Exercise> {
+export function inferExercisePreset(
+  name: string,
+  fallbackCategory: Exercise["category"] = "accessory",
+): Partial<Exercise> {
   const key = normalizeKey(name);
   const matchedSeed = seedByAlias.get(key);
   if (matchedSeed) {
@@ -542,13 +664,17 @@ export function inferExercisePreset(name: string, fallbackCategory: Exercise["ca
   } else if (/(deadlift|デッド|rdl|ルーマニアン|hinge)/.test(key)) {
     category = "deadlift";
     subcategory = "hinge_variant";
-  } else if (/(landmine|shoulderpress|ショルダー|ohp|overheadpress|press$)/.test(key)) {
+  } else if (
+    /(landmine|shoulderpress|ショルダー|ohp|overheadpress|press$)/.test(key)
+  ) {
     category = "press";
     subcategory = "press_variant";
   } else if (/(sealrow|row|ロウ)/.test(key)) {
     category = "row";
     subcategory = "row_variant";
-  } else if (/(chinning|chin|pullup|pull-up|latpulldown|ラットプル|懸垂)/.test(key)) {
+  } else if (
+    /(chinning|chin|pullup|pull-up|latpulldown|ラットプル|懸垂)/.test(key)
+  ) {
     category = "vertical_pull";
     subcategory = "vertical_pull_variant";
   } else if (/(adductor|内転)/.test(key)) {
@@ -598,6 +724,7 @@ export function inferExercisePreset(name: string, fallbackCategory: Exercise["ca
     rom_range_max_cm: defaults.rom_range_max_cm,
     description: `${getExerciseCategoryLabel(category)}に分類された自動推定種目。`,
     mvt: defaults.mvt,
+    ignore_first_rep_as_setup: false,
   };
 }
 
@@ -609,13 +736,19 @@ export function mergeExerciseWithPreset(exercise: Exercise): Exercise {
     category: exercise.category || preset.category || "accessory",
     subcategory: exercise.subcategory ?? preset.subcategory,
     has_lvp: exercise.has_lvp ?? preset.has_lvp ?? true,
-    machine_weight_steps: exercise.machine_weight_steps ?? preset.machine_weight_steps,
+    machine_weight_steps:
+      exercise.machine_weight_steps ?? preset.machine_weight_steps,
     min_rom_threshold: exercise.min_rom_threshold ?? preset.min_rom_threshold,
-    rep_detection_mode: exercise.rep_detection_mode ?? preset.rep_detection_mode,
+    rep_detection_mode:
+      exercise.rep_detection_mode ?? preset.rep_detection_mode,
     target_pause_ms: exercise.target_pause_ms ?? preset.target_pause_ms,
     rom_range_min_cm: exercise.rom_range_min_cm ?? preset.rom_range_min_cm,
     rom_range_max_cm: exercise.rom_range_max_cm ?? preset.rom_range_max_cm,
     description: exercise.description ?? preset.description,
     mvt: exercise.mvt ?? preset.mvt,
+    ignore_first_rep_as_setup:
+      exercise.ignore_first_rep_as_setup ??
+      preset.ignore_first_rep_as_setup ??
+      false,
   };
 }

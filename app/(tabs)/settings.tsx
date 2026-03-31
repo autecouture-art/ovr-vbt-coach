@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -9,16 +9,15 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-} from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useRouter } from 'expo-router';
+} from "react-native";
+import { useRouter } from "expo-router";
 
 import {
   getResolvedApiHealth,
   getStoredApiBaseUrlOverride,
   hydrateApiBaseUrlOverride,
   setStoredApiBaseUrlOverride,
-} from '@/constants/oauth';
+} from "@/constants/oauth";
 import {
   EXERCISE_SELECTION_GROUPS,
   formatLoadKg,
@@ -27,69 +26,79 @@ import {
   inferExercisePreset,
   matchesExerciseSelectionGroup,
   type ExerciseSelectionGroupId,
-} from '@/src/constants/exerciseCatalog';
-import { GarageTheme } from '@/src/constants/garageTheme';
-import ExerciseService from '@/src/services/ExerciseService';
-import { getLocalLLMHealth, saveLocalLLMConfig } from '@/src/services/LocalLLMService';
-import { HelpButton } from '@/src/components/HelpButton';
-import type { AppSettings, Exercise } from '@/src/types/index';
+} from "@/src/constants/exerciseCatalog";
+import { GarageTheme } from "@/src/constants/garageTheme";
+import ExerciseService from "@/src/services/ExerciseService";
+import {
+  getLocalLLMHealth,
+  saveLocalLLMConfig,
+} from "@/src/services/LocalLLMService";
+import {
+  DEFAULT_APP_SETTINGS,
+  loadAppSettings,
+  saveAppSettings,
+} from "@/src/services/AppSettingsService";
+import { useTrainingStore } from "@/src/store/trainingStore";
+import { HelpButton } from "@/src/components/HelpButton";
+import type { AppSettings, Exercise } from "@/src/types/index";
 
-const SETTINGS_KEY = '@app_settings';
-
-const defaultSettings: AppSettings = {
-  use_metric: true,
-  velocity_loss_threshold: 20,
-  enable_audio_feedback: true,
-  enable_voice_commands: false,
-  enable_video_recording: false,
-  target_training_phase: 'hypertrophy',
-  audio_volume: 1.0,
-};
+const defaultSettings: AppSettings = DEFAULT_APP_SETTINGS;
 
 const OVR_SAMPLE_EXERCISE_NAMES = [
-  'Larsen Bench Press',
-  'Sumo Deadlift',
-  'Adductor DELTA new',
-  'Shoulder Press',
-  'bench press',
-  'Dips',
-  'Leg Extension DELTA',
-  'Leg Curl Delta',
-  'chinning',
-  'Larsen Bottom Pulse Bench',
-  'Adductor-Focused Wide Dea',
-  'Cable Press Down',
-  'SSB Adductor  Squat',
-  'Seal Row',
-  'Larsen 4/2/0 tempo bench',
-  'Landmune shoulder press',
-  'SBB Support Squat',
+  "Larsen Bench Press",
+  "Sumo Deadlift",
+  "Adductor DELTA new",
+  "Shoulder Press",
+  "bench press",
+  "Dips",
+  "Leg Extension DELTA",
+  "Leg Curl Delta",
+  "chinning",
+  "Larsen Bottom Pulse Bench",
+  "Adductor-Focused Wide Dea",
+  "Cable Press Down",
+  "SSB Adductor  Squat",
+  "Seal Row",
+  "Larsen 4/2/0 tempo bench",
+  "Landmune shoulder press",
+  "SBB Support Squat",
 ] as const;
 
-const MODE_LABELS: Record<NonNullable<Exercise['rep_detection_mode']>, string> = {
-  standard: '標準',
-  tempo: 'テンポ',
-  pause: 'ポーズ',
-  short_rom: '短ROM',
+const MODE_LABELS: Record<
+  NonNullable<Exercise["rep_detection_mode"]>,
+  string
+> = {
+  standard: "標準",
+  tempo: "テンポ",
+  pause: "ポーズ",
+  short_rom: "短ROM",
 };
 
 export default function SettingsTab() {
   const router = useRouter();
+  const updateGlobalSettings = useTrainingStore(
+    (state) => state.updateSettings,
+  );
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
-  const [apiBaseUrlInput, setApiBaseUrlInput] = useState('');
-  const [apiStatusText, setApiStatusText] = useState('未確認');
+  const [apiBaseUrlInput, setApiBaseUrlInput] = useState("");
+  const [apiStatusText, setApiStatusText] = useState("未確認");
   const [checkingApi, setCheckingApi] = useState(false);
-  const [localApiKeyInput, setLocalApiKeyInput] = useState('');
-  const [localModelInput, setLocalModelInput] = useState('glm-4.7');
-  const [localApiUrlInput, setLocalApiUrlInput] = useState('https://api.z.ai/api/anthropic');
-  const [localStatusText, setLocalStatusText] = useState('未設定');
+  const [localApiKeyInput, setLocalApiKeyInput] = useState("");
+  const [localModelInput, setLocalModelInput] = useState("glm-4.7");
+  const [localApiUrlInput, setLocalApiUrlInput] = useState(
+    "https://api.z.ai/api/anthropic",
+  );
+  const [localStatusText, setLocalStatusText] = useState("未設定");
   const [savingLocalLlm, setSavingLocalLlm] = useState(false);
   const [exerciseMaster, setExerciseMaster] = useState<Exercise[]>([]);
-  const [exerciseSearchQuery, setExerciseSearchQuery] = useState('');
-  const [exerciseGroup, setExerciseGroup] = useState<ExerciseSelectionGroupId>('all');
+  const [exerciseSearchQuery, setExerciseSearchQuery] = useState("");
+  const [exerciseGroup, setExerciseGroup] =
+    useState<ExerciseSelectionGroupId>("all");
   const [loadingExerciseMaster, setLoadingExerciseMaster] = useState(false);
   const [syncingExerciseMaster, setSyncingExerciseMaster] = useState(false);
-  const [editingExerciseId, setEditingExerciseId] = useState<string | null>(null);
+  const [editingExerciseId, setEditingExerciseId] = useState<string | null>(
+    null,
+  );
 
   useEffect(() => {
     void loadSettings();
@@ -100,12 +109,11 @@ export default function SettingsTab() {
 
   const loadSettings = async () => {
     try {
-      const stored = await AsyncStorage.getItem(SETTINGS_KEY);
-      if (stored) {
-        setSettings(JSON.parse(stored) as AppSettings);
-      }
+      const loaded = await loadAppSettings();
+      setSettings(loaded);
+      updateGlobalSettings(loaded);
     } catch (error) {
-      console.error('Failed to load settings:', error);
+      console.error("Failed to load settings:", error);
     }
   };
 
@@ -117,10 +125,11 @@ export default function SettingsTab() {
 
   const saveSettings = async (nextSettings: AppSettings) => {
     try {
-      await AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify(nextSettings));
-      setSettings(nextSettings);
+      const saved = await saveAppSettings(nextSettings);
+      setSettings(saved);
+      updateGlobalSettings(saved);
     } catch (error) {
-      console.error('Failed to save settings:', error);
+      console.error("Failed to save settings:", error);
     }
   };
 
@@ -133,11 +142,11 @@ export default function SettingsTab() {
       if (health.hasApiKey) {
         setLocalStatusText(`ローカル直接接続が有効 / ${health.model}`);
       } else {
-        setLocalStatusText('ローカルAPIキー未設定');
+        setLocalStatusText("ローカルAPIキー未設定");
       }
     } catch (error) {
-      console.error('Failed to load local LLM config:', error);
-      setLocalStatusText('ローカル設定の読み込みに失敗しました');
+      console.error("Failed to load local LLM config:", error);
+      setLocalStatusText("ローカル設定の読み込みに失敗しました");
     }
   };
 
@@ -148,8 +157,8 @@ export default function SettingsTab() {
       const exercises = await ExerciseService.getAllExercises();
       setExerciseMaster(exercises);
     } catch (error) {
-      console.error('Failed to load exercise master:', error);
-      Alert.alert('エラー', '種目マスタの読み込みに失敗しました。');
+      console.error("Failed to load exercise master:", error);
+      Alert.alert("エラー", "種目マスタの読み込みに失敗しました。");
     } finally {
       setLoadingExerciseMaster(false);
     }
@@ -159,10 +168,15 @@ export default function SettingsTab() {
     try {
       await setStoredApiBaseUrlOverride(apiBaseUrlInput);
       await handleCheckApiHealth(true);
-      Alert.alert('保存完了', apiBaseUrlInput ? 'AIサーバーURLを保存しました。' : 'AIサーバーURLをクリアしました。');
+      Alert.alert(
+        "保存完了",
+        apiBaseUrlInput
+          ? "AIサーバーURLを保存しました。"
+          : "AIサーバーURLをクリアしました。",
+      );
     } catch (error) {
-      console.error('Failed to save API base URL override:', error);
-      Alert.alert('エラー', 'AIサーバーURLの保存に失敗しました。');
+      console.error("Failed to save API base URL override:", error);
+      Alert.alert("エラー", "AIサーバーURLの保存に失敗しました。");
     }
   };
 
@@ -175,10 +189,15 @@ export default function SettingsTab() {
         apiUrl: localApiUrlInput,
       });
       await loadLocalLlm();
-      Alert.alert('保存完了', localApiKeyInput.trim() ? 'ローカルGLM設定を保存しました。' : 'ローカルGLM設定をクリアしました。');
+      Alert.alert(
+        "保存完了",
+        localApiKeyInput.trim()
+          ? "ローカルGLM設定を保存しました。"
+          : "ローカルGLM設定をクリアしました。",
+      );
     } catch (error) {
-      console.error('Failed to save local LLM config:', error);
-      Alert.alert('エラー', 'ローカルGLM設定の保存に失敗しました。');
+      console.error("Failed to save local LLM config:", error);
+      Alert.alert("エラー", "ローカルGLM設定の保存に失敗しました。");
     } finally {
       setSavingLocalLlm(false);
     }
@@ -189,18 +208,18 @@ export default function SettingsTab() {
     try {
       const { baseUrl, health } = await getResolvedApiHealth(force);
       if (!baseUrl) {
-        setApiStatusText('未接続: AIサーバーURLが未設定です');
+        setApiStatusText("未接続: AIサーバーURLが未設定です");
       } else if (!health?.ok) {
         setApiStatusText(`未接続: ${baseUrl}`);
       } else if (!health.llm?.hasApiKey) {
         setApiStatusText(`接続OK / APIキー未設定 / ${baseUrl}`);
       } else {
-        const model = health.llm?.model ? ` / ${health.llm.model}` : '';
+        const model = health.llm?.model ? ` / ${health.llm.model}` : "";
         setApiStatusText(`接続OK${model} / ${baseUrl}`);
       }
     } catch (error) {
-      console.error('Failed to check API health:', error);
-      setApiStatusText('ヘルスチェック失敗');
+      console.error("Failed to check API health:", error);
+      setApiStatusText("ヘルスチェック失敗");
     } finally {
       setCheckingApi(false);
     }
@@ -210,36 +229,39 @@ export default function SettingsTab() {
     setSyncingExerciseMaster(true);
     try {
       await loadExerciseMaster(true);
-      Alert.alert('同期完了', '種目マスタを最新の既定構成に同期しました。');
+      Alert.alert("同期完了", "種目マスタを最新の既定構成に同期しました。");
     } catch (error) {
-      console.error('Failed to sync exercise master:', error);
-      Alert.alert('エラー', '種目マスタの同期に失敗しました。');
+      console.error("Failed to sync exercise master:", error);
+      Alert.alert("エラー", "種目マスタの同期に失敗しました。");
     } finally {
       setSyncingExerciseMaster(false);
     }
   };
 
-  const handleDeleteExercise = async (exerciseId: string, exerciseName: string) => {
+  const handleDeleteExercise = async (
+    exerciseId: string,
+    exerciseName: string,
+  ) => {
     Alert.alert(
-      '種目を削除',
+      "種目を削除",
       `${exerciseName} を削除しますか？この操作は取り消せません。`,
       [
-        { text: 'キャンセル', style: 'cancel' },
+        { text: "キャンセル", style: "cancel" },
         {
-          text: '削除',
-          style: 'destructive',
+          text: "削除",
+          style: "destructive",
           onPress: async () => {
             try {
               await ExerciseService.deleteExercise(exerciseId);
               await loadExerciseMaster();
-              Alert.alert('削除完了', `${exerciseName} を削除しました`);
+              Alert.alert("削除完了", `${exerciseName} を削除しました`);
             } catch (error) {
-              console.error('Failed to delete exercise:', error);
-              Alert.alert('エラー', '種目の削除に失敗しました');
+              console.error("Failed to delete exercise:", error);
+              Alert.alert("エラー", "種目の削除に失敗しました");
             }
           },
         },
-      ]
+      ],
     );
   };
 
@@ -253,13 +275,16 @@ export default function SettingsTab() {
     () =>
       exerciseMaster.filter((exercise) => {
         const query = exerciseSearchQuery.trim().toLowerCase();
-        const matchesGroup = matchesExerciseSelectionGroup(exercise, exerciseGroup);
+        const matchesGroup = matchesExerciseSelectionGroup(
+          exercise,
+          exerciseGroup,
+        );
         const haystack = [
           exercise.name,
           getExerciseCategoryLabel(exercise.category),
-          exercise.description ?? '',
+          exercise.description ?? "",
         ]
-          .join(' ')
+          .join(" ")
           .toLowerCase();
         const matchesSearch = !query || haystack.includes(query);
         return matchesGroup && matchesSearch;
@@ -298,7 +323,9 @@ export default function SettingsTab() {
         <View style={styles.headerText}>
           <Text style={styles.eyebrow}>SYSTEM / SETTINGS</Text>
           <Text style={styles.title}>設定</Text>
-          <Text style={styles.subtitle}>アプリの挙動とAI接続先をここで揃えます。</Text>
+          <Text style={styles.subtitle}>
+            アプリの挙動とAI接続先をここで揃えます。
+          </Text>
         </View>
         <HelpButton />
       </View>
@@ -311,8 +338,10 @@ export default function SettingsTab() {
           </View>
           <Switch
             value={settings.use_metric}
-            onValueChange={(value) => void saveSettings({ ...settings, use_metric: value })}
-            trackColor={{ false: '#3b2b28', true: GarageTheme.accent }}
+            onValueChange={(value) =>
+              void saveSettings({ ...settings, use_metric: value })
+            }
+            trackColor={{ false: "#3b2b28", true: GarageTheme.accent }}
           />
         </View>
 
@@ -323,8 +352,84 @@ export default function SettingsTab() {
           </View>
           <Switch
             value={settings.enable_audio_feedback}
-            onValueChange={(value) => void saveSettings({ ...settings, enable_audio_feedback: value })}
-            trackColor={{ false: '#3b2b28', true: GarageTheme.accent }}
+            onValueChange={(value) =>
+              void saveSettings({ ...settings, enable_audio_feedback: value })
+            }
+            trackColor={{ false: "#3b2b28", true: GarageTheme.accent }}
+          />
+        </View>
+
+        <View style={styles.toggleRow}>
+          <View>
+            <Text style={styles.toggleLabel}>
+              最高重量ベースのウォームアップ提案
+            </Text>
+            <Text style={styles.toggleMeta}>
+              Big3 のトップセット入力時に提案を表示
+            </Text>
+          </View>
+          <Switch
+            value={settings.enable_warmup_recommendations}
+            onValueChange={(value) =>
+              void saveSettings({
+                ...settings,
+                enable_warmup_recommendations: value,
+              })
+            }
+            trackColor={{ false: "#3b2b28", true: GarageTheme.accent }}
+          />
+        </View>
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.sectionTitle}>音声ガイド</Text>
+
+        <View style={styles.toggleRow}>
+          <View>
+            <Text style={styles.toggleLabel}>レップカウント</Text>
+            <Text style={styles.toggleMeta}>1レップごとに回数を読み上げ</Text>
+          </View>
+          <Switch
+            value={settings.enable_audio_rep_count}
+            onValueChange={(value) =>
+              void saveSettings({ ...settings, enable_audio_rep_count: value })
+            }
+            trackColor={{ false: "#3b2b28", true: GarageTheme.accent }}
+          />
+        </View>
+
+        <View style={styles.toggleRow}>
+          <View>
+            <Text style={styles.toggleLabel}>速度読み上げ</Text>
+            <Text style={styles.toggleMeta}>
+              各レップの平均速度を音声で通知
+            </Text>
+          </View>
+          <Switch
+            value={settings.enable_audio_velocity_readout}
+            onValueChange={(value) =>
+              void saveSettings({
+                ...settings,
+                enable_audio_velocity_readout: value,
+              })
+            }
+            trackColor={{ false: "#3b2b28", true: GarageTheme.accent }}
+          />
+        </View>
+
+        <View style={styles.toggleRow}>
+          <View>
+            <Text style={styles.toggleLabel}>もっと速くキュー</Text>
+            <Text style={styles.toggleMeta}>
+              低速レップ時のみ「もっと速く」を再生
+            </Text>
+          </View>
+          <Switch
+            value={settings.enable_audio_faster_cue}
+            onValueChange={(value) =>
+              void saveSettings({ ...settings, enable_audio_faster_cue: value })
+            }
+            trackColor={{ false: "#3b2b28", true: GarageTheme.accent }}
           />
         </View>
       </View>
@@ -337,10 +442,25 @@ export default function SettingsTab() {
             return (
               <TouchableOpacity
                 key={value}
-                style={[styles.thresholdButton, active && styles.thresholdButtonActive]}
-                onPress={() => void saveSettings({ ...settings, velocity_loss_threshold: value })}
+                style={[
+                  styles.thresholdButton,
+                  active && styles.thresholdButtonActive,
+                ]}
+                onPress={() =>
+                  void saveSettings({
+                    ...settings,
+                    velocity_loss_threshold: value,
+                  })
+                }
               >
-                <Text style={[styles.thresholdText, active && styles.thresholdTextActive]}>{value}%</Text>
+                <Text
+                  style={[
+                    styles.thresholdText,
+                    active && styles.thresholdTextActive,
+                  ]}
+                >
+                  {value}%
+                </Text>
               </TouchableOpacity>
             );
           })}
@@ -350,7 +470,8 @@ export default function SettingsTab() {
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>ローカルGLM接続</Text>
         <Text style={styles.cardBody}>
-          あなた専用運用向け。ここに APIキーを入れると、AIコーチは Mac サーバーなしで GLM に直接接続します。
+          あなた専用運用向け。ここに APIキーを入れると、AIコーチは Mac
+          サーバーなしで GLM に直接接続します。
         </Text>
         <TextInput
           style={styles.input}
@@ -383,11 +504,21 @@ export default function SettingsTab() {
         <Text style={styles.statusLabel}>状態</Text>
         <Text style={styles.statusText}>{localStatusText}</Text>
         <View style={styles.buttonRow}>
-          <TouchableOpacity style={styles.secondaryButton} onPress={() => void loadLocalLlm()}>
+          <TouchableOpacity
+            style={styles.secondaryButton}
+            onPress={() => void loadLocalLlm()}
+          >
             <Text style={styles.secondaryButtonText}>再読込</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.primaryButton} onPress={() => void handleSaveLocalLlm()}>
-            {savingLocalLlm ? <ActivityIndicator color={GarageTheme.textStrong} /> : <Text style={styles.primaryButtonText}>保存</Text>}
+          <TouchableOpacity
+            style={styles.primaryButton}
+            onPress={() => void handleSaveLocalLlm()}
+          >
+            {savingLocalLlm ? (
+              <ActivityIndicator color={GarageTheme.textStrong} />
+            ) : (
+              <Text style={styles.primaryButtonText}>保存</Text>
+            )}
           </TouchableOpacity>
         </View>
       </View>
@@ -409,10 +540,20 @@ export default function SettingsTab() {
         <Text style={styles.statusLabel}>状態</Text>
         <Text style={styles.statusText}>{apiStatusText}</Text>
         <View style={styles.buttonRow}>
-          <TouchableOpacity style={styles.secondaryButton} onPress={() => void handleCheckApiHealth(true)}>
-            {checkingApi ? <ActivityIndicator color={GarageTheme.textStrong} /> : <Text style={styles.secondaryButtonText}>再確認</Text>}
+          <TouchableOpacity
+            style={styles.secondaryButton}
+            onPress={() => void handleCheckApiHealth(true)}
+          >
+            {checkingApi ? (
+              <ActivityIndicator color={GarageTheme.textStrong} />
+            ) : (
+              <Text style={styles.secondaryButtonText}>再確認</Text>
+            )}
           </TouchableOpacity>
-          <TouchableOpacity style={styles.primaryButton} onPress={() => void handleSaveApiBaseUrl()}>
+          <TouchableOpacity
+            style={styles.primaryButton}
+            onPress={() => void handleSaveApiBaseUrl()}
+          >
             <Text style={styles.primaryButtonText}>保存</Text>
           </TouchableOpacity>
         </View>
@@ -450,7 +591,9 @@ export default function SettingsTab() {
           </View>
           <View style={styles.summaryTile}>
             <Text style={styles.summaryLabel}>OVRサンプル</Text>
-            <Text style={styles.summaryValue}>{ovrSampleCoverageCount}/{OVR_SAMPLE_EXERCISE_NAMES.length}</Text>
+            <Text style={styles.summaryValue}>
+              {ovrSampleCoverageCount}/{OVR_SAMPLE_EXERCISE_NAMES.length}
+            </Text>
           </View>
         </View>
 
@@ -469,12 +612,12 @@ export default function SettingsTab() {
             disabled={syncingExerciseMaster}
           >
             <Text style={styles.actionButtonText}>
-              {syncingExerciseMaster ? '同期中...' : '⟳ 既定に復元'}
+              {syncingExerciseMaster ? "同期中..." : "⟳ 既定に復元"}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.actionButton, styles.addButton]}
-            onPress={() => router.push('/coach-chat')}
+            onPress={() => router.push("/coach-chat")}
           >
             <Text style={styles.actionButtonText}>+ 新規追加</Text>
           </TouchableOpacity>
@@ -494,7 +637,14 @@ export default function SettingsTab() {
                 style={[styles.groupChip, active && styles.groupChipActive]}
                 onPress={() => setExerciseGroup(group.id)}
               >
-                <Text style={[styles.groupChipText, active && styles.groupChipTextActive]}>{group.label}</Text>
+                <Text
+                  style={[
+                    styles.groupChipText,
+                    active && styles.groupChipTextActive,
+                  ]}
+                >
+                  {group.label}
+                </Text>
               </TouchableOpacity>
             );
           })}
@@ -508,29 +658,42 @@ export default function SettingsTab() {
         ) : (
           <View style={styles.masterList}>
             {groupedExercises.map(([groupId, exercises]) => {
-              const label = EXERCISE_SELECTION_GROUPS.find((group) => group.id === groupId)?.label ?? groupId;
+              const label =
+                EXERCISE_SELECTION_GROUPS.find((group) => group.id === groupId)
+                  ?.label ?? groupId;
               return (
                 <View key={groupId} style={styles.masterGroupSection}>
                   <View style={styles.masterGroupHeader}>
                     <Text style={styles.masterGroupTitle}>{label}</Text>
-                    <Text style={styles.masterGroupCount}>{exercises.length}</Text>
+                    <Text style={styles.masterGroupCount}>
+                      {exercises.length}
+                    </Text>
                   </View>
 
                   {exercises.map((exercise) => {
                     const romText =
-                      exercise.rom_range_min_cm != null && exercise.rom_range_max_cm != null
+                      exercise.rom_range_min_cm != null &&
+                      exercise.rom_range_max_cm != null
                         ? `${formatLoadKg(exercise.rom_range_min_cm)}-${formatLoadKg(exercise.rom_range_max_cm)} cm`
                         : exercise.min_rom_threshold != null
                           ? `最小ROM ${formatLoadKg(exercise.min_rom_threshold)} cm`
-                          : 'ROM未設定';
+                          : "ROM未設定";
 
                     const isEditing = editingExerciseId === exercise.id;
 
                     return (
-                      <View key={exercise.id} style={[styles.exerciseRow, isEditing && styles.exerciseRowEditing]}>
+                      <View
+                        key={exercise.id}
+                        style={[
+                          styles.exerciseRow,
+                          isEditing && styles.exerciseRowEditing,
+                        ]}
+                      >
                         <View style={styles.exerciseRowMain}>
                           <View style={styles.exerciseNameRow}>
-                            <Text style={styles.exerciseName}>{exercise.name}</Text>
+                            <Text style={styles.exerciseName}>
+                              {exercise.name}
+                            </Text>
                             {exercise.has_lvp ? (
                               <View style={styles.lvpBadge}>
                                 <Text style={styles.lvpBadgeText}>LVP</Text>
@@ -538,20 +701,64 @@ export default function SettingsTab() {
                             ) : null}
                           </View>
                           <Text style={styles.exerciseMeta}>
-                            {getExerciseCategoryLabel(exercise.category)} / {MODE_LABELS[exercise.rep_detection_mode ?? 'standard']} / {romText}
+                            {getExerciseCategoryLabel(exercise.category)} /{" "}
+                            {
+                              MODE_LABELS[
+                                exercise.rep_detection_mode ?? "standard"
+                              ]
+                            }{" "}
+                            / {romText}
                           </Text>
-                          {exercise.description ? <Text style={styles.exerciseDescription}>{exercise.description}</Text> : null}
+                          {exercise.description ? (
+                            <Text style={styles.exerciseDescription}>
+                              {exercise.description}
+                            </Text>
+                          ) : null}
+                          {isEditing ? (
+                            <View style={styles.exerciseInlineToggleRow}>
+                              <View style={styles.exerciseInlineToggleCopy}>
+                                <Text style={styles.exerciseInlineToggleLabel}>
+                                  最初の1レップをセットアップとして無視
+                                </Text>
+                                <Text style={styles.exerciseInlineToggleMeta}>
+                                  開始位置に運ぶ反応を自動除外します
+                                </Text>
+                              </View>
+                              <Switch
+                                value={Boolean(
+                                  exercise.ignore_first_rep_as_setup,
+                                )}
+                                onValueChange={(value) => {
+                                  void ExerciseService.updateExercise(
+                                    exercise.id,
+                                    { ignore_first_rep_as_setup: value },
+                                  ).then(() => loadExerciseMaster());
+                                }}
+                                trackColor={{
+                                  false: "#3b2b28",
+                                  true: GarageTheme.accent,
+                                }}
+                              />
+                            </View>
+                          ) : null}
                         </View>
                         <View style={styles.exerciseActions}>
                           <TouchableOpacity
                             style={styles.exerciseActionBtn}
                             onPress={() => handleEditExercise(exercise.id)}
                           >
-                            <Text style={styles.exerciseActionText}>{isEditing ? '×' : '✏️'}</Text>
+                            <Text style={styles.exerciseActionText}>
+                              {isEditing ? "×" : "✏️"}
+                            </Text>
                           </TouchableOpacity>
                           <TouchableOpacity
-                            style={[styles.exerciseActionBtn, styles.exerciseDeleteBtn]}
-                            onPress={() => handleDeleteExercise(exercise.id, exercise.name)}
+                            style={[
+                              styles.exerciseActionBtn,
+                              styles.exerciseDeleteBtn,
+                            ]}
+                            onPress={() =>
+                              handleDeleteExercise(exercise.id, exercise.name)
+                            }
                           >
                             <Text style={styles.exerciseActionText}>🗑️</Text>
                           </TouchableOpacity>
@@ -565,8 +772,12 @@ export default function SettingsTab() {
 
             {groupedExercises.length === 0 ? (
               <View style={styles.emptyState}>
-                <Text style={styles.emptyStateTitle}>一致する種目がありません</Text>
-                <Text style={styles.emptyStateText}>検索条件かカテゴリを変更してください。</Text>
+                <Text style={styles.emptyStateTitle}>
+                  一致する種目がありません
+                </Text>
+                <Text style={styles.emptyStateText}>
+                  検索条件かカテゴリを変更してください。
+                </Text>
               </View>
             ) : null}
           </View>
@@ -588,14 +799,14 @@ const styles = StyleSheet.create({
   eyebrow: {
     color: GarageTheme.accent,
     fontSize: 11,
-    fontWeight: '800',
+    fontWeight: "800",
     letterSpacing: 2,
     marginTop: 8,
   },
   title: {
     color: GarageTheme.text,
     fontSize: 32,
-    fontWeight: '800',
+    fontWeight: "800",
     marginTop: 8,
   },
   subtitle: {
@@ -605,9 +816,9 @@ const styles = StyleSheet.create({
     marginBottom: 18,
   },
   headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
   },
   headerText: {
     flex: 1,
@@ -621,15 +832,15 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   toggleRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     paddingVertical: 10,
   },
   toggleLabel: {
     color: GarageTheme.text,
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   toggleMeta: {
     color: GarageTheme.textMuted,
@@ -639,12 +850,12 @@ const styles = StyleSheet.create({
   sectionTitle: {
     color: GarageTheme.text,
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: "700",
     marginBottom: 12,
   },
   thresholdRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: 10,
   },
   thresholdButton: {
@@ -656,13 +867,13 @@ const styles = StyleSheet.create({
     borderColor: GarageTheme.borderStrong,
   },
   thresholdButtonActive: {
-    backgroundColor: '#4b2416',
+    backgroundColor: "#4b2416",
     borderColor: GarageTheme.accent,
   },
   thresholdText: {
     color: GarageTheme.textMuted,
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   thresholdTextActive: {
     color: GarageTheme.textStrong,
@@ -689,7 +900,7 @@ const styles = StyleSheet.create({
   statusLabel: {
     color: GarageTheme.accentSoft,
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: "800",
     letterSpacing: 1,
     marginTop: 14,
     marginBottom: 6,
@@ -700,14 +911,14 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   buttonRow: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 10,
     marginTop: 14,
   },
   masterHeaderRow: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 12,
-    alignItems: 'flex-start',
+    alignItems: "flex-start",
   },
   masterHeaderCopy: {
     flex: 1,
@@ -717,19 +928,19 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: 1,
     borderColor: GarageTheme.accent,
-    backgroundColor: '#4b2416',
+    backgroundColor: "#4b2416",
     paddingVertical: 14,
     paddingHorizontal: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   syncButtonText: {
     color: GarageTheme.textStrong,
     fontSize: 13,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   masterSummaryRow: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 10,
     marginBottom: 14,
   },
@@ -745,13 +956,13 @@ const styles = StyleSheet.create({
   summaryLabel: {
     color: GarageTheme.textSubtle,
     fontSize: 11,
-    fontWeight: '700',
+    fontWeight: "700",
     letterSpacing: 1,
   },
   summaryValue: {
     color: GarageTheme.textStrong,
     fontSize: 22,
-    fontWeight: '800',
+    fontWeight: "800",
     marginTop: 6,
   },
   groupScroll: {
@@ -771,21 +982,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
   },
   groupChipActive: {
-    backgroundColor: '#4b2416',
+    backgroundColor: "#4b2416",
     borderColor: GarageTheme.accent,
   },
   groupChipText: {
     color: GarageTheme.textMuted,
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   groupChipTextActive: {
     color: GarageTheme.textStrong,
   },
   loadingState: {
     paddingVertical: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     gap: 10,
   },
   loadingText: {
@@ -799,20 +1010,20 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   masterGroupHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     paddingBottom: 2,
   },
   masterGroupTitle: {
     color: GarageTheme.textStrong,
     fontSize: 15,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   masterGroupCount: {
     color: GarageTheme.accentSoft,
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   exerciseRow: {
     borderRadius: 16,
@@ -825,28 +1036,28 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   exerciseNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
   },
   exerciseName: {
     flex: 1,
     color: GarageTheme.textStrong,
     fontSize: 15,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   lvpBadge: {
     borderRadius: 999,
     borderWidth: 1,
     borderColor: GarageTheme.accent,
-    backgroundColor: '#3c1f14',
+    backgroundColor: "#3c1f14",
     paddingHorizontal: 8,
     paddingVertical: 4,
   },
   lvpBadgeText: {
     color: GarageTheme.accentSoft,
     fontSize: 10,
-    fontWeight: '900',
+    fontWeight: "900",
     letterSpacing: 1,
   },
   exerciseMeta: {
@@ -859,14 +1070,37 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 18,
   },
+  exerciseInlineToggleRow: {
+    marginTop: 8,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: GarageTheme.border,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  exerciseInlineToggleCopy: {
+    flex: 1,
+  },
+  exerciseInlineToggleLabel: {
+    color: GarageTheme.textStrong,
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  exerciseInlineToggleMeta: {
+    color: GarageTheme.textMuted,
+    fontSize: 11,
+    marginTop: 4,
+  },
   exerciseRowEditing: {
     borderColor: GarageTheme.accent,
-    backgroundColor: '#4b2416',
+    backgroundColor: "#4b2416",
   },
   exerciseActions: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 8,
-    alignItems: 'center',
+    alignItems: "center",
   },
   exerciseActionBtn: {
     width: 36,
@@ -875,18 +1109,18 @@ const styles = StyleSheet.create({
     backgroundColor: GarageTheme.surface,
     borderWidth: 1,
     borderColor: GarageTheme.borderStrong,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   exerciseDeleteBtn: {
-    borderColor: '#ff4444',
-    backgroundColor: '#2a1a1a',
+    borderColor: "#ff4444",
+    backgroundColor: "#2a1a1a",
   },
   exerciseActionText: {
     fontSize: 16,
   },
   masterActionsRow: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 10,
     marginTop: 12,
   },
@@ -894,21 +1128,21 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 14,
     borderRadius: 12,
-    alignItems: 'center',
+    alignItems: "center",
     borderWidth: 1.5,
   },
   actionSyncButton: {
-    backgroundColor: '#4b2416',
+    backgroundColor: "#4b2416",
     borderColor: GarageTheme.accent,
   },
   addButton: {
-    backgroundColor: '#1d3020',
+    backgroundColor: "#1d3020",
     borderColor: GarageTheme.success,
   },
   actionButtonText: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 14,
-    fontWeight: '800',
+    fontWeight: "800",
     letterSpacing: 0.5,
   },
   emptyState: {
@@ -917,18 +1151,18 @@ const styles = StyleSheet.create({
     borderColor: GarageTheme.border,
     backgroundColor: GarageTheme.chip,
     padding: 18,
-    alignItems: 'center',
+    alignItems: "center",
   },
   emptyStateTitle: {
     color: GarageTheme.textStrong,
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   emptyStateText: {
     color: GarageTheme.textMuted,
     fontSize: 12,
     marginTop: 6,
-    textAlign: 'center',
+    textAlign: "center",
   },
   secondaryButton: {
     flex: 1,
@@ -937,25 +1171,25 @@ const styles = StyleSheet.create({
     borderColor: GarageTheme.borderStrong,
     backgroundColor: GarageTheme.chip,
     paddingVertical: 14,
-    alignItems: 'center',
+    alignItems: "center",
   },
   secondaryButtonText: {
     color: GarageTheme.textStrong,
     fontSize: 14,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   primaryButton: {
     flex: 1,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: GarageTheme.accent,
-    backgroundColor: '#4b2416',
+    backgroundColor: "#4b2416",
     paddingVertical: 14,
-    alignItems: 'center',
+    alignItems: "center",
   },
   primaryButtonText: {
     color: GarageTheme.textStrong,
     fontSize: 14,
-    fontWeight: '800',
+    fontWeight: "800",
   },
 });

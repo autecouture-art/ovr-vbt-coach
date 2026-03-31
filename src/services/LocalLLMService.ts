@@ -1,8 +1,8 @@
-import * as SecureStore from 'expo-secure-store';
+import * as SecureStore from "expo-secure-store";
 
-const LOCAL_LLM_API_KEY = 'repvelo_local_llm_api_key';
-const LOCAL_LLM_MODEL = 'repvelo_local_llm_model';
-const LOCAL_LLM_API_URL = 'repvelo_local_llm_api_url';
+const LOCAL_LLM_API_KEY = "repvelo_local_llm_api_key";
+const LOCAL_LLM_MODEL = "repvelo_local_llm_model";
+const LOCAL_LLM_API_URL = "repvelo_local_llm_api_url";
 
 export type LocalLLMConfig = {
   apiKey: string;
@@ -11,53 +11,73 @@ export type LocalLLMConfig = {
 };
 
 type CoachHistory = Array<{
-  role: 'user' | 'coach';
+  role: "user" | "coach";
   text: string;
 }>;
 
 type CoachContext = Record<string, unknown>;
 
-const DEFAULT_MODEL = 'glm-4.7';
-const DEFAULT_API_URL = 'https://api.z.ai/api/anthropic';
-const DEFAULT_OPENAI_COMPAT_API_URL = 'https://api.z.ai/api/paas/v4';
+const DEFAULT_MODEL = "glm-4.7";
+const DEFAULT_API_URL = "https://api.z.ai/api/anthropic";
+const DEFAULT_OPENAI_COMPAT_API_URL = "https://api.z.ai/api/paas/v4";
 
-const trimTrailingSlash = (value: string) => value.replace(/\/$/, '');
-const getValue = async (key: string) => (await SecureStore.getItemAsync(key)) ?? '';
+const trimTrailingSlash = (value: string) => value.replace(/\/$/, "");
+const getValue = async (key: string) =>
+  (await SecureStore.getItemAsync(key)) ?? "";
 
 const isAnthropicEndpoint = (url: string) => /\/anthropic(\/|$)/i.test(url);
 
 const getOpenAICompatUrl = (url: string) => {
   const normalized = trimTrailingSlash(url);
   if (isAnthropicEndpoint(normalized)) {
-    return normalized.replace(/\/anthropic(\/)?$/i, '/paas/v4');
+    return normalized.replace(/\/anthropic(\/)?$/i, "/paas/v4");
   }
   return normalized || DEFAULT_OPENAI_COMPAT_API_URL;
 };
 
 const parseError = (status: number, errorText: string) => {
-  if (status === 401 && /invalid|authentication|api\s*key|unauthorized/i.test(errorText)) {
-    return new Error('ZAI_API_KEY is invalid');
+  if (
+    status === 401 &&
+    /invalid|authentication|api\s*key|unauthorized/i.test(errorText)
+  ) {
+    return new Error("ZAI_API_KEY is invalid");
   }
 
-  if (status === 429 && /insufficient balance|no resource package|recharge|quota|rate limit|too many requests/i.test(errorText)) {
-    return new Error('ZAI_API_BALANCE_EXHAUSTED');
+  if (
+    status === 429 &&
+    /insufficient balance|no resource package|recharge|quota|rate limit|too many requests/i.test(
+      errorText,
+    )
+  ) {
+    return new Error("ZAI_API_BALANCE_EXHAUSTED");
   }
 
-  return new Error('LLM invoke failed: ' + status + ' ' + errorText);
+  return new Error("LLM invoke failed: " + status + " " + errorText);
 };
 
 const shouldFallbackFromAnthropic = (status: number, errorText: string) => {
-  if (status === 400 || status === 404 || status === 405 || status === 415 || status === 422 || status >= 500) {
+  if (
+    status === 400 ||
+    status === 404 ||
+    status === 405 ||
+    status === 415 ||
+    status === 422 ||
+    status >= 500
+  ) {
     return true;
   }
-  return /unsupported|not found|invalid anthropic|unknown endpoint/i.test(errorText);
+  return /unsupported|not found|invalid anthropic|unknown endpoint/i.test(
+    errorText,
+  );
 };
 
-const parseAnthropicText = (data: { content?: Array<{ type: string; text?: string }> }) => {
+const parseAnthropicText = (data: {
+  content?: Array<{ type: string; text?: string }>;
+}) => {
   return (data.content ?? [])
-    .filter((part) => part.type === 'text' && typeof part.text === 'string')
+    .filter((part) => part.type === "text" && typeof part.text === "string")
     .map((part) => part.text)
-    .join('\n')
+    .join("\n")
     .trim();
 };
 
@@ -69,36 +89,91 @@ const parseOpenAIText = (data: {
   }>;
 }) => {
   const content = data.choices?.[0]?.message?.content;
-  if (typeof content === 'string') {
+  if (typeof content === "string") {
     return content.trim();
   }
   if (Array.isArray(content)) {
     return content
-      .filter((part) => part.type === 'text' && typeof part.text === 'string')
+      .filter((part) => part.type === "text" && typeof part.text === "string")
       .map((part) => part.text)
-      .join('\n')
+      .join("\n")
       .trim();
   }
-  return '';
+  return "";
+};
+
+const truncateText = (value: string, maxLength: number) =>
+  value.length > maxLength ? value.slice(0, maxLength) + "...<trimmed>" : value;
+
+const compactCoachContext = (context: CoachContext) => {
+  const source = typeof context.source === "string" ? context.source : null;
+  const currentExercise =
+    typeof context.currentExercise === "string"
+      ? context.currentExercise
+      : null;
+  const routeNotes =
+    typeof context.routeNotes === "string"
+      ? truncateText(context.routeNotes, 140)
+      : null;
+  const recentSessions = Array.isArray(context.recentSessions)
+    ? context.recentSessions.slice(0, 3).map((session) =>
+        session && typeof session === "object"
+          ? {
+              date: (session as Record<string, unknown>).date,
+              total_sets: (session as Record<string, unknown>).total_sets,
+              total_volume: (session as Record<string, unknown>).total_volume,
+              lifts: Array.isArray((session as Record<string, unknown>).lifts)
+                ? (session as Record<string, unknown>).lifts
+                : [],
+            }
+          : session,
+      )
+    : [];
+  const sameLiftRecentSets = Array.isArray(context.sameLiftRecentSets)
+    ? context.sameLiftRecentSets.slice(0, 5)
+    : [];
+
+  return {
+    source,
+    currentExercise,
+    currentSet: context.currentSet ?? null,
+    currentReps: context.currentReps ?? null,
+    currentLoadKg: context.currentLoadKg ?? null,
+    velocityLossPercent: context.velocityLossPercent ?? null,
+    currentMeanVelocity: context.currentMeanVelocity ?? null,
+    currentPeakVelocity: context.currentPeakVelocity ?? null,
+    requestedTotalSets: context.requestedTotalSets ?? null,
+    requestedTotalVolume: context.requestedTotalVolume ?? null,
+    savedSetCount: context.savedSetCount ?? null,
+    isSessionActive: context.isSessionActive ?? null,
+    routeNotes,
+    recentSessions,
+    sameLiftRecentSets,
+  };
 };
 
 const buildSystemPrompt = (context: CoachContext) => {
-  const contextText = 'トレーニングコンテキスト(JSON):\n' + JSON.stringify(context, null, 2);
+  const compactContext = compactCoachContext(context);
+  const contextText =
+    "トレーニングコンテキスト(JSON):\n" +
+    truncateText(JSON.stringify(compactContext), 2200);
   return [
-    'あなたは日本語のストレングスコーチです。短く具体的に答えてください。与えられたトレーニングデータを優先し、足りないときだけ不足点を1行で示してください。安全と回復を優先してください。',
+    "あなたは日本語のストレングスコーチです。短く具体的に答えてください。与えられたトレーニングデータを優先し、足りないときだけ不足点を1行で示してください。安全と回復を優先してください。",
     contextText,
-  ].join('\n\n');
+  ].join("\n\n");
 };
 
 const normalizeHistoryMessages = (history: CoachHistory | undefined) => {
-  const mapped: Array<{ role: 'user' | 'assistant'; content: string }> = (history ?? [])
-    .map((item): { role: 'user' | 'assistant'; content: string } => ({
-      role: item.role === 'coach' ? 'assistant' : 'user',
-      content: item.text?.trim() ?? '',
+  const mapped: Array<{ role: "user" | "assistant"; content: string }> = (
+    history ?? []
+  )
+    .map((item): { role: "user" | "assistant"; content: string } => ({
+      role: item.role === "coach" ? "assistant" : "user",
+      content: item.text?.trim() ?? "",
     }))
     .filter((item) => item.content.length > 0);
 
-  const merged: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+  const merged: Array<{ role: "user" | "assistant"; content: string }> = [];
   for (const item of mapped) {
     const last = merged[merged.length - 1];
     if (last && last.role === item.role) {
@@ -108,17 +183,20 @@ const normalizeHistoryMessages = (history: CoachHistory | undefined) => {
     merged.push(item);
   }
 
-  while (merged[0]?.role === 'assistant') {
+  while (merged[0]?.role === "assistant") {
     merged.shift();
   }
 
   return merged;
 };
 
-const buildHistoryMessages = (history: CoachHistory | undefined, message: string) => [
+const buildHistoryMessages = (
+  history: CoachHistory | undefined,
+  message: string,
+) => [
   ...normalizeHistoryMessages(history),
   {
-    role: 'user',
+    role: "user",
     content: message.trim(),
   },
 ];
@@ -132,13 +210,13 @@ async function invokeAnthropic(params: {
   message: string;
   maxTokens?: number;
 }) {
-  const response = await fetch(params.apiUrl + '/v1/messages', {
-    method: 'POST',
+  const response = await fetch(params.apiUrl + "/v1/messages", {
+    method: "POST",
     headers: {
-      'content-type': 'application/json',
-      'x-api-key': params.apiKey,
-      authorization: 'Bearer ' + params.apiKey,
-      'anthropic-version': '2023-06-01',
+      "content-type": "application/json",
+      "x-api-key": params.apiKey,
+      authorization: "Bearer " + params.apiKey,
+      "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
       model: params.model,
@@ -150,13 +228,18 @@ async function invokeAnthropic(params: {
 
   if (!response.ok) {
     const errorText = await response.text();
-    const error = new Error(errorText) as Error & { status?: number; errorText?: string };
+    const error = new Error(errorText) as Error & {
+      status?: number;
+      errorText?: string;
+    };
     error.status = response.status;
     error.errorText = errorText;
     throw error;
   }
 
-  const data = (await response.json()) as { content?: Array<{ type: string; text?: string }> };
+  const data = (await response.json()) as {
+    content?: Array<{ type: string; text?: string }>;
+  };
   return parseAnthropicText(data);
 }
 
@@ -169,19 +252,19 @@ async function invokeOpenAICompat(params: {
   message: string;
   maxTokens?: number;
 }) {
-  const response = await fetch(params.apiUrl + '/chat/completions', {
-    method: 'POST',
+  const response = await fetch(params.apiUrl + "/chat/completions", {
+    method: "POST",
     headers: {
-      'content-type': 'application/json',
-      authorization: 'Bearer ' + params.apiKey,
-      'x-api-key': params.apiKey,
+      "content-type": "application/json",
+      authorization: "Bearer " + params.apiKey,
+      "x-api-key": params.apiKey,
     },
     body: JSON.stringify({
       model: params.model,
       max_tokens: params.maxTokens ?? 700,
-      thinking: { type: 'disabled' },
+      thinking: { type: "disabled" },
       messages: [
-        { role: 'system', content: params.system },
+        { role: "system", content: params.system },
         ...buildHistoryMessages(params.history, params.message),
       ],
     }),
@@ -201,7 +284,7 @@ async function invokeOpenAICompat(params: {
   };
 
   const text = parseOpenAIText(data);
-  return text || '回答を生成できませんでした。';
+  return text || "回答を生成できませんでした。";
 }
 
 export async function getLocalLLMConfig(): Promise<LocalLLMConfig> {
@@ -218,8 +301,10 @@ export async function getLocalLLMConfig(): Promise<LocalLLMConfig> {
   };
 }
 
-export async function saveLocalLLMConfig(config: Partial<LocalLLMConfig>): Promise<void> {
-  if (typeof config.apiKey === 'string') {
+export async function saveLocalLLMConfig(
+  config: Partial<LocalLLMConfig>,
+): Promise<void> {
+  if (typeof config.apiKey === "string") {
     const next = config.apiKey.trim();
     if (next) {
       await SecureStore.setItemAsync(LOCAL_LLM_API_KEY, next);
@@ -228,12 +313,12 @@ export async function saveLocalLLMConfig(config: Partial<LocalLLMConfig>): Promi
     }
   }
 
-  if (typeof config.model === 'string') {
+  if (typeof config.model === "string") {
     const next = config.model.trim() || DEFAULT_MODEL;
     await SecureStore.setItemAsync(LOCAL_LLM_MODEL, next);
   }
 
-  if (typeof config.apiUrl === 'string') {
+  if (typeof config.apiUrl === "string") {
     const next = trimTrailingSlash(config.apiUrl.trim() || DEFAULT_API_URL);
     await SecureStore.setItemAsync(LOCAL_LLM_API_URL, next);
   }
@@ -249,17 +334,12 @@ export async function getLocalLLMHealth() {
   };
 }
 
-export async function invokeDirectCoachChat(params: {
-  message: string;
-  history?: CoachHistory;
-  context?: CoachContext;
-}): Promise<string> {
-  const config = await getLocalLLMConfig();
-  if (!config.apiKey) {
-    throw new Error('ZAI_API_KEY is not configured');
-  }
-
-  const system = buildSystemPrompt(params.context ?? {});
+async function invokeMinimalDirectCoachChat(
+  config: LocalLLMConfig,
+  message: string,
+): Promise<string> {
+  const minimalSystem =
+    "あなたは日本語のストレングスコーチです。短く具体的に答えてください。";
 
   if (isAnthropicEndpoint(config.apiUrl)) {
     try {
@@ -267,18 +347,24 @@ export async function invokeDirectCoachChat(params: {
         apiUrl: config.apiUrl,
         apiKey: config.apiKey,
         model: config.model,
-        system,
-        history: params.history,
-        message: params.message,
+        system: minimalSystem,
+        history: [],
+        message,
+        maxTokens: 500,
       });
       if (text) {
         return text;
       }
     } catch (error) {
-      const status = typeof (error as { status?: unknown }).status === 'number'
-        ? (error as { status: number }).status
-        : 0;
-      const errorText = String((error as { errorText?: unknown }).errorText ?? (error as Error).message ?? '');
+      const status =
+        typeof (error as { status?: unknown }).status === "number"
+          ? (error as { status: number }).status
+          : 0;
+      const errorText = String(
+        (error as { errorText?: unknown }).errorText ??
+          (error as Error).message ??
+          "",
+      );
 
       if (!shouldFallbackFromAnthropic(status, errorText)) {
         throw parseError(status || 500, errorText);
@@ -290,10 +376,76 @@ export async function invokeDirectCoachChat(params: {
     apiUrl: getOpenAICompatUrl(config.apiUrl),
     apiKey: config.apiKey,
     model: config.model,
-    system,
-    history: params.history,
-    message: params.message,
+    system: minimalSystem,
+    history: [],
+    message,
+    maxTokens: 500,
   });
+}
+
+export async function invokeDirectCoachChat(params: {
+  message: string;
+  history?: CoachHistory;
+  context?: CoachContext;
+}): Promise<string> {
+  const config = await getLocalLLMConfig();
+  if (!config.apiKey) {
+    throw new Error("ZAI_API_KEY is not configured");
+  }
+
+  const message = params.message.trim();
+  const system = buildSystemPrompt(params.context ?? {});
+
+  try {
+    if (isAnthropicEndpoint(config.apiUrl)) {
+      try {
+        const text = await invokeAnthropic({
+          apiUrl: config.apiUrl,
+          apiKey: config.apiKey,
+          model: config.model,
+          system,
+          history: params.history,
+          message,
+        });
+        if (text) {
+          return text;
+        }
+      } catch (error) {
+        const status =
+          typeof (error as { status?: unknown }).status === "number"
+            ? (error as { status: number }).status
+            : 0;
+        const errorText = String(
+          (error as { errorText?: unknown }).errorText ??
+            (error as Error).message ??
+            "",
+        );
+
+        if (!shouldFallbackFromAnthropic(status, errorText)) {
+          throw parseError(status || 500, errorText);
+        }
+      }
+    }
+
+    return await invokeOpenAICompat({
+      apiUrl: getOpenAICompatUrl(config.apiUrl),
+      apiKey: config.apiKey,
+      model: config.model,
+      system,
+      history: params.history,
+      message,
+    });
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    if (
+      detail.includes("ZAI_API_KEY is invalid") ||
+      detail.includes("ZAI_API_BALANCE_EXHAUSTED")
+    ) {
+      throw error;
+    }
+
+    return invokeMinimalDirectCoachChat(config, message);
+  }
 }
 
 export async function verifyLocalLLMConnection(): Promise<{
@@ -307,13 +459,13 @@ export async function verifyLocalLLMConnection(): Promise<{
   if (!config.apiKey) {
     return {
       ok: false,
-      detail: 'ZAI APIキーが未設定です。',
+      detail: "ZAI APIキーが未設定です。",
       model: config.model,
       apiUrl: config.apiUrl,
     };
   }
 
-  const system = '接続確認用です。「OK」のみ返答してください。';
+  const system = "接続確認用です。「OK」のみ返答してください。";
 
   try {
     if (isAnthropicEndpoint(config.apiUrl)) {
@@ -323,14 +475,19 @@ export async function verifyLocalLLMConnection(): Promise<{
           apiKey: config.apiKey,
           model: config.model,
           system,
-          message: 'ping',
+          message: "ping",
           maxTokens: 16,
         });
       } catch (error) {
-        const status = typeof (error as { status?: unknown }).status === 'number'
-          ? (error as { status: number }).status
-          : 0;
-        const errorText = String((error as { errorText?: unknown }).errorText ?? (error as Error).message ?? '');
+        const status =
+          typeof (error as { status?: unknown }).status === "number"
+            ? (error as { status: number }).status
+            : 0;
+        const errorText = String(
+          (error as { errorText?: unknown }).errorText ??
+            (error as Error).message ??
+            "",
+        );
 
         if (!shouldFallbackFromAnthropic(status, errorText)) {
           throw parseError(status || 500, errorText);
@@ -341,7 +498,7 @@ export async function verifyLocalLLMConnection(): Promise<{
           apiKey: config.apiKey,
           model: config.model,
           system,
-          message: 'ping',
+          message: "ping",
           maxTokens: 16,
         });
       }
@@ -351,26 +508,26 @@ export async function verifyLocalLLMConnection(): Promise<{
         apiKey: config.apiKey,
         model: config.model,
         system,
-        message: 'ping',
+        message: "ping",
         maxTokens: 16,
       });
     }
 
     return {
       ok: true,
-      detail: 'ローカル直接接続OK / model: ' + config.model,
+      detail: "ローカル直接接続OK / model: " + config.model,
       model: config.model,
       apiUrl: config.apiUrl,
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    const detail = message.includes('ZAI_API_KEY is invalid')
-      ? 'ZAI APIキーが無効です。'
-      : message.includes('ZAI_API_BALANCE_EXHAUSTED')
-        ? 'ZAI API の残高またはパッケージが不足しています。'
-        : message.includes('fetch')
-          ? '接続先に到達できません。'
-          : 'ローカル直接接続に失敗: ' + message;
+    const detail = message.includes("ZAI_API_KEY is invalid")
+      ? "ZAI APIキーが無効です。"
+      : message.includes("ZAI_API_BALANCE_EXHAUSTED")
+        ? "ZAI API の残高またはパッケージが不足しています。"
+        : message.includes("fetch")
+          ? "接続先に到達できません。"
+          : "ローカル直接接続に失敗: " + message;
 
     return {
       ok: false,
