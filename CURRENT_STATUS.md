@@ -64,13 +64,14 @@ Untracked auxiliary repo files/folders still exist:
   - normalize history before sending
   - drop leading assistant messages
   - exclude the welcome message from outbound history
-- This fix passed `pnpm -s tsc --noEmit` locally, but still needs commit/build/device verification.
+- This fix passed `pnpm -s tsc --noEmit` locally, was committed, and shipped in TestFlight build `72`, but still needs real-device verification.
 - Exercise selection ergonomics were improved, but user feedback should still verify category chip sizing and list visibility.
 - AirPods/HealthKit heart-rate ingestion is still backed by a stub `HealthService`; the rest-timer UI is ready, but actual live HR capture still needs native integration.
 - Audio/music resume behavior after voice prompts still needs real-device confirmation.
 
 ## Validation Status
 - TypeScript check passed after the latest GLM history normalization change: `pnpm -s tsc --noEmit`
+- TestFlight upload succeeded for version `2.3.5` build `72`.
 - Real-device verification is still required for:
   - AI Coach live send success
   - Session detail appearing immediately after set completion
@@ -99,6 +100,5 @@ These are already enforced in `AGENTS.md`:
 ## Recommended Next Steps
 1. Review uncommitted diff and decide whether to keep or amend the current GLM fix.
 2. Commit the current working tree once device-risk is acceptable.
-3. Bump build number above `71`.
-4. Build and upload to TestFlight from this repo only.
-5. Device-test AI Coach send path first, then session-flow regressions.
+3. Device-test TestFlight build `72`, with AI Coach send path first, then session-flow regressions.
+4. Only after device verification, decide the next build bump and next TestFlight upload.

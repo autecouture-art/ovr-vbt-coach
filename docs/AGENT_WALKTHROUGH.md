@@ -58,3 +58,18 @@ Remaining:
 - AirPods heart-rate acquisition is still limited by the current `HealthService` stub; UI is ready but true HealthKit/AirPods ingestion is not yet implemented.
 - Direct GLM send should be re-tested on device to confirm the new minimal retry path resolves the remaining failure.
 - Build number still needs alignment/bump before the next TestFlight upload.
+
+
+## 2026-03-31 (Codex / GPT-5)
+Scope: Commit current UX/coach improvements and ship a fresh TestFlight build.
+Actions:
+- Committed session-history, settings, setup-rep, and direct-GLM retry improvements as `fad5e6c`.
+- Aligned iOS build number sources and bumped the native/TestFlight build to `72` in `app.config.ts`, `Info.plist`, and Xcode project metadata.
+- Ran the documented Fastlane/TestFlight upload flow with App Store Connect API key auth.
+Results:
+- TestFlight/App Store Connect upload succeeded for version `2.3.5` build `72`.
+- Generated IPA: `ios/fastlane_export/RepVeloCoach.ipa`
+Remaining:
+- Confirm on-device that AI Coach live send now succeeds with the history-normalization/minimal-retry path.
+- Confirm music resumes correctly after voice prompts.
+- Implement real AirPods/HealthKit heart-rate ingestion beyond the current UI/stub layer.
