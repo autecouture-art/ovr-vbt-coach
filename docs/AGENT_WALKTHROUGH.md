@@ -90,3 +90,17 @@ Results:
 Remaining:
 - Re-enter or replace the Z.AI API key on device and re-test AI Coach send.
 - If GLM still fails after replacing the key, capture the new exact status text and request payload mode (`anthropic` or `paas/v4`).
+
+
+## 2026-03-31 (Codex / GPT-5)
+Scope: TestFlight rebuild after GLM/session-detail fixes.
+Actions:
+- Bumped the app-side build number to `73` and updated the local native iOS build metadata used by Fastlane/archive.
+- Ran the documented Fastlane upload flow with App Store Connect API key auth.
+Results:
+- TestFlight/App Store Connect upload succeeded for version `2.3.5` build `73`.
+- Generated IPA: `ios/fastlane_export/RepVeloCoach.ipa`
+Remaining:
+- Wait for App Store Connect/TestFlight processing, then verify the new build on device.
+- Verify historical set editing from session detail.
+- Verify GLM send now works after the renewed API key.

@@ -73,7 +73,7 @@ Untracked auxiliary repo files/folders still exist:
 
 ## Validation Status
 - TypeScript check passed after the latest GLM history normalization change: `pnpm -s tsc --noEmit`
-- TestFlight upload succeeded for version `2.3.5` build `72`.
+- TestFlight upload succeeded for version `2.3.5` build `73`.
 - Real-device verification is still required for:
   - AI Coach live send success
   - Session detail appearing immediately after set completion
@@ -102,5 +102,5 @@ These are already enforced in `AGENTS.md`:
 ## Recommended Next Steps
 1. Review uncommitted diff and decide whether to keep or amend the current GLM fix.
 2. Commit the current working tree once device-risk is acceptable.
-3. Device-test TestFlight build `72`, with AI Coach send path first, then session-flow regressions.
+3. Device-test TestFlight build `73`, with AI Coach send path first, then session-flow regressions.
 4. Only after device verification, decide the next build bump and next TestFlight upload.
