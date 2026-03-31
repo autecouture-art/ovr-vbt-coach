@@ -25,6 +25,7 @@ import ExerciseService from "@/src/services/ExerciseService";
 import AICoachService from "@/src/services/AICoachService";
 import { VBTLogic } from "@/src/services/VBTLogic";
 import { RepDetailModal } from "@/src/components/RepDetailModal";
+import { SetEditModal } from "@/src/components/SetEditModal";
 import { RepVelocityChart } from "@/src/components/RepVelocityChart";
 import { calculateWarmupSteps, isBig3 } from "@/src/utils/WarmupLogic";
 import {
@@ -105,6 +106,7 @@ export default function SessionScreen() {
   const [repDetailVisible, setRepDetailVisible] = useState(false);
   const [selectedSetIndex, setSelectedSetIndex] = useState<number>(1);
   const [selectedSetLift, setSelectedSetLift] = useState<string>("");
+  const [editingSet, setEditingSet] = useState<SetData | null>(null);
 
   // ツールチップの状態
   const [tooltipVisible, setTooltipVisible] = useState(false);
@@ -277,53 +279,47 @@ export default function SessionScreen() {
   };
 
   const handleEditSetLoad = (setItem: SetData) => {
-    Alert.prompt(
-      "重量を修正",
-      `${setItem.lift} / Set ${setItem.set_index} の重量を入力してください`,
-      [
-        { text: "キャンセル", style: "cancel" },
-        {
-          text: "保存",
-          onPress: async (value?: string) => {
-            const normalized = String(value ?? "")
-              .trim()
-              .replace(",", ".");
-            const parsed = Number.parseFloat(normalized);
-            if (!normalized || Number.isNaN(parsed) || parsed < 0) {
-              Alert.alert("入力エラー", "0以上の重量を入力してください。");
-              return;
-            }
+    setEditingSet(setItem);
+  };
 
-            try {
-              const roundedLoad = roundToHalfKg(parsed);
-              if (!currentSession?.session_id) return;
-              await DatabaseService.updateSetLoad(
-                currentSession.session_id,
-                setItem.set_index,
-                setItem.lift,
-                roundedLoad,
-              );
-              const metrics = await DatabaseService.recalculateSetMetrics(
-                currentSession.session_id,
-                setItem.lift,
-                setItem.set_index,
-              );
-              updateSetHistory(setItem.set_index, setItem.lift, {
-                load_kg: roundedLoad,
-                ...(metrics ?? {}),
-              });
-              await refreshSessionAllReps();
-            } catch (error) {
-              console.error("Failed to update set load:", error);
-              Alert.alert("保存失敗", "重量の更新に失敗しました。");
-            }
-          },
+  const handleSaveSetEdits = async (values: {
+    loadKg: number;
+    rpe?: number;
+    notes: string;
+  }) => {
+    if (!currentSession?.session_id || !editingSet) return;
+
+    try {
+      await DatabaseService.updateSetEditableFields(
+        currentSession.session_id,
+        editingSet.set_index,
+        editingSet.lift,
+        {
+          load_kg: values.loadKg,
+          rpe: values.rpe,
+          notes: values.notes,
         },
-      ],
-      "plain-text",
-      formatLoadKg(setItem.load_kg),
-      "decimal-pad",
-    );
+      );
+
+      const metrics = await DatabaseService.recalculateSetMetrics(
+        currentSession.session_id,
+        editingSet.lift,
+        editingSet.set_index,
+      );
+
+      updateSetHistory(editingSet.set_index, editingSet.lift, {
+        load_kg: values.loadKg,
+        rpe: values.rpe,
+        notes: values.notes,
+        ...(metrics ?? {}),
+      });
+
+      await refreshSessionAllReps();
+      setEditingSet(null);
+    } catch (error) {
+      console.error("Failed to update set fields:", error);
+      Alert.alert("保存失敗", "セット情報の更新に失敗しました。");
+    }
   };
 
   // セッション開始処理
@@ -1164,7 +1160,7 @@ export default function SessionScreen() {
                       style={styles.setActionButton}
                       onPress={() => handleEditSetLoad(set)}
                     >
-                      <Text style={styles.setActionButtonText}>重量修正</Text>
+                      <Text style={styles.setActionButtonText}>編集</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -1211,6 +1207,13 @@ export default function SessionScreen() {
           onExcludeRep={handleExclude}
           onMarkFailedRep={handleMarkFailedRep}
           onMarkSetupRep={handleMarkSetupRep}
+        />
+
+        <SetEditModal
+          visible={Boolean(editingSet)}
+          setItem={editingSet}
+          onClose={() => setEditingSet(null)}
+          onSave={handleSaveSetEdits}
         />
 
         {/* 用語ツールチップ */}

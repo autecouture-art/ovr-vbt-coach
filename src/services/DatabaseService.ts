@@ -1070,6 +1070,32 @@ class DatabaseService {
   }
 
   /**
+   * セットの編集可能項目をまとめて更新し、必要に応じてrep側と集計も揃える
+   */
+  async updateSetEditableFields(
+    sessionId: string,
+    setIndex: number,
+    lift: string,
+    updates: { load_kg: number; rpe?: number; notes?: string },
+  ): Promise<void> {
+    if (!(await this.ensureReady())) return;
+
+    await this.updateSet(sessionId, setIndex, {
+      load_kg: updates.load_kg,
+      rpe: updates.rpe,
+      notes: updates.notes,
+      lift,
+    });
+
+    await this.db.runAsync(
+      "UPDATE reps SET load_kg = ?, edited_at = ? WHERE session_id = ? AND set_index = ? AND lift = ?",
+      [updates.load_kg, Date.now(), sessionId, setIndex, lift],
+    );
+
+    await this.recalcSessionVolume(sessionId);
+  }
+
+  /**
    * セット重量を後から修正し、関連するrepとセッション集計も揃える
    */
   async updateSetLoad(

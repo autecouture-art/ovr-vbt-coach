@@ -320,7 +320,7 @@ export default function AICoachChatScreen() {
       const fallback = await generateFallback(msgText);
       const reason =
         errorMessage.includes('ZAI_API_KEY is invalid')
-          ? 'ZAI APIキーが無効です。'
+          ? 'ZAI APIキーが無効または期限切れです。'
           : errorMessage.includes('ZAI_API_BALANCE_EXHAUSTED')
             ? 'ZAI API の残高またはパッケージが不足しています。'
             : errorMessage.includes('ZAI_API_KEY')

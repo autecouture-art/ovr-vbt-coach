@@ -38,7 +38,9 @@ const getOpenAICompatUrl = (url: string) => {
 const parseError = (status: number, errorText: string) => {
   if (
     status === 401 &&
-    /invalid|authentication|api\s*key|unauthorized/i.test(errorText)
+    /invalid|authentication|api\s*key|unauthorized|expired|token|令牌已过期|鉴权|认证|验证不正确/i.test(
+      errorText,
+    )
   ) {
     return new Error("ZAI_API_KEY is invalid");
   }
@@ -522,7 +524,7 @@ export async function verifyLocalLLMConnection(): Promise<{
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const detail = message.includes("ZAI_API_KEY is invalid")
-      ? "ZAI APIキーが無効です。"
+      ? "ZAI APIキーが無効または期限切れです。"
       : message.includes("ZAI_API_BALANCE_EXHAUSTED")
         ? "ZAI API の残高またはパッケージが不足しています。"
         : message.includes("fetch")

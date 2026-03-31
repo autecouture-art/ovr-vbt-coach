@@ -73,3 +73,20 @@ Remaining:
 - Confirm on-device that AI Coach live send now succeeds with the history-normalization/minimal-retry path.
 - Confirm music resumes correctly after voice prompts.
 - Implement real AirPods/HealthKit heart-rate ingestion beyond the current UI/stub layer.
+
+
+## 2026-03-31 (Codex / GPT-5)
+Scope: Historical set editing and GLM auth-error clarification.
+Actions:
+- Added a reusable `SetEditModal` for editing set load, RPE, and notes.
+- Replaced the session-screen weight-only prompt with the shared edit modal.
+- Added the same edit flow to `app/session-detail.tsx`, so historical session sets can now be corrected from session detail.
+- Added `DatabaseService.updateSetEditableFields()` to keep `sets`, `reps`, and session aggregates aligned when editing a historical set.
+- Expanded direct-GLM 401 parsing to detect expired/invalid-token responses, including the Chinese error text returned by Z.AI.
+Results:
+- `pnpm -s tsc --noEmit` passed.
+- Historical session detail now has an edit button per set.
+- Current AI Coach screenshot indicates authentication failure (`401`, token invalid/expired), not a transport/connectivity failure.
+Remaining:
+- Re-enter or replace the Z.AI API key on device and re-test AI Coach send.
+- If GLM still fails after replacing the key, capture the new exact status text and request payload mode (`anthropic` or `paas/v4`).

@@ -58,7 +58,7 @@ Untracked auxiliary repo files/folders still exist:
 - Added post-hoc set weight editing and tied set-history updates to `lift + set_index`.
 
 ## Known Problems To Continue From
-- AI Coach can show `GLM 接続可能` while actual message send still fails on device.
+- AI Coach direct mode now classifies Z.AI `401` responses more clearly; the latest device screenshot indicates the stored API key is invalid or expired, not that the endpoint is unreachable.
 - A likely cause was invalid history shape for Anthropic-compatible requests when conversation history began with an assistant message.
 - A local fix has already been applied in working tree:
   - normalize history before sending
@@ -68,6 +68,8 @@ Untracked auxiliary repo files/folders still exist:
 - Exercise selection ergonomics were improved, but user feedback should still verify category chip sizing and list visibility.
 - AirPods/HealthKit heart-rate ingestion is still backed by a stub `HealthService`; the rest-timer UI is ready, but actual live HR capture still needs native integration.
 - Audio/music resume behavior after voice prompts still needs real-device confirmation.
+
+- Historical session detail now supports editing set load, RPE, and notes, with rep/load/session aggregates kept in sync.
 
 ## Validation Status
 - TypeScript check passed after the latest GLM history normalization change: `pnpm -s tsc --noEmit`

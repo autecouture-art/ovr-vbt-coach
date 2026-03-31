@@ -1,35 +1,40 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
-import DatabaseService from '@/src/services/DatabaseService';
-import type { SessionData, SetData } from '@/src/types/index';
-import { firstRouteParam } from '@/src/utils/routeParams';
-import { formatSessionLabel } from '@/src/utils/session';
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
+import DatabaseService from "@/src/services/DatabaseService";
+import { SetEditModal } from "@/src/components/SetEditModal";
+import { GarageTheme } from "@/src/constants/garageTheme";
+import { firstRouteParam } from "@/src/utils/routeParams";
+import { formatSessionLabel } from "@/src/utils/session";
+import type { SessionData, SetData } from "@/src/types/index";
 
 export default function SessionDetailScreen() {
   const router = useRouter();
   const navigationState = useNavigation();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ sessionId?: string | string[] }>();
-  const sessionId = firstRouteParam(params.sessionId) ?? '';
+  const sessionId = firstRouteParam(params.sessionId) ?? "";
   const [session, setSession] = useState<SessionData | null>(null);
   const [sets, setSets] = useState<SetData[]>([]);
+  const [editingSet, setEditingSet] = useState<SetData | null>(null);
+
+  const loadSessionDetail = useCallback(async () => {
+    await DatabaseService.initialize();
+    if (!sessionId) return;
+
+    const [loadedSession, loadedSets] = await Promise.all([
+      DatabaseService.getSession(sessionId),
+      DatabaseService.getSetsForSession(sessionId),
+    ]);
+
+    setSession(loadedSession);
+    setSets(loadedSets);
+  }, [sessionId]);
 
   useEffect(() => {
-    const load = async () => {
-      await DatabaseService.initialize();
-      if (!sessionId) return;
-      const [loadedSession, loadedSets] = await Promise.all([
-        DatabaseService.getSession(sessionId),
-        DatabaseService.getSetsForSession(sessionId),
-      ]);
-      setSession(loadedSession);
-      setSets(loadedSets);
-    };
-
-    void load();
-  }, [sessionId]);
+    void loadSessionDetail();
+  }, [loadSessionDetail]);
 
   const liftNames = useMemo(
     () => Array.from(new Set(sets.map((set) => set.lift))),
@@ -41,103 +46,181 @@ export default function SessionDetailScreen() {
     [sets],
   );
 
+  const handleSaveSetEdits = async (values: {
+    loadKg: number;
+    rpe?: number;
+    notes: string;
+  }) => {
+    if (!editingSet || !sessionId) return;
+
+    try {
+      await DatabaseService.updateSetEditableFields(
+        sessionId,
+        editingSet.set_index,
+        editingSet.lift,
+        {
+          load_kg: values.loadKg,
+          rpe: values.rpe,
+          notes: values.notes,
+        },
+      );
+      await loadSessionDetail();
+      setEditingSet(null);
+    } catch (error) {
+      console.error("Failed to update historical set:", error);
+      Alert.alert("保存失敗", "セット情報の更新に失敗しました。");
+    }
+  };
+
   return (
-    <ScrollView style={styles.container}>
-      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-        <TouchableOpacity hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }} onPress={() => (navigationState.canGoBack() ? router.back() : router.replace('/(tabs)/history'))}>
-          <Text style={styles.backButton}>← 戻る</Text>
-        </TouchableOpacity>
-        <View style={styles.headerCopy}>
-          <Text style={styles.title}>セッション詳細</Text>
-          <Text style={styles.subtitle}>{session ? formatSessionLabel(session.session_id, session.date) : sessionId}</Text>
-        </View>
-      </View>
-
-      <View style={styles.summaryCard}>
-        <Text style={styles.summaryTitle}>サマリー</Text>
-        <Text style={styles.summaryLine}>種目: {liftNames.join(' / ') || 'なし'}</Text>
-        <Text style={styles.summaryLine}>セット数: {sets.length}</Text>
-        <Text style={styles.summaryLine}>総ボリューム: {Math.round(totalVolume)} kg</Text>
-        <TouchableOpacity
-          style={styles.coachButton}
-          onPress={() =>
-            router.push({
-              pathname: '/coach-chat',
-              params: {
-                source: 'session-detail',
-                sessionId,
-                currentExercise: liftNames[0] ?? '',
-                totalSets: String(sets.length),
-                totalVolume: String(Math.round(totalVolume)),
-                message: 'このセッションを振り返って改善点を教えて',
-              },
-            })
-          }
-        >
-          <Text style={styles.coachButtonText}>AIコーチに振り返りを聞く</Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.listSection}>
-        <Text style={styles.sectionTitle}>セット一覧</Text>
-        {sets.map((set) => (
-          <View key={`${set.session_id}_${set.set_index}_${set.lift}`} style={styles.setCard}>
-            <Text style={styles.setTitle}>{set.lift} / セット {set.set_index}</Text>
-            <Text style={styles.setMeta}>{set.load_kg} kg × {set.reps} reps</Text>
-            {set.e1rm ? <Text style={styles.setMeta}>e1RM {set.e1rm.toFixed(1)} kg</Text> : null}
-            {set.velocity_loss !== null ? (
-              <Text style={styles.setMeta}>VL {set.velocity_loss.toFixed(1)}%</Text>
-            ) : null}
-            {set.notes ? <Text style={styles.notes}>{set.notes}</Text> : null}
+    <>
+      <ScrollView style={styles.container}>
+        <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
+          <TouchableOpacity
+            hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
+            onPress={() =>
+              navigationState.canGoBack()
+                ? router.back()
+                : router.replace("/(tabs)/history")
+            }
+          >
+            <Text style={styles.backButton}>← 戻る</Text>
+          </TouchableOpacity>
+          <View style={styles.headerCopy}>
+            <Text style={styles.title}>セッション詳細</Text>
+            <Text style={styles.subtitle}>
+              {session ? formatSessionLabel(session.session_id, session.date) : sessionId}
+            </Text>
           </View>
-        ))}
-      </View>
-    </ScrollView>
+        </View>
+
+        <View style={styles.summaryCard}>
+          <Text style={styles.summaryTitle}>サマリー</Text>
+          <Text style={styles.summaryLine}>種目: {liftNames.join(" / ") || "なし"}</Text>
+          <Text style={styles.summaryLine}>セット数: {sets.length}</Text>
+          <Text style={styles.summaryLine}>総ボリューム: {Math.round(totalVolume)} kg</Text>
+          <TouchableOpacity
+            style={styles.coachButton}
+            onPress={() =>
+              router.push({
+                pathname: "/coach-chat",
+                params: {
+                  source: "session-detail",
+                  sessionId,
+                  currentExercise: liftNames[0] ?? "",
+                  totalSets: String(sets.length),
+                  totalVolume: String(Math.round(totalVolume)),
+                  message: "このセッションを振り返って改善点を教えて",
+                },
+              })
+            }
+          >
+            <Text style={styles.coachButtonText}>AIコーチに振り返りを聞く</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.listSection}>
+          <Text style={styles.sectionTitle}>セット一覧</Text>
+          {sets.map((set) => (
+            <View key={`${set.session_id}_${set.set_index}_${set.lift}`} style={styles.setCard}>
+              <View style={styles.setHeader}>
+                <Text style={styles.setTitle}>{set.lift} / セット {set.set_index}</Text>
+                <TouchableOpacity
+                  style={styles.editButton}
+                  onPress={() => setEditingSet(set)}
+                >
+                  <Text style={styles.editButtonText}>編集</Text>
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.setMeta}>{set.load_kg} kg × {set.reps} reps</Text>
+              {set.rpe != null ? <Text style={styles.setMeta}>RPE {set.rpe}</Text> : null}
+              {set.e1rm ? <Text style={styles.setMeta}>e1RM {set.e1rm.toFixed(1)} kg</Text> : null}
+              {set.velocity_loss !== null ? (
+                <Text style={styles.setMeta}>VL {set.velocity_loss.toFixed(1)}%</Text>
+              ) : null}
+              {set.notes ? <Text style={styles.notes}>{set.notes}</Text> : null}
+            </View>
+          ))}
+        </View>
+      </ScrollView>
+
+      <SetEditModal
+        visible={Boolean(editingSet)}
+        setItem={editingSet}
+        onClose={() => setEditingSet(null)}
+        onSave={handleSaveSetEdits}
+      />
+    </>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0f0f10' },
+  container: { flex: 1, backgroundColor: GarageTheme.background },
   header: {
     paddingHorizontal: 18,
     paddingTop: 12,
     paddingBottom: 18,
     borderBottomWidth: 1,
-    borderBottomColor: '#2d2220',
+    borderBottomColor: GarageTheme.border,
   },
-  backButton: { color: '#ffb347', fontSize: 16, fontWeight: '700', marginBottom: 12 },
+  backButton: {
+    color: GarageTheme.accentSoft,
+    fontSize: 16,
+    fontWeight: "700",
+    marginBottom: 12,
+  },
   headerCopy: { gap: 4 },
-  title: { color: '#fff4ec', fontSize: 28, fontWeight: '800' },
-  subtitle: { color: '#9f8a80', fontSize: 14 },
+  title: { color: GarageTheme.textStrong, fontSize: 28, fontWeight: "800" },
+  subtitle: { color: GarageTheme.textMuted, fontSize: 14 },
   summaryCard: {
     margin: 16,
     padding: 16,
     borderRadius: 16,
-    backgroundColor: '#181414',
+    backgroundColor: GarageTheme.surface,
     borderWidth: 1,
-    borderColor: '#3d2a24',
+    borderColor: GarageTheme.borderStrong,
   },
-  summaryTitle: { color: '#fff', fontSize: 18, fontWeight: '800', marginBottom: 12 },
-  summaryLine: { color: '#d7cbc5', fontSize: 14, marginBottom: 6 },
+  summaryTitle: { color: GarageTheme.textStrong, fontSize: 18, fontWeight: "800", marginBottom: 12 },
+  summaryLine: { color: GarageTheme.text, fontSize: 14, marginBottom: 6 },
   coachButton: {
     marginTop: 14,
-    backgroundColor: '#ff5a1f',
+    backgroundColor: GarageTheme.accent,
     borderRadius: 12,
     paddingVertical: 12,
-    alignItems: 'center',
+    alignItems: "center",
   },
-  coachButtonText: { color: '#fff', fontSize: 15, fontWeight: '800' },
+  coachButtonText: { color: GarageTheme.textStrong, fontSize: 15, fontWeight: "800" },
   listSection: { paddingHorizontal: 16, paddingBottom: 24 },
-  sectionTitle: { color: '#fff', fontSize: 18, fontWeight: '800', marginBottom: 12 },
+  sectionTitle: { color: GarageTheme.textStrong, fontSize: 18, fontWeight: "800", marginBottom: 12 },
   setCard: {
-    backgroundColor: '#171717',
+    backgroundColor: GarageTheme.surface,
     borderRadius: 14,
     padding: 14,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: '#2d2d2d',
+    borderColor: GarageTheme.border,
   },
-  setTitle: { color: '#fff2e8', fontSize: 15, fontWeight: '700', marginBottom: 6 },
-  setMeta: { color: '#b8aaa1', fontSize: 13, marginBottom: 4 },
-  notes: { color: '#8cc7ff', fontSize: 12, marginTop: 6 },
+  setHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 6,
+  },
+  setTitle: { color: GarageTheme.textStrong, fontSize: 15, fontWeight: "700", flex: 1 },
+  setMeta: { color: GarageTheme.textMuted, fontSize: 13, marginBottom: 4 },
+  notes: { color: GarageTheme.info, fontSize: 12, marginTop: 6 },
+  editButton: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: GarageTheme.borderStrong,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: GarageTheme.chip,
+  },
+  editButtonText: {
+    color: GarageTheme.accentSoft,
+    fontSize: 12,
+    fontWeight: "800",
+  },
 });
