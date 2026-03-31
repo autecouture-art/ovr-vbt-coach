@@ -60,3 +60,10 @@ Thumbs.db
 *.tgz
 *.tar.gz
 .cache/
+# Local build artifacts
+.last_build_configuration
+.restore-backups/
+fastlane/README.md
+fastlane/export-options.plist
+fastlane/report.xml
+hermes-engine/
