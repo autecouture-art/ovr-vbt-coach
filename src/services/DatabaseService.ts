@@ -144,6 +144,8 @@ class DatabaseService {
         rest_duration_s REAL,
         avg_hr REAL,
         peak_hr REAL,
+        avg_power_w REAL,
+        is_warmup INTEGER DEFAULT 0,
         notes TEXT,
         FOREIGN KEY (session_id) REFERENCES sessions(session_id)
       );
@@ -251,6 +253,8 @@ class DatabaseService {
       { table: "sets", column: "rest_duration_s", type: "REAL" },
       { table: "sets", column: "avg_hr", type: "REAL" },
       { table: "sets", column: "peak_hr", type: "REAL" },
+      { table: "sets", column: "avg_power_w", type: "REAL" },
+      { table: "sets", column: "is_warmup", type: "INTEGER DEFAULT 0" },
       // Reps 追加カラム
       { table: "reps", column: "is_excluded", type: "INTEGER DEFAULT 0" },
       { table: "reps", column: "exclusion_reason", type: "TEXT" },
@@ -275,6 +279,11 @@ class DatabaseService {
         type: "INTEGER DEFAULT 0",
       },
       { table: "exercises", column: "mvt", type: "REAL" },
+      {
+        table: "exercises",
+        column: "velocity_loss_threshold",
+        type: "REAL",
+      },
       // LVP Profiles 追加カラム
       {
         table: "lvp_profiles",
@@ -355,8 +364,8 @@ class DatabaseService {
 
     await this.db.runAsync(
       `INSERT INTO sets (session_id, lift, set_index, load_kg, reps, device_type, set_type,
-        avg_velocity, velocity_loss, rpe, e1rm, timestamp, start_timestamp, end_timestamp, rest_duration_s, avg_hr, peak_hr, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        avg_velocity, velocity_loss, rpe, e1rm, timestamp, start_timestamp, end_timestamp, rest_duration_s, avg_hr, peak_hr, avg_power_w, is_warmup, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         setData.session_id,
         setData.lift,
@@ -375,6 +384,8 @@ class DatabaseService {
         setData.rest_duration_s || null,
         setData.avg_hr || null,
         setData.peak_hr || null,
+        setData.avg_power_w || null,
+        setData.is_warmup ? 1 : 0,
         setData.notes || null,
       ],
     );
@@ -1076,20 +1087,32 @@ class DatabaseService {
     sessionId: string,
     setIndex: number,
     lift: string,
-    updates: { load_kg: number; rpe?: number; notes?: string },
+    updates: { load_kg: number; lift?: string; rpe?: number; notes?: string },
   ): Promise<void> {
     if (!(await this.ensureReady())) return;
 
+    const newLift = updates.lift ?? lift;
+
+    // setsテーブルを更新
     await this.updateSet(sessionId, setIndex, {
       load_kg: updates.load_kg,
       rpe: updates.rpe,
       notes: updates.notes,
-      lift,
+      lift: newLift,
     });
 
+    // 種目名が変更された場合は、関連するrepsのliftも更新
+    if (updates.lift && updates.lift !== lift) {
+      await this.db.runAsync(
+        "UPDATE reps SET lift = ?, edited_at = ? WHERE session_id = ? AND set_index = ? AND lift = ?",
+        [updates.lift, Date.now(), sessionId, setIndex, lift],
+      );
+    }
+
+    // 重量が変更された場合は、関連するrepsのload_kgも更新
     await this.db.runAsync(
       "UPDATE reps SET load_kg = ?, edited_at = ? WHERE session_id = ? AND set_index = ? AND lift = ?",
-      [updates.load_kg, Date.now(), sessionId, setIndex, lift],
+      [updates.load_kg, Date.now(), sessionId, setIndex, newLift],
     );
 
     await this.recalcSessionVolume(sessionId);

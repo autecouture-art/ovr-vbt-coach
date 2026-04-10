@@ -119,3 +119,69 @@ Results:
 Remaining:
 - Optionally mirror the same wording into any Claude-specific bootstrap file if one is later introduced.
 - Keep repo-local scripts as the release source of truth when the workflow changes.
+
+
+## 2026-04-10 (Claude Sonnet 4.6)
+Scope: Second-pass implementation addressing reviewer feedback and remaining gaps.
+Actions:
+- Added UI toggle for `enable_auto_start_session` in settings with proper labeling and placement.
+- Enhanced exercise master editing functionality:
+  - Added per-exercise `velocity_loss_threshold` editing with 10-30% options plus "既定" (default).
+  - Added exercise name editing with TextInput field.
+  - Added category selector with horizontal scrolling chips for all exercise categories.
+  - Implemented proper save/cancel workflow with state management for editing mode.
+- Removed all emoji from UI copy (✏️, 🗑️ replaced with text labels "編集", "削除").
+- Added recent exercise history panel to session screen:
+  - Fetches and displays up to 5 recent sets for current exercise from previous sessions.
+  - Shows horizontal scrollable cards with date, load, reps, velocity, and e1RM.
+  - Automatically updates when exercise changes.
+  - Uses `DatabaseService.getRecentSetsForLift` with session exclusion.
+- Improved power display fallback logic in session history:
+  - Now uses stored `set.avg_power_w` as intermediate fallback when rep-level power is unavailable.
+  - Maintains existing VBTLogic.calculatePower as final fallback.
+- Implemented auto-finish session on app background to prevent data loss:
+  - Uses AppState listener to detect background transitions.
+  - Auto-finishes current set if session is active and reps are present.
+  - Uses ref flag to prevent duplicate saves on multiple background events.
+  - Logs for debugging and includes proper error handling.
+- Fixed TypeScript errors:
+  - Corrected method name from `getRecentSetsByLift` to `getRecentSetsForLift`.
+  - Added missing category chip styles for inline exercise category selector.
+Results:
+- `pnpm -s tsc --noEmit` passed with no errors.
+- All 8 major tasks from supervisor feedback completed:
+  1. Auto-start session toggle - DONE
+  2. Per-exercise VL threshold editing - DONE
+  3. Exercise rename and category change - DONE
+  4. Recent exercise history display - DONE
+  5. Power display fallback improvement - DONE
+  6. Auto-finish on background - DONE
+  7. Style consistency (no emoji) - DONE
+  8. TypeScript validation - PASSED
+Remaining:
+- Interval timer 11-second auto-complete feature: Left as-is per guidance - not cleanly implementable without refactoring rest timer logic.
+- Real-device testing recommended for auto-finish behavior and exercise editing workflow.
+- Consider TestFlight upload after device verification.
+
+
+## 2026-04-10 (Claude Sonnet 4.6)
+Scope: Small corrective pass for session screen and RepDetailModal.
+Actions:
+- Fixed recent exercise history cards to properly display historical data:
+  - Added `historicalSessionReps` state to track reps from tapped historical sessions.
+  - Modified `openRepDetail` to fetch reps for historical sessions when cards are tapped.
+  - Updated RepDetailModal to display historical reps and disable edit actions for read-only historical data.
+  - Historical cards now show the actual reps from that session instead of depending on current-session reps.
+- Removed emoji from warmup button text (changed "🔥 ウォームアップON" to "ウォームアップON").
+- Restyled manual add-rep button in RepDetailModal to match GarageTheme:
+  - Changed background from bright green (#4CAF50) to GarageTheme accent (#ff7a1a).
+  - Changed border color to GarageTheme accentSoft (#ffb347).
+  - Changed text color to GarageTheme text (#fff5ee) for consistency.
+Results:
+- `pnpm -s tsc --noEmit` passed with no errors.
+- Recent exercise history cards now open useful data from historical sessions.
+- All UI elements now consistently follow GarageTheme styling.
+- Historical sessions are properly read-only (no edit/add/delete actions).
+Remaining:
+- Real-device testing recommended for historical session detail modal behavior.
+- Consider TestFlight upload after device verification.

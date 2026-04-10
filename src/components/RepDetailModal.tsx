@@ -21,6 +21,7 @@ interface Props {
   onExcludeRep?: (repId: string, reason: string) => void;
   onMarkFailedRep?: (repId: string, isFailed: boolean) => void;
   onMarkSetupRep?: (repId: string) => void;
+  onAddMissedRep?: () => void;
 }
 
 export function RepDetailModal({
@@ -34,6 +35,7 @@ export function RepDetailModal({
   onExcludeRep,
   onMarkFailedRep,
   onMarkSetupRep,
+  onAddMissedRep,
 }: Props) {
   const setReps = useMemo(() => {
     return reps.filter(
@@ -93,6 +95,14 @@ export function RepDetailModal({
           ) : null}
 
           <ScrollView style={styles.scrollArea}>
+            {onAddMissedRep && (
+              <TouchableOpacity
+                style={styles.addRepButton}
+                onPress={onAddMissedRep}
+              >
+                <Text style={styles.addRepButtonText}>+ レップを追加</Text>
+              </TouchableOpacity>
+            )}
             {setReps.length === 0 ? (
               <Text style={styles.emptyText}>記録されたレップがありません</Text>
             ) : (
@@ -314,6 +324,20 @@ const styles = StyleSheet.create({
   },
   scrollArea: {
     padding: 16,
+  },
+  addRepButton: {
+    backgroundColor: "#ff7a1a",
+    padding: 16,
+    borderRadius: 12,
+    alignItems: "center",
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "#ffb347",
+  },
+  addRepButtonText: {
+    color: "#fff5ee",
+    fontSize: 16,
+    fontWeight: "bold",
   },
   emptyText: {
     color: "#888",

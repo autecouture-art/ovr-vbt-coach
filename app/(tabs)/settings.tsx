@@ -19,6 +19,7 @@ import {
   setStoredApiBaseUrlOverride,
 } from "@/constants/oauth";
 import {
+  EXERCISE_CATEGORY_LABELS,
   EXERCISE_SELECTION_GROUPS,
   formatLoadKg,
   getExerciseCategoryLabel,
@@ -99,6 +100,11 @@ export default function SettingsTab() {
   const [editingExerciseId, setEditingExerciseId] = useState<string | null>(
     null,
   );
+  const [editingExerciseName, setEditingExerciseName] = useState("");
+  const [editingExerciseCategory, setEditingExerciseCategory] =
+    useState<Exercise["category"]>("accessory");
+  const [editingExerciseVLThreshold, setEditingExerciseVLThreshold] =
+    useState<number | null>(null);
 
   useEffect(() => {
     void loadSettings();
@@ -266,7 +272,54 @@ export default function SettingsTab() {
   };
 
   const handleEditExercise = (exerciseId: string) => {
-    setEditingExerciseId(editingExerciseId === exerciseId ? null : exerciseId);
+    const exercise = exerciseMaster.find((e) => e.id === exerciseId);
+    if (!exercise) return;
+
+    if (editingExerciseId === exerciseId) {
+      // Cancel editing
+      setEditingExerciseId(null);
+      setEditingExerciseName("");
+      setEditingExerciseCategory("accessory");
+      setEditingExerciseVLThreshold(null);
+    } else {
+      // Start editing
+      setEditingExerciseId(exerciseId);
+      setEditingExerciseName(exercise.name);
+      setEditingExerciseCategory(exercise.category);
+      setEditingExerciseVLThreshold(exercise.velocity_loss_threshold ?? null);
+    }
+  };
+
+  const handleSaveExerciseEdits = async (exerciseId: string) => {
+    try {
+      const updates: Partial<Exercise> = {};
+      const exercise = exerciseMaster.find((e) => e.id === exerciseId);
+      if (!exercise) return;
+
+      if (editingExerciseName.trim() && editingExerciseName !== exercise.name) {
+        updates.name = editingExerciseName.trim();
+      }
+      if (editingExerciseCategory !== exercise.category) {
+        updates.category = editingExerciseCategory;
+      }
+      if (editingExerciseVLThreshold !== exercise.velocity_loss_threshold) {
+        updates.velocity_loss_threshold = editingExerciseVLThreshold ?? undefined;
+      }
+
+      if (Object.keys(updates).length > 0) {
+        await ExerciseService.updateExercise(exerciseId, updates);
+        await loadExerciseMaster();
+      }
+
+      // Exit editing mode
+      setEditingExerciseId(null);
+      setEditingExerciseName("");
+      setEditingExerciseCategory("accessory");
+      setEditingExerciseVLThreshold(null);
+    } catch (error) {
+      console.error("Failed to save exercise edits:", error);
+      Alert.alert("エラー", "種目情報の更新に失敗しました");
+    }
   };
 
   const thresholdOptions = [10, 15, 20, 25, 30];
@@ -428,6 +481,29 @@ export default function SettingsTab() {
             value={settings.enable_audio_faster_cue}
             onValueChange={(value) =>
               void saveSettings({ ...settings, enable_audio_faster_cue: value })
+            }
+            trackColor={{ false: "#3b2b28", true: GarageTheme.accent }}
+          />
+        </View>
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.sectionTitle}>自動スタート</Text>
+
+        <View style={styles.toggleRow}>
+          <View>
+            <Text style={styles.toggleLabel}>自動スタートモード</Text>
+            <Text style={styles.toggleMeta}>
+              センサー動作検出でセッション自動開始
+            </Text>
+          </View>
+          <Switch
+            value={settings.enable_auto_start_session}
+            onValueChange={(value) =>
+              void saveSettings({
+                ...settings,
+                enable_auto_start_session: value,
+              })
             }
             trackColor={{ false: "#3b2b28", true: GarageTheme.accent }}
           />
@@ -715,30 +791,135 @@ export default function SettingsTab() {
                             </Text>
                           ) : null}
                           {isEditing ? (
-                            <View style={styles.exerciseInlineToggleRow}>
-                              <View style={styles.exerciseInlineToggleCopy}>
-                                <Text style={styles.exerciseInlineToggleLabel}>
-                                  最初の1レップをセットアップとして無視
-                                </Text>
-                                <Text style={styles.exerciseInlineToggleMeta}>
-                                  開始位置に運ぶ反応を自動除外します
-                                </Text>
+                            <View style={styles.exerciseEditForm}>
+                              <View style={styles.exerciseEditRow}>
+                                <Text style={styles.exerciseEditLabel}>種目名</Text>
+                                <TextInput
+                                  style={styles.exerciseEditInput}
+                                  value={editingExerciseName}
+                                  onChangeText={setEditingExerciseName}
+                                  placeholder="種目名"
+                                  placeholderTextColor={GarageTheme.textSubtle}
+                                />
                               </View>
-                              <Switch
-                                value={Boolean(
-                                  exercise.ignore_first_rep_as_setup,
-                                )}
-                                onValueChange={(value) => {
-                                  void ExerciseService.updateExercise(
-                                    exercise.id,
-                                    { ignore_first_rep_as_setup: value },
-                                  ).then(() => loadExerciseMaster());
-                                }}
-                                trackColor={{
-                                  false: "#3b2b28",
-                                  true: GarageTheme.accent,
-                                }}
-                              />
+
+                              <View style={styles.exerciseEditRow}>
+                                <Text style={styles.exerciseEditLabel}>カテゴリ</Text>
+                                <ScrollView
+                                  horizontal
+                                  showsHorizontalScrollIndicator={false}
+                                  style={styles.categorySelectorScroll}
+                                >
+                                  {Object.keys(
+                                    EXERCISE_CATEGORY_LABELS,
+                                  ).map((cat) => {
+                                    const category = cat as Exercise["category"];
+                                    const isSelected =
+                                      editingExerciseCategory === category;
+                                    return (
+                                      <TouchableOpacity
+                                        key={category}
+                                        style={[
+                                          styles.categoryChip,
+                                          isSelected &&
+                                            styles.categoryChipActive,
+                                        ]}
+                                        onPress={() =>
+                                          setEditingExerciseCategory(category)
+                                        }
+                                      >
+                                        <Text
+                                          style={[
+                                            styles.categoryChipText,
+                                            isSelected &&
+                                              styles.categoryChipTextActive,
+                                          ]}
+                                        >
+                                          {
+                                            EXERCISE_CATEGORY_LABELS[
+                                              category
+                                            ]
+                                          }
+                                        </Text>
+                                      </TouchableOpacity>
+                                    );
+                                  })}
+                                </ScrollView>
+                              </View>
+
+                              <View style={styles.exerciseEditRow}>
+                                <Text style={styles.exerciseEditLabel}>
+                                  VL閾値
+                                </Text>
+                                <View style={styles.vlThresholdSelector}>
+                                  {[null, 10, 15, 20, 25, 30].map((value) => {
+                                    const isSelected =
+                                      editingExerciseVLThreshold === value;
+                                    return (
+                                      <TouchableOpacity
+                                        key={value ?? "default"}
+                                        style={[
+                                          styles.vlThresholdChip,
+                                          isSelected &&
+                                            styles.vlThresholdChipActive,
+                                        ]}
+                                        onPress={() =>
+                                          setEditingExerciseVLThreshold(value)
+                                        }
+                                      >
+                                        <Text
+                                          style={[
+                                            styles.vlThresholdChipText,
+                                            isSelected &&
+                                              styles.vlThresholdChipTextActive,
+                                          ]}
+                                        >
+                                          {value === null
+                                            ? "既定"
+                                            : `${value}%`}
+                                        </Text>
+                                      </TouchableOpacity>
+                                    );
+                                  })}
+                                </View>
+                              </View>
+
+                              <View style={styles.exerciseEditRow}>
+                                <View style={styles.exerciseInlineToggleCopy}>
+                                  <Text style={styles.exerciseInlineToggleLabel}>
+                                    最初の1レップをセットアップとして無視
+                                  </Text>
+                                  <Text style={styles.exerciseInlineToggleMeta}>
+                                    開始位置に運ぶ反応を自動除外します
+                                  </Text>
+                                </View>
+                                <Switch
+                                  value={Boolean(
+                                    exercise.ignore_first_rep_as_setup,
+                                  )}
+                                  onValueChange={(value) => {
+                                    void ExerciseService.updateExercise(
+                                      exercise.id,
+                                      { ignore_first_rep_as_setup: value },
+                                    ).then(() => loadExerciseMaster());
+                                  }}
+                                  trackColor={{
+                                    false: "#3b2b28",
+                                    true: GarageTheme.accent,
+                                  }}
+                                />
+                              </View>
+
+                              <TouchableOpacity
+                                style={styles.saveExerciseButton}
+                                onPress={() =>
+                                  void handleSaveExerciseEdits(exercise.id)
+                                }
+                              >
+                                <Text style={styles.saveExerciseButtonText}>
+                                  保存
+                                </Text>
+                              </TouchableOpacity>
                             </View>
                           ) : null}
                         </View>
@@ -748,7 +929,7 @@ export default function SettingsTab() {
                             onPress={() => handleEditExercise(exercise.id)}
                           >
                             <Text style={styles.exerciseActionText}>
-                              {isEditing ? "×" : "✏️"}
+                              {isEditing ? "×" : "編集"}
                             </Text>
                           </TouchableOpacity>
                           <TouchableOpacity
@@ -760,7 +941,7 @@ export default function SettingsTab() {
                               handleDeleteExercise(exercise.id, exercise.name)
                             }
                           >
-                            <Text style={styles.exerciseActionText}>🗑️</Text>
+                            <Text style={styles.exerciseActionText}>削除</Text>
                           </TouchableOpacity>
                         </View>
                       </View>
@@ -1103,8 +1284,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   exerciseActionBtn: {
-    width: 36,
-    height: 36,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    minWidth: 50,
+    height: 32,
     borderRadius: 8,
     backgroundColor: GarageTheme.surface,
     borderWidth: 1,
@@ -1117,7 +1300,102 @@ const styles = StyleSheet.create({
     backgroundColor: "#2a1a1a",
   },
   exerciseActionText: {
-    fontSize: 16,
+    fontSize: 12,
+    fontWeight: "700",
+    color: GarageTheme.textStrong,
+  },
+  exerciseEditForm: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: GarageTheme.border,
+    gap: 12,
+  },
+  exerciseEditRow: {
+    gap: 6,
+  },
+  exerciseEditLabel: {
+    color: GarageTheme.textMuted,
+    fontSize: 11,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  exerciseEditInput: {
+    backgroundColor: GarageTheme.chip,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: GarageTheme.borderStrong,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: GarageTheme.textStrong,
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  categorySelectorScroll: {
+    marginTop: 4,
+  },
+  vlThresholdSelector: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 4,
+  },
+  vlThresholdChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: GarageTheme.chip,
+    borderWidth: 1,
+    borderColor: GarageTheme.borderStrong,
+  },
+  vlThresholdChipActive: {
+    backgroundColor: "#4b2416",
+    borderColor: GarageTheme.accent,
+  },
+  vlThresholdChipText: {
+    color: GarageTheme.textMuted,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  vlThresholdChipTextActive: {
+    color: GarageTheme.textStrong,
+  },
+  categoryChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: GarageTheme.borderStrong,
+    backgroundColor: GarageTheme.chip,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    marginRight: 8,
+  },
+  categoryChipActive: {
+    backgroundColor: "#4b2416",
+    borderColor: GarageTheme.accent,
+  },
+  categoryChipText: {
+    color: GarageTheme.textMuted,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  categoryChipTextActive: {
+    color: GarageTheme.textStrong,
+  },
+  saveExerciseButton: {
+    backgroundColor: "#4b2416",
+    borderColor: GarageTheme.accent,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    paddingVertical: 12,
+    alignItems: "center",
+    marginTop: 8,
+  },
+  saveExerciseButtonText: {
+    color: GarageTheme.textStrong,
+    fontSize: 14,
+    fontWeight: "800",
+    letterSpacing: 0.5,
   },
   masterActionsRow: {
     flexDirection: "row",

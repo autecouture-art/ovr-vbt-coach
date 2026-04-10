@@ -67,3 +67,6 @@ fastlane/README.md
 fastlane/export-options.plist
 fastlane/report.xml
 hermes-engine/
+
+# AIリーダー作業ディレクトリ
+.ai-leader/

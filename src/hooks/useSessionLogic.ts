@@ -24,8 +24,10 @@ import type {
 
 // PR検知コールバック型
 type PRCallback = (pr: PRRecord) => void;
+// 自動スタートコールバック型
+type AutoStartCallback = () => void;
 
-export const useSessionLogic = (onPRDetected?: PRCallback) => {
+export const useSessionLogic = (onPRDetected?: PRCallback, onAutoStart?: AutoStartCallback) => {
   // Store State & Actions
   const {
     currentSession,
@@ -69,6 +71,9 @@ export const useSessionLogic = (onPRDetected?: PRCallback) => {
   const isMounted = useRef(true);
   const lastNotifiedRestTime = useRef<number | null>(null);
   const isFinishingSet = useRef(false); // ガードフラグ
+  const lastRepTime = useRef<number>(Date.now()); // 最後のレップ検出時刻
+  const autoFinishTimer = useRef<ReturnType<typeof setTimeout> | null>(null); // 自動完了タイマー
+  const isWarmupSet = useRef(false); // ウォームアップセットフラグ
 
   // --- Setup finishSet for reuse ---
 
@@ -123,6 +128,13 @@ export const useSessionLogic = (onPRDetected?: PRCallback) => {
       const e1rm =
         VBTLogic.calculateE1RM(currentLoad, validReps.length) ?? null;
 
+      // 平均パワーの計算
+      const avgPower =
+        validReps.length > 0
+          ? validReps.reduce((sum, r) => sum + (r.mean_power_w ?? 0), 0) /
+            validReps.length
+          : null;
+
       // 心拍数統計の計算
       const avgHr =
         setHRPoints.length > 0
@@ -156,7 +168,12 @@ export const useSessionLogic = (onPRDetected?: PRCallback) => {
         rest_duration_s: restDuration,
         avg_hr: avgHr,
         peak_hr: peakHr,
+        avg_power_w: avgPower,
+        is_warmup: isWarmupSet.current,
       };
+
+      // ウォームアップセットフラグをリセット
+      isWarmupSet.current = false;
 
       // Storeに保存
       completeSet(newSet);
@@ -304,6 +321,13 @@ export const useSessionLogic = (onPRDetected?: PRCallback) => {
 
   const handleDataReceived = useCallback(
     async (data: RepVeloData) => {
+      // 0. Auto-start mode: セッションが開始されていない場合で、自動スタートモードが有効な場合に自動開始
+      if (!isSessionActive && settings.enable_auto_start_session && data.rom_cm > 5) {
+        console.log("[handleDataReceived] Auto-starting session on movement detection");
+        onAutoStart?.();
+        return;
+      }
+
       // 1. Finish Set Guard - finishSet実行中（DB保存中）はBLE入力を完全に破棄
       if (isFinishingSet.current) {
         console.log(
@@ -318,12 +342,29 @@ export const useSessionLogic = (onPRDetected?: PRCallback) => {
         return;
       }
 
-      // 2. Update Live Data in Store (for UI)
+      // 3. Update Live Data in Store (for UI)
       setLiveData(data);
 
       // 3. Process Rep Logic
       const minRom = currentExercise?.min_rom_threshold ?? 10.0;
       const isValidRep = data.rom_cm > minRom;
+
+      // 最後のレップ検出時刻を更新
+      lastRepTime.current = Date.now();
+
+      // 自動完了タイマーをリセット
+      if (autoFinishTimer.current) {
+        clearTimeout(autoFinishTimer.current);
+        autoFinishTimer.current = null;
+      }
+
+      // 10秒後に自動完了するタイマーをセット（ウォームアップセットでない場合）
+      if (!isWarmupSet.current && !isPaused && repHistory.length > 0) {
+        autoFinishTimer.current = setTimeout(() => {
+          console.log("[useSessionLogic] Auto-finishing set due to no movement");
+          finishSet();
+        }, 10000);
+      }
 
       if (isValidRep) {
         const isAutoSetupRep = Boolean(
@@ -431,7 +472,11 @@ export const useSessionLogic = (onPRDetected?: PRCallback) => {
         const paperVL = AICoachService.getVlThresholdByExercise(
           currentExercise?.category || "",
         );
-        const currentVLThreshold = settings.velocity_loss_threshold || paperVL;
+        // 種目別VLカットオフを優先、なければグローバル設定、なければ論文値
+        const currentVLThreshold =
+          currentExercise?.velocity_loss_threshold ||
+          settings.velocity_loss_threshold ||
+          paperVL;
 
         if (!isAutoSetupRep && vLoss >= currentVLThreshold) {
           if (settings.enable_audio_feedback) {
@@ -504,6 +549,10 @@ export const useSessionLogic = (onPRDetected?: PRCallback) => {
 
     return () => {
       isMounted.current = false;
+      // 自動完了タイマーをクリア
+      if (autoFinishTimer.current) {
+        clearTimeout(autoFinishTimer.current);
+      }
     };
   }, [setConnectionStatus]);
   // --- Heart Rate Monitoring (Polling when Active) ---
@@ -681,6 +730,7 @@ export const useSessionLogic = (onPRDetected?: PRCallback) => {
     handleExcludeRep,
     handleMarkFailedRep,
     calculateAndProposeMVT,
+    setWarmupMode: (warmup: boolean) => { isWarmupSet.current = warmup; },
     // Expose store state for UI to consume directly if needed,
     // but preferably UI uses useTrainingStore() directly for reading state.
   };

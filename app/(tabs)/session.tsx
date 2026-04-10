@@ -4,7 +4,7 @@
  * UI is now a "Dumb Component" driven by global state
  */
 
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import {
   ScrollView,
   TextInput,
   Alert,
+  AppState,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNavigation, useRouter } from "expo-router";
@@ -57,10 +58,36 @@ export default function SessionScreen() {
     handleExcludeRep,
     handleMarkFailedRep,
     calculateAndProposeMVT,
-  } = useSessionLogic((pr: PRRecord) => {
-    setPRRecord(pr);
-    setShowPRModal(true);
-  });
+    setWarmupMode,
+  } = useSessionLogic(
+    (pr: PRRecord) => {
+      setPRRecord(pr);
+      setShowPRModal(true);
+    },
+    // Auto-start callback
+    async () => {
+      if (!isConnected) {
+        Alert.alert(
+          "センサー未接続",
+          "BLEセンサーを接続してからセッションを開始してください。",
+        );
+        return;
+      }
+      const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      startSession(sessionId);
+      try {
+        await DatabaseService.insertSession({
+          session_id: sessionId,
+          date: new Date().toISOString().split("T")[0],
+          total_volume: 0,
+          total_sets: 0,
+          lifts: [],
+        });
+      } catch (e) {
+        console.error("セッション作成失敗:", e);
+      }
+    }
+  );
 
   // Global State
   const {
@@ -101,6 +128,7 @@ export default function SessionScreen() {
   } = useTrainingStore();
 
   const [showExerciseModal, setShowExerciseModal] = useState(false);
+  const [isWarmupMode, setIsWarmupMode] = useState(false);
 
   // レップ詳細モーダルの状態
   const [repDetailVisible, setRepDetailVisible] = useState(false);
@@ -120,6 +148,15 @@ export default function SessionScreen() {
 
   // Fetch all reps on mount or when returning
   const [sessionAllReps, setSessionAllReps] = useState<RepData[]>([]);
+  // Recent exercise history (from previous sessions)
+  const [recentExerciseHistory, setRecentExerciseHistory] = useState<
+    SetData[]
+  >([]);
+  // Historical session reps for detail modal
+  const [historicalSessionReps, setHistoricalSessionReps] = useState<{
+    sessionId: string;
+    reps: RepData[];
+  } | null>(null);
 
   const refreshSessionAllReps = useCallback(async () => {
     if (!currentSession?.session_id) {
@@ -133,6 +170,25 @@ export default function SessionScreen() {
     setSessionAllReps(reps);
   }, [currentSession?.session_id]);
 
+  const refreshRecentExerciseHistory = useCallback(async () => {
+    if (!currentLift) {
+      setRecentExerciseHistory([]);
+      return;
+    }
+
+    try {
+      const recentSets = await DatabaseService.getRecentSetsForLift(
+        currentLift,
+        5,
+        currentSession?.session_id,
+      );
+      setRecentExerciseHistory(recentSets);
+    } catch (error) {
+      console.error("Failed to fetch recent exercise history:", error);
+      setRecentExerciseHistory([]);
+    }
+  }, [currentLift, currentSession?.session_id]);
+
   useEffect(() => {
     void refreshSessionAllReps();
 
@@ -143,6 +199,49 @@ export default function SessionScreen() {
 
     return () => clearTimeout(timerId);
   }, [refreshSessionAllReps, setHistory.length, currentSetIndex]);
+
+  // Refresh recent exercise history when lift changes
+  useEffect(() => {
+    void refreshRecentExerciseHistory();
+  }, [refreshRecentExerciseHistory]);
+
+  // Auto-finish session on app background to prevent data loss
+  const autoFinishHandled = useRef(false);
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (nextAppState) => {
+      if (
+        nextAppState === "background" &&
+        isSessionActive &&
+        repHistory.length > 0 &&
+        !autoFinishHandled.current
+      ) {
+        autoFinishHandled.current = true;
+        console.log(
+          "[SessionScreen] App going to background with active session and reps, auto-finishing...",
+        );
+
+        // Use setTimeout to allow the UI to update before blocking on save
+        setTimeout(async () => {
+          try {
+            await finishSet();
+            await refreshSessionAllReps();
+            console.log(
+              "[SessionScreen] Auto-finish completed successfully",
+            );
+          } catch (error) {
+            console.error("[SessionScreen] Auto-finish failed:", error);
+          }
+        }, 100);
+      } else if (nextAppState === "active") {
+        // Reset the flag when app comes back to foreground
+        autoFinishHandled.current = false;
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [isSessionActive, repHistory.length, finishSet, refreshSessionAllReps]);
 
   const [inputTargetWeight, setInputTargetWeight] = useState("");
   const [inputLoad, setInputLoad] = useState(formatLoadKg(currentLoad));
@@ -219,7 +318,28 @@ export default function SessionScreen() {
   const openRepDetail = async (setItem: SetData) => {
     setSelectedSetIndex(setItem.set_index);
     setSelectedSetLift(setItem.lift);
-    await refreshSessionAllReps();
+
+    // Check if this is a historical set (different session)
+    if (setItem.session_id !== currentSession?.session_id) {
+      // Fetch reps for the historical session
+      try {
+        const historicalReps = await DatabaseService.getRepsForSession(
+          setItem.session_id,
+        );
+        setHistoricalSessionReps({
+          sessionId: setItem.session_id,
+          reps: historicalReps,
+        });
+      } catch (error) {
+        console.error("Failed to fetch historical reps:", error);
+        setHistoricalSessionReps(null);
+      }
+    } else {
+      // Current session - use current session reps
+      setHistoricalSessionReps(null);
+      await refreshSessionAllReps();
+    }
+
     setRepDetailVisible(true);
   };
 
@@ -278,36 +398,78 @@ export default function SessionScreen() {
     await handleExclude(repId, "setup_reaction");
   };
 
+  const handleAddMissedRep = async () => {
+    if (!currentSession?.session_id || !currentLift) return;
+
+    try {
+      // 手動追加レップを作成
+      const newRep: RepData = {
+        id: `manual_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        session_id: currentSession.session_id,
+        lift: currentLift,
+        set_index: currentSetIndex,
+        rep_index: repHistory.length + 1,
+        load_kg: currentLoad,
+        device_type: "manual",
+        mean_velocity: null,
+        peak_velocity: null,
+        rom_cm: null,
+        rep_duration_ms: null,
+        mean_power_w: null,
+        timestamp: new Date().toISOString(),
+        is_valid_rep: false,
+        set_type: "normal",
+        notes: "手動追加",
+      };
+
+      await DatabaseService.insertRep(newRep);
+      await refreshSessionAllReps();
+
+      Alert.alert("成功", "レップを追加しました");
+    } catch (error) {
+      console.error("Failed to add rep:", error);
+      Alert.alert("エラー", "レップの追加に失敗しました");
+    }
+  };
+
   const handleEditSetLoad = (setItem: SetData) => {
     setEditingSet(setItem);
   };
 
   const handleSaveSetEdits = async (values: {
     loadKg: number;
+    lift: string;
     rpe?: number;
     notes: string;
   }) => {
     if (!currentSession?.session_id || !editingSet) return;
 
     try {
+      const oldLift = editingSet.lift;
+      const newLift = values.lift;
+
       await DatabaseService.updateSetEditableFields(
         currentSession.session_id,
         editingSet.set_index,
         editingSet.lift,
         {
           load_kg: values.loadKg,
+          lift: newLift,
           rpe: values.rpe,
           notes: values.notes,
         },
       );
 
+      // 種目名が変更された場合は、古い種目名でメトリクスを再計算してから新しい種目名で更新
       const metrics = await DatabaseService.recalculateSetMetrics(
         currentSession.session_id,
-        editingSet.lift,
+        oldLift,
         editingSet.set_index,
       );
 
-      updateSetHistory(editingSet.set_index, editingSet.lift, {
+      // 種目名が変更された場合は、新しい種目名で履歴を更新
+      updateSetHistory(editingSet.set_index, oldLift, {
+        lift: newLift,
         load_kg: values.loadKg,
         rpe: values.rpe,
         notes: values.notes,
@@ -544,7 +706,7 @@ export default function SessionScreen() {
           {currentHeartRate && (
             <View style={styles.hrBadge}>
               <Text style={styles.hrValue}>{Math.round(currentHeartRate)}</Text>
-              <Text style={styles.hrUnit}>bpm</Text>
+              <Text style={styles.hrUnit}>bpm (心拍数)</Text>
             </View>
           )}
         </View>
@@ -1002,6 +1164,18 @@ export default function SessionScreen() {
         {/* Action Buttons */}
         <View style={styles.buttonContainer}>
           <TouchableOpacity
+            style={[styles.warmupButton, isWarmupMode && styles.warmupButtonActive]}
+            onPress={() => {
+              const newMode = !isWarmupMode;
+              setIsWarmupMode(newMode);
+              setWarmupMode(newMode);
+            }}
+          >
+            <Text style={styles.warmupButtonText}>
+              {isWarmupMode ? "ウォームアップON" : "ウォームアップ"}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
             style={[styles.button, styles.recordButton]}
             onPress={handleFinishSet}
           >
@@ -1064,6 +1238,77 @@ export default function SessionScreen() {
             );
           })()}
 
+        {/* 最近の種目履歴 */}
+        {recentExerciseHistory.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>
+              最近の{currentLift}履歴
+            </Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.recentHistoryScroll}
+              contentContainerStyle={styles.recentHistoryContent}
+            >
+              {recentExerciseHistory.map((set) => {
+                const zone = set.avg_velocity
+                  ? AICoachService.getZone(set.avg_velocity)
+                  : null;
+                return (
+                  <TouchableOpacity
+                    key={`${set.session_id}-${set.set_index}`}
+                    style={[
+                      styles.recentHistoryCard,
+                      { borderColor: zone?.color ?? GarageTheme.border },
+                    ]}
+                    onPress={() => openRepDetail(set)}
+                  >
+                    <Text style={styles.recentHistoryDate}>
+                      {new Date(set.timestamp).toLocaleDateString("ja-JP", {
+                        month: "short",
+                        day: "numeric",
+                      })}
+                    </Text>
+                    <View style={styles.recentHistoryStats}>
+                      <View style={styles.recentHistoryStat}>
+                        <Text style={styles.recentHistoryStatLabel}>
+                          重量
+                        </Text>
+                        <Text style={styles.recentHistoryStatValue}>
+                          {formatLoadKg(set.load_kg)}
+                        </Text>
+                      </View>
+                      <View style={styles.recentHistoryStat}>
+                        <Text style={styles.recentHistoryStatLabel}>
+                          回数
+                        </Text>
+                        <Text style={styles.recentHistoryStatValue}>
+                          {set.reps}
+                        </Text>
+                      </View>
+                      {set.avg_velocity && (
+                        <View style={styles.recentHistoryStat}>
+                          <Text style={styles.recentHistoryStatLabel}>
+                            速度
+                          </Text>
+                          <Text style={styles.recentHistoryStatValue}>
+                            {set.avg_velocity.toFixed(2)}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                    {set.e1rm && (
+                      <Text style={styles.recentHistoryE1RM}>
+                        e1RM: {formatLoadKg(set.e1rm)}
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
+
         {/* セッション履歴 */}
         {setHistory.length > 0 && (
           <View style={styles.section}>
@@ -1083,9 +1328,11 @@ export default function SessionScreen() {
                       (sum, rep) => sum + (rep.mean_power_w ?? 0),
                       0,
                     ) / trackedReps.length
-                  : set.avg_velocity != null
-                    ? VBTLogic.calculatePower(set.load_kg, set.avg_velocity)
-                    : null;
+                  : set.avg_power_w != null
+                    ? set.avg_power_w
+                    : set.avg_velocity != null
+                      ? VBTLogic.calculatePower(set.load_kg, set.avg_velocity)
+                      : null;
 
               return (
                 <View
@@ -1196,17 +1443,28 @@ export default function SessionScreen() {
         {/* レップ詳細モーダル */}
         <RepDetailModal
           visible={repDetailVisible}
-          reps={sessionAllReps}
+          reps={historicalSessionReps?.reps ?? sessionAllReps}
           setIndex={selectedSetIndex}
           lift={selectedSetLift}
           loadKg={selectedSet?.load_kg}
           onClose={() => setRepDetailVisible(false)}
           onEditSetLoad={
-            selectedSet ? () => handleEditSetLoad(selectedSet) : undefined
+            selectedSet && !historicalSessionReps
+              ? () => handleEditSetLoad(selectedSet)
+              : undefined
           }
-          onExcludeRep={handleExclude}
-          onMarkFailedRep={handleMarkFailedRep}
-          onMarkSetupRep={handleMarkSetupRep}
+          onExcludeRep={
+            !historicalSessionReps ? handleExclude : undefined
+          }
+          onMarkFailedRep={
+            !historicalSessionReps ? handleMarkFailedRep : undefined
+          }
+          onMarkSetupRep={
+            !historicalSessionReps ? handleMarkSetupRep : undefined
+          }
+          onAddMissedRep={
+            !historicalSessionReps ? handleAddMissedRep : undefined
+          }
         />
 
         <SetEditModal
@@ -1300,7 +1558,7 @@ function RestTimer({
       <Text style={styles.timerText}>{formatTime(elapsed)}</Text>
       {hr != null ? (
         <View style={styles.timerHrBadge}>
-          <Text style={styles.timerHrLabel}>HR</Text>
+          <Text style={styles.timerHrLabel}>心拍</Text>
           <Text style={styles.timerHrText}>{Math.round(hr)}</Text>
         </View>
       ) : null}
@@ -1440,6 +1698,50 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     color: GarageTheme.textStrong,
     marginBottom: 12,
+  },
+  recentHistoryScroll: {
+    marginTop: 8,
+  },
+  recentHistoryContent: {
+    paddingRight: 16,
+    gap: 12,
+  },
+  recentHistoryCard: {
+    backgroundColor: GarageTheme.surface,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    padding: 12,
+    minWidth: 140,
+  },
+  recentHistoryDate: {
+    fontSize: 11,
+    color: GarageTheme.textMuted,
+    fontWeight: "600",
+    marginBottom: 8,
+  },
+  recentHistoryStats: {
+    gap: 6,
+  },
+  recentHistoryStat: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  recentHistoryStatLabel: {
+    fontSize: 11,
+    color: GarageTheme.textSubtle,
+    fontWeight: "600",
+  },
+  recentHistoryStatValue: {
+    fontSize: 13,
+    color: GarageTheme.textStrong,
+    fontWeight: "700",
+  },
+  recentHistoryE1RM: {
+    fontSize: 11,
+    color: GarageTheme.accent,
+    fontWeight: "700",
+    marginTop: 8,
   },
   inputRow: {
     flexDirection: "row",
@@ -1589,6 +1891,25 @@ const styles = StyleSheet.create({
     color: GarageTheme.textStrong,
     fontSize: 18,
     fontWeight: "bold",
+  },
+  warmupButton: {
+    flex: 1,
+    padding: 12,
+    borderRadius: 12,
+    alignItems: "center",
+    backgroundColor: GarageTheme.border,
+    borderWidth: 1,
+    borderColor: GarageTheme.border,
+    marginRight: 8,
+  },
+  warmupButtonActive: {
+    backgroundColor: "#FF9500",
+    borderColor: "#FF9500",
+  },
+  warmupButtonText: {
+    color: GarageTheme.textStrong,
+    fontSize: 14,
+    fontWeight: "700",
   },
   setCard: {
     backgroundColor: GarageTheme.surfaceAlt,

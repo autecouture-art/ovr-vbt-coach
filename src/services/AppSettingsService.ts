@@ -15,6 +15,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   enable_audio_rep_count: false,
   enable_audio_velocity_readout: false,
   enable_audio_faster_cue: true,
+  enable_auto_start_session: false,
 };
 
 export async function loadAppSettings(): Promise<AppSettings> {

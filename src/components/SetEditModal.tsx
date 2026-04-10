@@ -16,6 +16,7 @@ import type { SetData } from "../types/index";
 
 export type SetEditValues = {
   loadKg: number;
+  lift: string;
   rpe?: number;
   notes: string;
 };
@@ -34,6 +35,7 @@ export function SetEditModal({
   onSave,
 }: SetEditModalProps) {
   const [loadText, setLoadText] = useState("");
+  const [liftText, setLiftText] = useState("");
   const [rpeText, setRpeText] = useState("");
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -42,6 +44,7 @@ export function SetEditModal({
   useEffect(() => {
     if (!visible || !setItem) return;
     setLoadText(formatLoadKg(setItem.load_kg));
+    setLiftText(setItem.lift ?? "");
     setRpeText(setItem.rpe != null ? String(setItem.rpe) : "");
     setNotes(setItem.notes ?? "");
     setError(null);
@@ -56,6 +59,12 @@ export function SetEditModal({
 
     if (!normalizedLoad || Number.isNaN(parsedLoad) || parsedLoad < 0) {
       setError("0以上の重量を入力してください。");
+      return;
+    }
+
+    const normalizedLift = liftText.trim();
+    if (!normalizedLift) {
+      setError("種目名を入力してください。");
       return;
     }
 
@@ -74,6 +83,7 @@ export function SetEditModal({
     try {
       await onSave({
         loadKg: roundToHalfKg(parsedLoad),
+        lift: normalizedLift,
         rpe: parsedRpe,
         notes: notes.trim(),
       });
@@ -94,6 +104,18 @@ export function SetEditModal({
           <Text style={styles.subtitle}>
             {setItem ? `${setItem.lift} / Set ${setItem.set_index}` : "-"}
           </Text>
+
+          <View style={styles.field}>
+            <Text style={styles.label}>種目名</Text>
+            <TextInput
+              style={styles.input}
+              value={liftText}
+              onChangeText={setLiftText}
+              placeholder="ベンチプレス"
+              placeholderTextColor={GarageTheme.textSubtle}
+              autoCapitalize="none"
+            />
+          </View>
 
           <View style={styles.field}>
             <Text style={styles.label}>重量 (kg)</Text>

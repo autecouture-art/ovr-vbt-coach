@@ -55,6 +55,7 @@ export interface SetData {
   peak_hr?: number; // 最大心拍数
   notes?: string;
   avg_power_w?: number | null;
+  is_warmup?: boolean; // ウォームアップセットフラグ
 }
 
 export interface SessionData {
@@ -158,6 +159,7 @@ export interface Exercise {
   description?: string;
   mvt?: number; // Minimum Velocity Threshold (e.g., 0.15 for bench, 0.3 for squat)
   ignore_first_rep_as_setup?: boolean;
+  velocity_loss_threshold?: number; // 種目別VLカットオフ (%)
 }
 
 export interface TrainingSession {
@@ -279,6 +281,7 @@ export interface AppSettings {
   enable_audio_rep_count: boolean;
   enable_audio_velocity_readout: boolean;
   enable_audio_faster_cue: boolean;
+  enable_auto_start_session: boolean; // 自動スタートモード
 }
 
 // ========================================
