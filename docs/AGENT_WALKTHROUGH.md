@@ -185,3 +185,25 @@ Results:
 Remaining:
 - Real-device testing recommended for historical session detail modal behavior.
 - Consider TestFlight upload after device verification.
+
+
+## 2026-04-10 (Claude Sonnet 4.6)
+Scope: TestFlight build/upload with build number bump to 74.
+Actions:
+- Bumped iOS build number from 73 to 74 consistently in:
+  - `app.config.ts` (buildNumber: "74")
+  - `ios/RepVeloCoach/Info.plist` (CFBundleVersion: 74)
+  - `ios/RepVeloCoach.xcodeproj/project.pbxproj` (CURRENT_PROJECT_VERSION = 74)
+- Verified all three build numbers match.
+- Ran repo-local TestFlight deployment script:
+  - Executed: `FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT=20 FASTLANE_XCODEBUILD_SETTINGS_RETRIES=6 bash scripts/deploy.sh`
+  - Used canonical repo path: `/Volumes/0RICON_APP/Developer/MyFiles/repvelocoach-git-sync-20260320/repo`
+Results:
+- TestFlight/App Store Connect upload succeeded for version `2.3.5` build `74`.
+- Generated IPA: `ios/fastlane_export/RepVeloCoach.ipa`
+- Fastlane summary: build_app (184s), upload_to_testflight (55s), total ~4 minutes.
+- Upload completed successfully at 11:31:31.
+Remaining:
+- Wait for App Store Connect/TestFlight processing (usually 15-30 minutes).
+- Verify build 74 appears in TestFlight.
+- Real-device testing recommended for all features implemented in recent sessions.

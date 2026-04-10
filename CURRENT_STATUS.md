@@ -11,13 +11,13 @@
 - App name: RepVelo VBT Coach
 - iOS bundle id: `com.autecouture.repvelocoach.hh`
 - Marketing version: `2.3.5`
-- Native iOS build number in `ios/RepVeloCoach/Info.plist`: `71`
-- Expo config build number in `app.config.ts`: `65`
-- Latest known successful TestFlight upload: build `71` (uploaded from this repo; processing delay on App Store Connect is normal)
+- Native iOS build number in `ios/RepVeloCoach/Info.plist`: `74`
+- Expo config build number in `app.config.ts`: `74`
+- Latest known successful TestFlight upload: build `74` (uploaded from this repo; processing delay on App Store Connect is normal)
 
 ## Important Mismatch
-- `app.config.ts` and `ios/RepVeloCoach/Info.plist` do not currently match for iOS build number.
-- Before the next release, keep the effective build number consistent and bump to a value higher than `71`.
+- `app.config.ts`, `ios/RepVeloCoach/Info.plist`, and `ios/RepVeloCoach.xcodeproj/project.pbxproj` are now aligned at build `74`.
+- Before the next release, bump to a value higher than `74` and keep all three sources synchronized.
 
 ## Current Working Tree
 Uncommitted changes currently exist in these app files:
@@ -73,12 +73,15 @@ Untracked auxiliary repo files/folders still exist:
 
 ## Validation Status
 - TypeScript check passed after the latest GLM history normalization change: `pnpm -s tsc --noEmit`
-- TestFlight upload succeeded for version `2.3.5` build `73`.
+- TestFlight upload succeeded for version `2.3.5` build `74`.
+- Build numbers are now aligned across all three sources (app.config.ts, Info.plist, project.pbxproj).
 - Real-device verification is still required for:
   - AI Coach live send success
   - Session detail appearing immediately after set completion
   - Category/exercise picker usability
   - Audio interruption and resume behavior
+  - Recent exercise history card behavior
+  - Auto-finish on background feature
 
 ## Build And Upload
 Use the repo-local canonical path above. The agent-neutral release workflow is documented in:
@@ -102,7 +105,12 @@ These are already enforced in `AGENTS.md`:
 - Record TestFlight build numbers and upload results.
 
 ## Recommended Next Steps
-1. Review uncommitted diff and decide whether to keep or amend the current GLM fix.
-2. Commit the current working tree once device-risk is acceptable.
-3. Device-test TestFlight build `73`, with AI Coach send path first, then session-flow regressions.
-4. Only after device verification, decide the next build bump and next TestFlight upload.
+1. Wait for App Store Connect/TestFlight processing for build `74` (usually 15-30 minutes).
+2. Device-test TestFlight build `74`, focusing on:
+   - Recent exercise history card behavior
+   - Auto-finish on background feature
+   - AI Coach send path
+   - Session detail appearing immediately after set completion
+   - Category/exercise picker usability
+   - Audio interruption and resume behavior
+3. Only after device verification, decide the next build bump and next TestFlight upload.
