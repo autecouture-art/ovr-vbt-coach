@@ -81,11 +81,13 @@ Untracked auxiliary repo files/folders still exist:
   - Audio interruption and resume behavior
 
 ## Build And Upload
-Use the repo-local canonical path above. For TestFlight upload, the documented skill is:
-- `~/.codex/skills/repvelocoach-testflight/SKILL.md`
+Use the repo-local canonical path above. The agent-neutral release workflow is documented in:
+- `TESTFLIGHT_DEPLOYMENT.md`
+- `scripts/deploy.sh`
+- `scripts/upload_only.sh`
 
 Typical upload command:
-- `FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT=20 FASTLANE_XCODEBUILD_SETTINGS_RETRIES=6 bash ~/.codex/skills/testflight-upload/scripts/deploy.sh`
+- `source ~/.zshrc && FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT=20 FASTLANE_XCODEBUILD_SETTINGS_RETRIES=6 bash scripts/deploy.sh`
 
 Rules:
 - Bump `CFBundleVersion` in `ios/RepVeloCoach/Info.plist` before any new upload.

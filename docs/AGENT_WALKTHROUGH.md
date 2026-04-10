@@ -104,3 +104,18 @@ Remaining:
 - Wait for App Store Connect/TestFlight processing, then verify the new build on device.
 - Verify historical set editing from session detail.
 - Verify GLM send now works after the renewed API key.
+
+
+## 2026-04-10 (Codex / GPT-5)
+Scope: Make TestFlight build/upload reproducible for Claude as well as Codex.
+Actions:
+- Replaced repo-local `scripts/deploy.sh` and `scripts/upload_only.sh` with robust versions that auto-detect the canonical repo, enforce Xcode selection, check ASC env vars, and run Bundler/Fastlane directly from the repo.
+- Rewrote `TESTFLIGHT_DEPLOYMENT.md` from stale Manus-era content to the current RepVeloCoach TestFlight workflow.
+- Updated `AGENTS.md` so all agents prefer the repo-local scripts/docs over Codex-only home-directory skills for actual build/upload work.
+- Updated `CURRENT_STATUS.md` to point Build And Upload at the repo-local workflow.
+Results:
+- TestFlight build/upload workflow is now documented in repo-local files that Claude can read and execute without `~/.codex/skills/...`.
+- `bash -n scripts/deploy.sh` and `bash -n scripts/upload_only.sh` passed.
+Remaining:
+- Optionally mirror the same wording into any Claude-specific bootstrap file if one is later introduced.
+- Keep repo-local scripts as the release source of truth when the workflow changes.

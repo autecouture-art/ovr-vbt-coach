@@ -1,233 +1,120 @@
-# OVR VBT Coach - TestFlight デプロイガイド
+# RepVeloCoach TestFlight Deployment
 
-このドキュメントでは、OVR VBT Coach アプリを Manus AI 経由で TestFlight にデプロイする手順を説明します。
+このドキュメントは Codex / Claude / GLM / Gemini のどのエージェントでも同じ手順で RepVeloCoach を TestFlight に上げられるようにするための正本です。
 
-## 前提条件
+## Canonical Repo
 
-### 1. Apple Developer アカウント
-- Apple Developer Program への登録（年間 $99）
-- https://developer.apple.com/programs/
+- Repo root: `/Volumes/0RICON_APP/Developer/MyFiles/repvelocoach-git-sync-20260320/repo`
+- Bundle ID: `com.autecouture.repvelocoach.hh`
+- App name: `RepVelo VBT Coach`
+- Xcode workspace: `ios/RepVeloCoach.xcworkspace`
 
-### 2. Manus アカウント
-- Manus AI のアカウント作成
-- "Develop Apps" 機能が有効になっていること
-- https://manus.im
+## Required Files And Env
 
-### 3. 必要な情報
-- **Bundle ID**: `space.manus.ovr.vbt.coach.app.t20260125053732`
-- **App Name**: OVR VBT Coach
-- **Version**: 2.3.0
-- **Build Number**: 1
+必要なもの:
 
----
+- `fastlane/api_key.p8`
+- `RepVeloCoach_AppStore.mobileprovision`
+- `ASC_KEY_ID`
+- `ASC_ISSUER_ID`
+- `bundle` コマンド
+- `/Applications/Xcode.app`
 
-## デプロイ手順
+補足:
 
-### ステップ 1: プロジェクトの準備確認
+- `ASC_KEY_ID` と `ASC_ISSUER_ID` はシェル初期化ファイルに export 済みでもよい
+- スクリプトは `xcode-select` の切替に失敗しても `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer` で続行する
 
-```bash
-# プロジェクトディレクトリに移動
-cd /home/ubuntu/ovr-vbt-coach-app
+## Build Number Rule
 
-# 依存関係が正しくインストールされているか確認
-pnpm install
+新しい TestFlight 配信前には build number を必ず前回より大きい値に上げる。
 
-# TypeScript の型チェック
-pnpm check
+確認箇所:
 
-# Lint チェック
-pnpm lint
-```
+- `app.config.ts`
+- `ios/RepVeloCoach/Info.plist`
+- `ios/RepVeloCoach.xcodeproj/project.pbxproj`
 
-### ステップ 2: Manus UI でのビルド
+この repo では `ios/` が ignore されているため、native 側の build metadata は git に乗らないことがある。アップロード前に実ファイル値が正しいことを必ず確認する。
 
-#### 方法 1: Manus Web UI を使用（推奨）
-
-1. https://app.manus.im にログイン
-2. 左サイドバーから「Develop Apps」をクリック
-3. 「New Project」をクリック
-4. 以下の情報を入力:
-   - **Project Name**: OVR VBT Coach
-   - **Repository**: GitHub リポジトリを接続、または手動でコードをアップロード
-   - **Branch**: claude/research-manus-testflight-PvblD
-5. 「Build for iOS」を選択
-6. 「Deploy to TestFlight」オプションを有効化
-7. 「Start Build」をクリック
-
-#### 方法 2: Manus CLI を使用
+確認コマンド:
 
 ```bash
-# Manus CLI のインストール（初回のみ）
-npm install -g manus-cli
-
-# Manus にログイン
-manus login
-
-# iOS ビルドの開始
-manus build:ios --testflight
-
-# ビルドステータスの確認
-manus build:status
-
-# ビルドログの確認
-manus build:logs
+cd /Volumes/0RICON_APP/Developer/MyFiles/repvelocoach-git-sync-20260320/repo
+rg -n "buildNumber|CURRENT_PROJECT_VERSION|CFBundleVersion" app.config.ts ios/RepVeloCoach/Info.plist ios/RepVeloCoach.xcodeproj/project.pbxproj
 ```
 
-### ステップ 3: ビルド中の確認事項
+## Standard Upload
 
-ビルドプロセスは通常 30～60 分かかります。以下をご確認ください:
+通常の build + TestFlight upload:
 
-- **初回ビルド**: 初回は通常より時間がかかります（60 分程度）
-- **エラー通知**: ビルドエラーが発生した場合、メールで通知されます
-- **ビルドアーティファクト**: 成功時に `.ipa` ファイルが生成されます
-
-### ステップ 4: App Store Connect での設定
-
-Manus がビルドをアップロードした後:
-
-1. https://appstoreconnect.apple.com にログイン
-2. 「My Apps」から「OVR VBT Coach」を選択
-3. 「TestFlight」タブを開く
-4. ビルドが処理されるまで待機（通常 10～30 分）
-5. ビルドが表示されたら、以下を設定:
-
-#### 内部テスト（Internal Testing）の設定
-
-```
-1. "Internal Testing" セクションを開く
-2. "Testers" タブで内部テスターを追加
-3. テスターのメールアドレスを入力
-4. 招待を送信
+```bash
+cd /Volumes/0RICON_APP/Developer/MyFiles/repvelocoach-git-sync-20260320/repo
+source ~/.zshrc
+bash scripts/deploy.sh
 ```
 
-#### 外部テスト（External Testing）の設定（オプション）
+`xcodebuild -showBuildSettings` が重い環境では以下を使う:
 
-```
-1. "External Testing" セクションを開く
-2. "Testers" タブで外部テスターを追加
-3. 最大 10,000 人まで招待可能
-4. テスターのメールアドレスを入力
-5. 招待を送信
+```bash
+cd /Volumes/0RICON_APP/Developer/MyFiles/repvelocoach-git-sync-20260320/repo
+source ~/.zshrc
+FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT=20 FASTLANE_XCODEBUILD_SETTINGS_RETRIES=6 bash scripts/deploy.sh
 ```
 
-### ステップ 5: TestFlight でのテスト
+成功判定:
 
-テスターに招待メールが送信されます:
+- `Successfully uploaded package to App Store Connect`
+- `Lane beta finished successfully`
 
-1. テスターが TestFlight アプリをインストール（App Store から無料）
-2. 招待メール内のリンクをタップ
-3. TestFlight アプリで招待を承認
-4. アプリをインストール
-5. フィードバックを送信
+生成物:
 
----
+- `ios/fastlane_export/RepVeloCoach.ipa`
 
-## トラブルシューティング
+## Upload Existing IPA Only
 
-### ビルドエラー: "Provisioning Profile Not Found"
+既存 IPA の再アップロード:
 
-**原因**: Apple Developer アカウントの設定が不完全
+```bash
+cd /Volumes/0RICON_APP/Developer/MyFiles/repvelocoach-git-sync-20260320/repo
+source ~/.zshrc
+bash scripts/upload_only.sh
+```
 
-**解決方法**:
-1. App Store Connect で Bundle ID を登録
-2. Provisioning Profile を作成
-3. Manus で Apple Developer アカウントを再認証
+## Reporting Rule
 
-### ビルドエラー: "Code Signing Failed"
+ビルド後は必ず以下を記録する:
 
-**原因**: コード署名証明書の問題
+- 使用した build number
+- 成功/失敗
+- 失敗時の最初の致命エラー
+- 使用した安定化 env (`FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT`, `FASTLANE_XCODEBUILD_SETTINGS_RETRIES` など)
 
-**解決方法**:
-1. Apple Developer アカウントで証明書を確認
-2. Manus で証明書を更新
-3. ビルドを再実行
+更新先:
 
-### ビルドエラー: "Invalid Bundle Identifier"
+- `docs/AGENT_WALKTHROUGH.md`
+- `CURRENT_STATUS.md`
 
-**原因**: Bundle ID が Apple の規則に違反
+## For Claude
 
-**現在の Bundle ID**: `space.manus.ovr.vbt.coach.app.t20260125053732`
+Claude でビルドするときも `~/.codex/skills/...` は前提にしない。
+repo 内の以下だけを使う:
 
-**確認事項**:
-- ドット区切りの各セグメントが文字で始まっているか
-- 特殊文字が含まれていないか
+- `scripts/deploy.sh`
+- `scripts/upload_only.sh`
+- `TESTFLIGHT_DEPLOYMENT.md`
+- `AGENTS.md`
+- `CURRENT_STATUS.md`
 
-### TestFlight でビルドが表示されない
+## Common Failure Patterns
 
-**原因**: ビルドの処理中
-
-**解決方法**:
-1. App Store Connect を再読み込み
-2. 10～30 分待機
-3. 「Builds」タブを確認
-
-### テスターが招待を受け取らない
-
-**原因**: メールアドレスの入力ミス
-
-**解決方法**:
-1. テスターのメールアドレスを確認
-2. 招待を再送信
-3. スパムフォルダを確認
-
----
-
-## 注意事項
-
-### バージョン管理
-
-- **Version**: ユーザーに表示される（例: 2.3.0）
-- **Build Number**: Apple が管理する整数（増加する必要あり）
-- 新しいビルドを提出する際は、Build Number を増やしてください
-
-### TestFlight の有効期限
-
-- TestFlight ビルドは 90 日間有効です
-- 90 日後は自動的に削除されます
-- 継続的なテストが必要な場合は、定期的に新しいビルドをアップロード
-
-### App Store 申請前
-
-TestFlight テストが完了したら、以下を確認してから App Store に申請してください:
-
-- [ ] すべての機能が正常に動作
-- [ ] iOS デバイスでのテスト完了
-- [ ] BLE デバイスとの互換性確認
-- [ ] バッテリー消費テスト
-- [ ] クラッシュレポート確認
-- [ ] プライバシーポリシーの準備
-- [ ] スクリーンショットの準備
-- [ ] 説明文の準備
-
----
-
-## 参考リンク
-
-- [Manus AI Documentation](https://help.manus.im)
-- [Expo Documentation](https://docs.expo.dev)
-- [Apple TestFlight Documentation](https://developer.apple.com/testflight/)
-- [App Store Connect](https://appstoreconnect.apple.com)
-- [Apple Developer Program](https://developer.apple.com/programs/)
-
----
-
-## サポート
-
-問題が発生した場合:
-
-1. **Manus Help Center**: https://help.manus.im
-2. **Expo Forums**: https://forums.expo.dev
-3. **Apple Developer Support**: https://developer.apple.com/support/
-
----
-
-## デプロイ完了後
-
-TestFlight でのテストが完了したら:
-
-1. **フィードバック収集**: テスターからのフィードバックを収集
-2. **バグ修正**: 報告されたバグを修正
-3. **App Store 申請**: 準備完了後、App Store に申請
-4. **リリース**: App Store で公開
-
-**Happy Deployment! 🚀**
+- `bundle version must be higher`
+  - build number を上げる
+- `ASC_KEY_ID is not set` / `ASC_ISSUER_ID is not set`
+  - `source ~/.zshrc` して env を読み直す
+- `Missing App Store Connect key`
+  - `fastlane/api_key.p8` の有無を確認
+- `xcodebuild -showBuildSettings` timeout
+  - timeout/retries env を付けて再実行
+- Pods / Expo / JS bundle warnings
+  - 多くは既知警告。最初の fatal error が出るまでは止めない
