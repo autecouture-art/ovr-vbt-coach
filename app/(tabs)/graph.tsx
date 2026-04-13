@@ -4,7 +4,7 @@
  * DBから実データを取得してグラフ表示
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   ScrollView,
@@ -18,16 +18,48 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DatabaseService from '@/src/services/DatabaseService';
 import { GarageTheme } from '@/src/constants/garageTheme';
 import AICoachService from '@/src/services/AICoachService';
+import {
+  EXERCISE_SELECTION_GROUPS,
+  matchesExerciseSelectionGroup,
+  type ExerciseSelectionGroupId,
+} from '@/src/constants/exerciseCatalog';
 import type { LVPData, SessionData, SetData, Exercise } from '@/src/types/index';
 
-
-// 速度ゾーンの定義（日本語）
-const VELOCITY_ZONES = [
-  { name: 'POWER', minV: 1.0, maxV: 1.5, color: GarageTheme.accentSoft, desc: '爆発的な出力領域 (1RM 30-50%)' },
-  { name: 'SPEED STRENGTH', minV: 0.75, maxV: 1.0, color: GarageTheme.accent, desc: '速度優位の筋力領域 (1RM 50-70%)' },
-  { name: 'HYPERTROPHY', minV: 0.5, maxV: 0.75, color: GarageTheme.success, desc: '筋量寄りの領域 (1RM 70-85%)' },
-  { name: 'MAX STRENGTH', minV: 0.0, maxV: 0.5, color: GarageTheme.danger, desc: '高強度領域 (1RM 85%+)' },
+const DEFAULT_VELOCITY_ZONES = [
+  { name: 'POWER', minV: 1.0, maxV: 1.5, color: GarageTheme.accentSoft, desc: '爆発的な出力領域' },
+  { name: 'SPEED STRENGTH', minV: 0.75, maxV: 1.0, color: GarageTheme.accent, desc: '速度優位の筋力領域' },
+  { name: 'HYPERTROPHY', minV: 0.5, maxV: 0.75, color: GarageTheme.success, desc: '筋量寄りの領域' },
+  { name: 'MAX STRENGTH', minV: 0.0, maxV: 0.5, color: GarageTheme.danger, desc: '高強度領域' },
 ];
+
+const percentile = (values: number[], ratio: number) => {
+  if (values.length === 0) return 0;
+  const idx = Math.min(values.length - 1, Math.max(0, Math.floor((values.length - 1) * ratio)));
+  return values[idx];
+};
+
+const buildVelocityZonesFromHistory = (sets: SetData[]) => {
+  const velocities = sets
+    .map((set) => set.avg_velocity)
+    .filter((value): value is number => typeof value === 'number' && value > 0)
+    .sort((a, b) => a - b);
+
+  if (velocities.length < 4) {
+    return DEFAULT_VELOCITY_ZONES;
+  }
+
+  const p25 = percentile(velocities, 0.25);
+  const p50 = percentile(velocities, 0.5);
+  const p75 = percentile(velocities, 0.75);
+  const max = velocities[velocities.length - 1];
+
+  return [
+    { name: 'MAX STRENGTH', minV: 0, maxV: Number(p25.toFixed(2)), color: GarageTheme.danger, desc: '履歴下位25%の低速域' },
+    { name: 'HYPERTROPHY', minV: Number(p25.toFixed(2)), maxV: Number(p50.toFixed(2)), color: GarageTheme.success, desc: '履歴25-50%の中低速域' },
+    { name: 'SPEED STRENGTH', minV: Number(p50.toFixed(2)), maxV: Number(p75.toFixed(2)), color: GarageTheme.accent, desc: '履歴50-75%の中高速域' },
+    { name: 'POWER', minV: Number(p75.toFixed(2)), maxV: Number(Math.max(max, p75 + 0.05).toFixed(2)), color: GarageTheme.accentSoft, desc: '履歴上位25%の高速域' },
+  ];
+};
 
 type TabType = 'lvp' | 'trend' | 'zones';
 
@@ -36,6 +68,7 @@ export default function GraphScreen() {
   const isFocused = useIsFocused();
   const [activeTab, setActiveTab] = useState<TabType>('lvp');
   const [selectedExercise, setSelectedExercise] = useState('ベンチプレス');
+  const [selectedGroup, setSelectedGroup] = useState<ExerciseSelectionGroupId>('all');
   const [lvpData, setLvpData] = useState<LVPData | null>(null);
   const [sessions, setSessions] = useState<SessionData[]>([]);
   const [recentSets, setRecentSets] = useState<SetData[]>([]);
@@ -66,6 +99,23 @@ export default function GraphScreen() {
       void loadData();
     }
   }, [isFocused, selectedExercise]);
+
+  const filteredExercises = useMemo(
+    () => exercisesList.filter((exercise) => matchesExerciseSelectionGroup(exercise, selectedGroup)),
+    [exercisesList, selectedGroup],
+  );
+
+  useEffect(() => {
+    if (filteredExercises.length === 0) return;
+    if (!filteredExercises.some((exercise) => exercise.name === selectedExercise)) {
+      setSelectedExercise(filteredExercises[0].name);
+    }
+  }, [filteredExercises, selectedExercise]);
+
+  const velocityZones = useMemo(
+    () => buildVelocityZonesFromHistory(recentSets),
+    [recentSets],
+  );
 
   const loadData = async () => {
     setLoading(true);
@@ -220,12 +270,25 @@ export default function GraphScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* 種目選択（LVP/trend タブ） */}
+      {/* 種目選択（カテゴリ起点） */}
       {activeTab !== 'zones' && exercisesList.length > 0 && (
         <View style={styles.exercisePickerSection}>
-          <Text style={styles.exercisePickerLabel}>EXERCISE SELECT</Text>
+          <Text style={styles.exercisePickerLabel}>CATEGORY / EXERCISE</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.exerciseScroll}>
-            {exercisesList.map((ex) => (
+            {EXERCISE_SELECTION_GROUPS.map((group) => (
+              <TouchableOpacity
+                key={group.id}
+                style={[styles.groupChip, selectedGroup === group.id && styles.groupChipActive]}
+                onPress={() => setSelectedGroup(group.id)}
+              >
+                <Text style={[styles.groupChipText, selectedGroup === group.id && styles.groupChipTextActive]}>
+                  {group.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.exerciseScroll}>
+            {filteredExercises.map((ex) => (
               <TouchableOpacity
                 key={ex.id}
                 style={[styles.exerciseButton, selectedExercise === ex.name && styles.exerciseButtonActive]}
@@ -255,7 +318,7 @@ export default function GraphScreen() {
         ))}
       </View>
 
-      {activeTab !== 'zones' && exercisesList.length === 0 && !loading ? (
+      {activeTab !== 'zones' && filteredExercises.length === 0 && !loading ? (
         <View style={styles.noDataContainer}>
           <Text style={styles.noDataText}>種目データがまだありません</Text>
           <Text style={styles.noDataSubText}>手動入力かセッション記録を作成するとここに表示されます</Text>
@@ -316,7 +379,7 @@ export default function GraphScreen() {
           {activeTab === 'zones' && (
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>速度ゾーンガイド</Text>
-              {VELOCITY_ZONES.map((zone) => (
+              {velocityZones.map((zone) => (
                 <View key={zone.name} style={[styles.zoneCard, { borderLeftColor: zone.color }]}>
                   <View style={[styles.zoneIndicator, { backgroundColor: zone.color }]} />
                   <View style={styles.zoneInfo}>
@@ -360,6 +423,22 @@ const styles = StyleSheet.create({
   tabText: { color: GarageTheme.textMuted, fontSize: 14, fontWeight: '600' },
   tabTextActive: { color: GarageTheme.textStrong },
   exerciseScroll: { marginBottom: 4 },
+  groupChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#3a261d',
+    backgroundColor: '#141414',
+    marginRight: 8,
+    marginBottom: 10,
+  },
+  groupChipActive: {
+    backgroundColor: '#5b2515',
+    borderColor: GarageTheme.accent,
+  },
+  groupChipText: { color: GarageTheme.textMuted, fontSize: 12, fontWeight: '700' },
+  groupChipTextActive: { color: GarageTheme.textStrong },
   exerciseButton: {
     paddingHorizontal: 16, paddingVertical: 8,
     backgroundColor: GarageTheme.surfaceAlt, borderRadius: 20, marginRight: 8,

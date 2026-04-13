@@ -13,6 +13,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import DatabaseService from '@/src/services/DatabaseService';
+import ExerciseService from '@/src/services/ExerciseService';
 import { getApiBaseUrl, getResolvedApiHealth, type ApiHealthPayload } from '@/constants/oauth';
 import { useTrainingStore } from '@/src/store/trainingStore';
 import { trpc } from '@/lib/trpc';
@@ -181,13 +182,21 @@ export default function AICoachChatScreen() {
     );
 
     const effectiveExercise = routeExercise ?? currentExercise?.name ?? null;
+    const effectiveSessionId = routeSessionId || currentSession?.session_id || '';
+    const exerciseMaster = await ExerciseService.getAllExercises().catch(() => []);
+    const exerciseDetails = effectiveExercise
+      ? exerciseMaster.find((exercise) => exercise.name === effectiveExercise) ?? null
+      : null;
+
     let sameLiftRecentSets: Array<{
       date: string;
       lift: string;
       set_index: number;
       load_kg: number;
       reps: number;
+      avg_velocity: number | null;
       velocity_loss: number | null;
+      e1rm: number | null;
     }> = [];
 
     if (effectiveExercise) {
@@ -202,12 +211,48 @@ export default function AICoachChatScreen() {
               set_index: set.set_index,
               load_kg: set.load_kg,
               reps: set.reps,
+              avg_velocity: set.avg_velocity,
               velocity_loss: set.velocity_loss,
+              e1rm: set.e1rm ?? null,
             }));
         }),
       );
       sameLiftRecentSets = sameLiftRecords.flat().slice(0, 8);
     }
+
+    // Get same-weight history (±2.5kg tolerance)
+    let sameWeightHistory: Array<{
+      date: string;
+      load_kg: number;
+      reps: number;
+      avg_velocity: number | null;
+      velocity_loss: number | null;
+    }> = [];
+
+    if (effectiveExercise && routeLoadKg !== null) {
+      const tolerance = 2.5;
+      for (const session of sessions.slice(0, 10)) {
+        const sets = await DatabaseService.getSetsForSession(session.session_id).catch(() => [] as SetData[]);
+        for (const set of sets) {
+          if (set.lift === effectiveExercise && Math.abs(set.load_kg - routeLoadKg) <= tolerance) {
+            sameWeightHistory.push({
+              date: session.date,
+              load_kg: set.load_kg,
+              reps: set.reps,
+              avg_velocity: set.avg_velocity,
+              velocity_loss: set.velocity_loss,
+            });
+          }
+        }
+        if (sameWeightHistory.length >= 5) break;
+      }
+    }
+
+    // Extract recent session notes
+    const recentSessionNotes = sessions
+      .filter(s => s.notes && s.notes.trim().length > 0)
+      .slice(0, 3)
+      .map(s => ({ date: s.date, notes: s.notes?.trim() ?? '' }));
 
     let focusSession: {
       session_id: string;
@@ -218,10 +263,10 @@ export default function AICoachChatScreen() {
       notes?: string;
     } | null = null;
 
-    if (routeSessionId) {
+    if (effectiveSessionId) {
       const [session, sets] = await Promise.all([
-        DatabaseService.getSession(routeSessionId).catch(() => null),
-        DatabaseService.getSetsForSession(routeSessionId).catch(() => [] as SetData[]),
+        DatabaseService.getSession(effectiveSessionId).catch(() => null),
+        DatabaseService.getSetsForSession(effectiveSessionId).catch(() => [] as SetData[]),
       ]);
 
       if (session) {
@@ -247,13 +292,19 @@ export default function AICoachChatScreen() {
       currentMeanVelocity: routeMeanVelocity,
       currentPeakVelocity: routePeakVelocity,
       routeNotes: routeNotes || null,
-      sessionId: routeSessionId || null,
+      sessionId: effectiveSessionId || null,
       requestedTotalSets: routeTotalSets,
       requestedTotalVolume: routeTotalVolume,
       savedSetCount: routeSavedSetCount,
       isSessionActive: Boolean(currentSession),
+      currentExerciseCategory: exerciseDetails?.category ?? null,
+      trainingCue: exerciseDetails?.training_cue ?? null,
+      focusNote: exerciseDetails?.focus_note ?? null,
+      currentSessionNotes: focusSession?.notes ?? currentSession?.notes ?? null,
       recentSessions,
       sameLiftRecentSets,
+      sameWeightHistory,
+      recentSessionNotes,
       focusSession,
       settings,
     };
@@ -269,6 +320,10 @@ export default function AICoachChatScreen() {
       `- 重量: ${context.currentLoadKg ?? '-'} kg`,
       `- VL: ${context.velocityLossPercent ?? '-'}%`,
       `- 最近の記録: ${context.recentSessions.length}件`,
+      `- 同重量履歴: ${Array.isArray(context.sameWeightHistory) ? context.sameWeightHistory.length : 0}件`,
+      `- 種目キュー: ${context.trainingCue ?? 'なし'}`,
+      `- 種目メモ: ${context.focusNote ?? 'なし'}`,
+      `- セッションメモ: ${context.currentSessionNotes ?? 'なし'}`,
       `- 質問: ${userText}`,
     ].join('\n');
   };

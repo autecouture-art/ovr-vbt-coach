@@ -35,6 +35,7 @@ import {
   roundToHalfKg,
 } from "@/src/constants/exerciseCatalog";
 import { GarageTheme } from "@/src/constants/garageTheme";
+import { estimateRPEFromVelocityLoss } from "@/src/utils/RPECalculator";
 import {
   VelocityTooltip,
   VELOCITY_GLOSSARY,
@@ -146,12 +147,17 @@ export default function SessionScreen() {
     currentValue?: string;
   } | null>(null);
 
+  // Session note editing state
+  const [sessionNote, setSessionNote] = useState("");
+  const [editingSessionNote, setEditingSessionNote] = useState(false);
+
   // Fetch all reps on mount or when returning
   const [sessionAllReps, setSessionAllReps] = useState<RepData[]>([]);
+
   // Recent exercise history (from previous sessions)
-  const [recentExerciseHistory, setRecentExerciseHistory] = useState<
-    SetData[]
-  >([]);
+  const [recentExerciseHistory, setRecentExerciseHistory] = useState<SetData[]>(
+    [],
+  );
   // Historical session reps for detail modal
   const [historicalSessionReps, setHistoricalSessionReps] = useState<{
     sessionId: string;
@@ -204,6 +210,19 @@ export default function SessionScreen() {
   useEffect(() => {
     void refreshRecentExerciseHistory();
   }, [refreshRecentExerciseHistory]);
+
+  const sameLoadRecentHistory = useMemo(
+    () =>
+      recentExerciseHistory.filter(
+        (set) => Math.abs(set.load_kg - currentLoad) < 0.26,
+      ),
+    [currentLoad, recentExerciseHistory],
+  );
+
+  // Initialize session note from current session
+  useEffect(() => {
+    setSessionNote(currentSession?.notes ?? "");
+  }, [currentSession?.notes]);
 
   // Auto-finish session on app background to prevent data loss
   const autoFinishHandled = useRef(false);
@@ -520,6 +539,18 @@ export default function SessionScreen() {
     await refreshSessionAllReps();
   };
 
+  const handleSaveSessionNote = async () => {
+    if (!currentSession?.session_id) return;
+    try {
+      await DatabaseService.updateSessionNotes(currentSession.session_id, sessionNote);
+      setEditingSessionNote(false);
+      Alert.alert("保存完了", "セッションノートを保存しました");
+    } catch (error) {
+      console.error("Failed to save session note:", error);
+      Alert.alert("エラー", "セッションノートの保存に失敗しました");
+    }
+  };
+
   const isMeasuring = isSessionActive && !isPaused;
 
   // セッション終了 & DBへの集計保存
@@ -612,12 +643,19 @@ export default function SessionScreen() {
           mvt: proposedMVT,
           last_updated: new Date().toISOString(),
         });
-        Alert.alert(
-          "MVT更新",
-          `${currentLift}の限界速度を ${proposedMVT}m/s に更新しました。`,
-        );
-        setProposedMVT(null); // バナーを閉じる
       }
+
+      if (currentExercise?.id) {
+        await ExerciseService.updateExercise(currentExercise.id, {
+          mvt: proposedMVT,
+        });
+      }
+
+      Alert.alert(
+        "MVT更新",
+        `${currentLift}の限界速度を ${proposedMVT}m/s に更新しました。`,
+      );
+      setProposedMVT(null); // バナーを閉じる
     } catch (e) {
       console.error("MVT更新失敗:", e);
     }
@@ -738,6 +776,65 @@ export default function SessionScreen() {
             </TouchableOpacity>
           )}
         </View>
+
+        {/* Training Cue & Focus Note */}
+        {currentExercise && (currentExercise.training_cue || currentExercise.focus_note) && (
+          <View style={styles.trainingNotesCard}>
+            {currentExercise.training_cue && (
+              <View style={styles.noteSection}>
+                <Text style={styles.noteLabel}>トレーニングキュー</Text>
+                <Text style={styles.noteText}>{currentExercise.training_cue}</Text>
+              </View>
+            )}
+            {currentExercise.focus_note && (
+              <View style={styles.noteSection}>
+                <Text style={styles.noteLabel}>フォーカスノート</Text>
+                <Text style={styles.noteText}>{currentExercise.focus_note}</Text>
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* Session Note */}
+        {isSessionActive && (
+          <View style={styles.sessionNoteCard}>
+            <View style={styles.sessionNoteHeader}>
+              <Text style={styles.sessionNoteLabel}>今日のトレーニングメモ</Text>
+              <TouchableOpacity
+                onPress={() => setEditingSessionNote(!editingSessionNote)}
+                style={styles.sessionNoteEditButton}
+              >
+                <Text style={styles.sessionNoteEditText}>
+                  {editingSessionNote ? "閉じる" : "編集"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+            {editingSessionNote ? (
+              <View style={styles.sessionNoteEditContainer}>
+                <TextInput
+                  style={styles.sessionNoteInput}
+                  value={sessionNote}
+                  onChangeText={setSessionNote}
+                  placeholder="今日のトレーニングのメモを入力..."
+                  placeholderTextColor={GarageTheme.textSubtle}
+                  multiline
+                  numberOfLines={4}
+                  textAlignVertical="top"
+                />
+                <TouchableOpacity
+                  style={styles.sessionNoteSaveButton}
+                  onPress={handleSaveSessionNote}
+                >
+                  <Text style={styles.sessionNoteSaveButtonText}>保存</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <Text style={styles.sessionNoteText}>
+                {sessionNote || "メモはまだありません"}
+              </Text>
+            )}
+          </View>
+        )}
 
         {/* セッション開始バナー */}
         {!isSessionActive ? (
@@ -866,6 +963,15 @@ export default function SessionScreen() {
               <Text style={styles.applyText}>適用する</Text>
             </TouchableOpacity>
           )}
+
+        {!isSessionActive && currentLift && (
+          <TouchableOpacity
+            style={styles.optimizeMvtButton}
+            onPress={() => void calculateAndProposeMVT()}
+          >
+            <Text style={styles.optimizeMvtButtonText}>履歴から V@1RM を最適化</Text>
+          </TouchableOpacity>
+        )}
 
         {/* MVT Proposal Banner */}
         {!isSessionActive && proposedMVT !== null && currentLift && (
@@ -1140,6 +1246,30 @@ export default function SessionScreen() {
                 </Text>
                 <Text style={styles.helpIcon}>❓</Text>
               </TouchableOpacity>
+              <View style={styles.dataRow}>
+                <Text style={styles.dataLabel}>Mean Power</Text>
+                <Text style={styles.dataValue}>
+                  {`${Math.round(
+                    liveData.mean_power_w ??
+                      VBTLogic.calculatePower(
+                        currentLoad,
+                        liveData.mean_velocity,
+                      ),
+                  )} W`}
+                </Text>
+              </View>
+              <View style={styles.dataRow}>
+                <Text style={styles.dataLabel}>Peak Power</Text>
+                <Text style={styles.dataValue}>
+                  {`${Math.round(
+                    liveData.peak_power_w ??
+                      VBTLogic.calculatePower(
+                        currentLoad,
+                        liveData.peak_velocity,
+                      ),
+                  )} W`}
+                </Text>
+              </View>
               <TouchableOpacity
                 style={styles.dataRow}
                 onPress={() => showTooltip("ROM", liveData.rom_cm)}
@@ -1152,7 +1282,17 @@ export default function SessionScreen() {
               </TouchableOpacity>
             </>
           ) : (
-            <Text style={styles.noDataText}>REP INPUT WAITING</Text>
+            <>
+              <Text style={styles.noDataText}>REP INPUT WAITING</Text>
+              <View style={styles.dataRow}>
+                <Text style={styles.dataLabel}>Mean Power</Text>
+                <Text style={styles.dataValue}>-</Text>
+              </View>
+              <View style={styles.dataRow}>
+                <Text style={styles.dataLabel}>Peak Power</Text>
+                <Text style={styles.dataValue}>-</Text>
+              </View>
+            </>
           )}
         </View>
 
@@ -1237,6 +1377,60 @@ export default function SessionScreen() {
               </View>
             );
           })()}
+
+        {/* 直近同重量の速度履歴 */}
+        {sameLoadRecentHistory.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>直近同重量 {formatLoadKg(currentLoad)}kg の速度履歴</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.recentHistoryScroll}
+              contentContainerStyle={styles.recentHistoryContent}
+            >
+              {sameLoadRecentHistory.map((set) => {
+                const zone = set.avg_velocity
+                  ? AICoachService.getZone(set.avg_velocity)
+                  : null;
+                return (
+                  <TouchableOpacity
+                    key={`same-${set.session_id}-${set.set_index}`}
+                    style={[
+                      styles.recentHistoryCard,
+                      { borderColor: zone?.color ?? GarageTheme.border },
+                    ]}
+                    onPress={() => openRepDetail(set)}
+                  >
+                    <Text style={styles.recentHistoryDate}>
+                      {new Date(set.timestamp).toLocaleDateString("ja-JP", {
+                        month: "short",
+                        day: "numeric",
+                      })}
+                    </Text>
+                    <View style={styles.recentHistoryStats}>
+                      <View style={styles.recentHistoryStat}>
+                        <Text style={styles.recentHistoryStatLabel}>回数</Text>
+                        <Text style={styles.recentHistoryStatValue}>{set.reps}</Text>
+                      </View>
+                      {set.avg_velocity ? (
+                        <View style={styles.recentHistoryStat}>
+                          <Text style={styles.recentHistoryStatLabel}>平均速度</Text>
+                          <Text style={styles.recentHistoryStatValue}>{set.avg_velocity.toFixed(2)}</Text>
+                        </View>
+                      ) : null}
+                      {set.velocity_loss != null ? (
+                        <View style={styles.recentHistoryStat}>
+                          <Text style={styles.recentHistoryStatLabel}>VL</Text>
+                          <Text style={styles.recentHistoryStatValue}>{set.velocity_loss.toFixed(1)}%</Text>
+                        </View>
+                      ) : null}
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
 
         {/* 最近の種目履歴 */}
         {recentExerciseHistory.length > 0 && (
@@ -1333,6 +1527,10 @@ export default function SessionScreen() {
                     : set.avg_velocity != null
                       ? VBTLogic.calculatePower(set.load_kg, set.avg_velocity)
                       : null;
+              const estimatedRPE =
+                set.velocity_loss != null
+                  ? estimateRPEFromVelocityLoss(set.velocity_loss, set.reps)
+                  : null;
 
               return (
                 <View
@@ -1386,10 +1584,10 @@ export default function SessionScreen() {
                           : "-"}
                       </Text>
                       <Text style={styles.setMetricChipText}>
-                        HR{" "}
-                        {set.avg_hr != null
-                          ? `${Math.round(set.avg_hr)} bpm`
-                          : "-"}
+                        心拍 {set.avg_hr != null ? `${Math.round(set.avg_hr)} bpm` : "-"}
+                      </Text>
+                      <Text style={styles.setMetricChipText}>
+                        推定RPE {estimatedRPE ? estimatedRPE.rpe.toFixed(1) : "-"}
                       </Text>
                     </View>
                     <SetVelocityMiniChart reps={trackedReps} />
@@ -1673,6 +1871,92 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: GarageTheme.textMuted,
     marginTop: 2,
+  },
+  trainingNotesCard: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+    padding: 12,
+    backgroundColor: GarageTheme.accentSoft + "15",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: GarageTheme.accentSoft + "40",
+  },
+  noteSection: {
+    marginBottom: 8,
+  },
+  noteLabel: {
+    fontSize: 11,
+    fontWeight: "bold",
+    color: GarageTheme.accentSoft,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  noteText: {
+    fontSize: 13,
+    color: GarageTheme.textStrong,
+    lineHeight: 18,
+  },
+  sessionNoteCard: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+    padding: 12,
+    backgroundColor: GarageTheme.surfaceAlt,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: GarageTheme.border,
+  },
+  sessionNoteHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  sessionNoteLabel: {
+    fontSize: 12,
+    fontWeight: "bold",
+    color: GarageTheme.textMuted,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  sessionNoteEditButton: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  sessionNoteEditText: {
+    fontSize: 12,
+    color: GarageTheme.accent,
+    fontWeight: "600",
+  },
+  sessionNoteEditContainer: {
+    gap: 8,
+  },
+  sessionNoteInput: {
+    backgroundColor: GarageTheme.background,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: GarageTheme.textStrong,
+    borderWidth: 1,
+    borderColor: GarageTheme.border,
+    minHeight: 80,
+  },
+  sessionNoteSaveButton: {
+    backgroundColor: GarageTheme.success,
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: "center",
+  },
+  sessionNoteSaveButtonText: {
+    color: GarageTheme.textStrong,
+    fontSize: 14,
+    fontWeight: "bold",
+  },
+  sessionNoteText: {
+    fontSize: 13,
+    color: GarageTheme.textStrong,
+    lineHeight: 18,
   },
   exerciseChange: {
     color: GarageTheme.accent,
@@ -2338,6 +2622,22 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
   },
   // Adaptive Load Suggestion
+  optimizeMvtButton: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: GarageTheme.accentSoft,
+    backgroundColor: GarageTheme.surface,
+    alignItems: "center",
+  },
+  optimizeMvtButtonText: {
+    color: GarageTheme.accentSoft,
+    fontSize: 13,
+    fontWeight: "800",
+    letterSpacing: 0.4,
+  },
   suggestionBanner: {
     flexDirection: "row",
     alignItems: "center",

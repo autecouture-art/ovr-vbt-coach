@@ -134,10 +134,17 @@ const compactCoachContext = (context: CoachContext) => {
   const sameLiftRecentSets = Array.isArray(context.sameLiftRecentSets)
     ? context.sameLiftRecentSets.slice(0, 5)
     : [];
+  const sameWeightHistory = Array.isArray(context.sameWeightHistory)
+    ? context.sameWeightHistory.slice(0, 3)
+    : [];
+  const recentSessionNotes = Array.isArray(context.recentSessionNotes)
+    ? context.recentSessionNotes.slice(0, 2)
+    : [];
 
   return {
     source,
     currentExercise,
+    currentExerciseCategory: context.currentExerciseCategory ?? null,
     currentSet: context.currentSet ?? null,
     currentReps: context.currentReps ?? null,
     currentLoadKg: context.currentLoadKg ?? null,
@@ -148,9 +155,23 @@ const compactCoachContext = (context: CoachContext) => {
     requestedTotalVolume: context.requestedTotalVolume ?? null,
     savedSetCount: context.savedSetCount ?? null,
     isSessionActive: context.isSessionActive ?? null,
+    trainingCue:
+      typeof context.trainingCue === "string"
+        ? truncateText(context.trainingCue, 140)
+        : null,
+    focusNote:
+      typeof context.focusNote === "string"
+        ? truncateText(context.focusNote, 180)
+        : null,
+    currentSessionNotes:
+      typeof context.currentSessionNotes === "string"
+        ? truncateText(context.currentSessionNotes, 180)
+        : null,
     routeNotes,
     recentSessions,
     sameLiftRecentSets,
+    sameWeightHistory,
+    recentSessionNotes,
   };
 };
 

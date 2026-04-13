@@ -750,5 +750,6 @@ export function mergeExerciseWithPreset(exercise: Exercise): Exercise {
       exercise.ignore_first_rep_as_setup ??
       preset.ignore_first_rep_as_setup ??
       false,
+    auto_start_rom_cm: exercise.auto_start_rom_cm ?? preset.auto_start_rom_cm,
   };
 }

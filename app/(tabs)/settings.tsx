@@ -105,6 +105,10 @@ export default function SettingsTab() {
     useState<Exercise["category"]>("accessory");
   const [editingExerciseVLThreshold, setEditingExerciseVLThreshold] =
     useState<number | null>(null);
+  const [editingExerciseAutoStartRom, setEditingExerciseAutoStartRom] =
+    useState<number | null>(null);
+  const [editingTrainingCue, setEditingTrainingCue] = useState("");
+  const [editingFocusNote, setEditingFocusNote] = useState("");
 
   useEffect(() => {
     void loadSettings();
@@ -281,12 +285,18 @@ export default function SettingsTab() {
       setEditingExerciseName("");
       setEditingExerciseCategory("accessory");
       setEditingExerciseVLThreshold(null);
+      setEditingExerciseAutoStartRom(null);
+      setEditingTrainingCue("");
+      setEditingFocusNote("");
     } else {
       // Start editing
       setEditingExerciseId(exerciseId);
       setEditingExerciseName(exercise.name);
       setEditingExerciseCategory(exercise.category);
       setEditingExerciseVLThreshold(exercise.velocity_loss_threshold ?? null);
+      setEditingExerciseAutoStartRom(exercise.auto_start_rom_cm ?? null);
+      setEditingTrainingCue(exercise.training_cue ?? "");
+      setEditingFocusNote(exercise.focus_note ?? "");
     }
   };
 
@@ -305,6 +315,15 @@ export default function SettingsTab() {
       if (editingExerciseVLThreshold !== exercise.velocity_loss_threshold) {
         updates.velocity_loss_threshold = editingExerciseVLThreshold ?? undefined;
       }
+      if (editingExerciseAutoStartRom !== exercise.auto_start_rom_cm) {
+        updates.auto_start_rom_cm = editingExerciseAutoStartRom ?? undefined;
+      }
+      if (editingTrainingCue !== exercise.training_cue) {
+        updates.training_cue = editingTrainingCue || undefined;
+      }
+      if (editingFocusNote !== exercise.focus_note) {
+        updates.focus_note = editingFocusNote || undefined;
+      }
 
       if (Object.keys(updates).length > 0) {
         await ExerciseService.updateExercise(exerciseId, updates);
@@ -316,6 +335,9 @@ export default function SettingsTab() {
       setEditingExerciseName("");
       setEditingExerciseCategory("accessory");
       setEditingExerciseVLThreshold(null);
+      setEditingExerciseAutoStartRom(null);
+      setEditingTrainingCue("");
+      setEditingFocusNote("");
     } catch (error) {
       console.error("Failed to save exercise edits:", error);
       Alert.alert("エラー", "種目情報の更新に失敗しました");
@@ -507,6 +529,42 @@ export default function SettingsTab() {
             }
             trackColor={{ false: "#3b2b28", true: GarageTheme.accent }}
           />
+        </View>
+
+        <View style={styles.thresholdRow}>
+          <Text style={styles.thresholdLabel}>ROM閾値: {settings.auto_start_rom_cm} cm</Text>
+          <Text style={styles.toggleMeta}>
+            この可動域を超えると自動開始
+          </Text>
+        </View>
+        <View style={styles.thresholdRow}>
+          {[3, 5, 7, 10].map((value) => {
+            const active = settings.auto_start_rom_cm === value;
+            return (
+              <TouchableOpacity
+                key={value}
+                style={[
+                  styles.thresholdButton,
+                  active && styles.thresholdButtonActive,
+                ]}
+                onPress={() =>
+                  void saveSettings({
+                    ...settings,
+                    auto_start_rom_cm: value,
+                  })
+                }
+              >
+                <Text
+                  style={[
+                    styles.thresholdText,
+                    active && styles.thresholdTextActive,
+                  ]}
+                >
+                  {value}cm
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
       </View>
 
@@ -885,6 +943,73 @@ export default function SettingsTab() {
                               </View>
 
                               <View style={styles.exerciseEditRow}>
+                                <Text style={styles.exerciseEditLabel}>
+                                  自動スタートROM
+                                </Text>
+                                <View style={styles.vlThresholdSelector}>
+                                  {[null, 3, 5, 7, 10].map((value) => {
+                                    const isSelected =
+                                      editingExerciseAutoStartRom === value;
+                                    return (
+                                      <TouchableOpacity
+                                        key={value ?? "default"}
+                                        style={[
+                                          styles.vlThresholdChip,
+                                          isSelected &&
+                                            styles.vlThresholdChipActive,
+                                        ]}
+                                        onPress={() =>
+                                          setEditingExerciseAutoStartRom(value)
+                                        }
+                                      >
+                                        <Text
+                                          style={[
+                                            styles.vlThresholdChipText,
+                                            isSelected &&
+                                              styles.vlThresholdChipTextActive,
+                                          ]}
+                                        >
+                                          {value === null
+                                            ? "既定"
+                                            : `${value}cm`}
+                                        </Text>
+                                      </TouchableOpacity>
+                                    );
+                                  })}
+                                </View>
+                              </View>
+
+                              <View style={styles.exerciseEditRow}>
+                                <Text style={styles.exerciseEditLabel}>
+                                  トレーニングキュー
+                                </Text>
+                                <TextInput
+                                  style={[styles.exerciseEditInput, styles.textAreaInput]}
+                                  value={editingTrainingCue}
+                                  onChangeText={setEditingTrainingCue}
+                                  placeholder="実行時の意識ポイント（例：胸を張る、お尻を締める）"
+                                  placeholderTextColor={GarageTheme.textSubtle}
+                                  multiline
+                                  numberOfLines={2}
+                                />
+                              </View>
+
+                              <View style={styles.exerciseEditRow}>
+                                <Text style={styles.exerciseEditLabel}>
+                                  フォーカスノート
+                                </Text>
+                                <TextInput
+                                  style={[styles.exerciseEditInput, styles.textAreaInput]}
+                                  value={editingFocusNote}
+                                  onChangeText={setEditingFocusNote}
+                                  placeholder="種目ごとの注意点（例：膝が内側に入らないように）"
+                                  placeholderTextColor={GarageTheme.textSubtle}
+                                  multiline
+                                  numberOfLines={2}
+                                />
+                              </View>
+
+                              <View style={styles.exerciseEditRow}>
                                 <View style={styles.exerciseInlineToggleCopy}>
                                   <Text style={styles.exerciseInlineToggleLabel}>
                                     最初の1レップをセットアップとして無視
@@ -1033,6 +1158,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "700",
     marginBottom: 12,
+  },
+  thresholdLabel: {
+    color: GarageTheme.text,
+    fontSize: 14,
+    fontWeight: "600",
+    marginBottom: 4,
   },
   thresholdRow: {
     flexDirection: "row",
@@ -1331,6 +1462,10 @@ const styles = StyleSheet.create({
     color: GarageTheme.textStrong,
     fontSize: 14,
     fontWeight: "600",
+  },
+  textAreaInput: {
+    height: 60,
+    textAlignVertical: "top",
   },
   categorySelectorScroll: {
     marginTop: 4,

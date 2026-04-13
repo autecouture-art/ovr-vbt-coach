@@ -7,6 +7,19 @@ These rules apply to any agent working in this repo.
 - Each work session must append a new entry with date, agent/model, scope, actions, results, and remaining tasks.
 - If the active agent/model changes (Codex/Claude/GLM/Gemini), record the switch and why.
 
+## Mandatory Improvement Tracker
+- Always read `docs/IMPROVEMENT_TRACKER.md` before starting new improvement work.
+- Any new user feedback or unmet requirement must be added to the tracker table.
+- Update `status`, `owner`, `implemented_in`, and `agent_notes` during implementation.
+- After user testing, record the outcome in `user_rating` and `user_feedback`.
+- If the user says a task is still not achieved, move it back to `needs_revision` instead of silently treating it as complete.
+- Use the tracker ratings consistently:
+  - `good`: achieved
+  - `almost`: partially achieved but needs revision
+  - `bad`: failed or still broken
+  - `untested`: not yet user-tested
+- After user testing, every touched task should end in either `verified` or `needs_revision`. Do not leave user-tested items as `implemented`.
+
 ## Incident Recording
 - Any troubleshooting, build issues, outages, or unexpected errors must be recorded in the walkthrough log.
 - Include the resolution steps and the confirmed outcome.

@@ -228,7 +228,8 @@ class DatabaseService {
         rom_data_points INTEGER DEFAULT 0,
         description TEXT,
         mvt REAL,
-        ignore_first_rep_as_setup INTEGER DEFAULT 0
+        ignore_first_rep_as_setup INTEGER DEFAULT 0,
+        auto_start_rom_cm REAL
       );
     `);
 
@@ -284,6 +285,9 @@ class DatabaseService {
         column: "velocity_loss_threshold",
         type: "REAL",
       },
+      { table: "exercises", column: "training_cue", type: "TEXT" },
+      { table: "exercises", column: "focus_note", type: "TEXT" },
+      { table: "exercises", column: "auto_start_rom_cm", type: "REAL" },
       // LVP Profiles 追加カラム
       {
         table: "lvp_profiles",
@@ -922,10 +926,10 @@ class DatabaseService {
 
     await this.db.runAsync(
       `INSERT OR REPLACE INTO exercises (
-        id, name, category, subcategory, has_lvp, machine_weight_steps, 
-        min_rom_threshold, rep_detection_mode, target_pause_ms, rom_range_min_cm, rom_range_max_cm, rom_data_points, description, mvt, ignore_first_rep_as_setup
+        id, name, category, subcategory, has_lvp, machine_weight_steps,
+        min_rom_threshold, rep_detection_mode, target_pause_ms, rom_range_min_cm, rom_range_max_cm, rom_data_points, description, mvt, ignore_first_rep_as_setup, training_cue, focus_note, auto_start_rom_cm
       )
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         exercise.id,
         exercise.name,
@@ -942,6 +946,9 @@ class DatabaseService {
         exercise.description || null,
         exercise.mvt || null,
         exercise.ignore_first_rep_as_setup ? 1 : 0,
+        exercise.training_cue || null,
+        exercise.focus_note || null,
+        exercise.auto_start_rom_cm ?? null,
       ],
     );
   }
@@ -971,6 +978,9 @@ class DatabaseService {
       description: row.description || undefined,
       mvt: row.mvt || undefined,
       ignore_first_rep_as_setup: row.ignore_first_rep_as_setup === 1,
+      training_cue: row.training_cue || undefined,
+      focus_note: row.focus_note || undefined,
+      auto_start_rom_cm: row.auto_start_rom_cm ?? undefined,
     }));
   }
 
@@ -1310,6 +1320,56 @@ class DatabaseService {
       last_updated: row.last_updated,
       sample_count: row.sample_count,
     }));
+  }
+
+  /**
+   * Get historical load-velocity data for 1RM estimation
+   * Returns averaged velocity data grouped by load
+   */
+  async getHistoricalVelocityData(
+    lift: string,
+    limit: number = 20
+  ): Promise<Array<{ load: number; velocity: number }>> {
+    if (!(await this.ensureReady())) return [];
+
+    const rows = (await this.db.getAllAsync(
+      `SELECT s.load_kg, s.avg_velocity
+       FROM sets s
+       WHERE s.lift = ?
+         AND s.avg_velocity IS NOT NULL
+         AND s.is_warmup = 0
+       ORDER BY s.timestamp DESC
+       LIMIT ?`,
+      [lift, limit * 2] // Get more to allow for filtering
+    )) as Array<{ load_kg: number; avg_velocity: number }>;
+
+    // Group by load and average velocities
+    const loadMap = new Map<number, number[]>();
+    for (const row of rows) {
+      const velocities = loadMap.get(row.load_kg) ?? [];
+      velocities.push(row.avg_velocity);
+      loadMap.set(row.load_kg, velocities);
+    }
+
+    return Array.from(loadMap.entries())
+      .map(([load, velocities]) => ({
+        load,
+        velocity: velocities.reduce((a, b) => a + b, 0) / velocities.length,
+      }))
+      .sort((a, b) => a.load - b.load)
+      .slice(0, limit);
+  }
+
+  /**
+   * Update exercise MVT value
+   */
+  async updateExerciseMVT(exerciseId: string, mvt: number): Promise<void> {
+    if (!(await this.ensureReady())) return;
+
+    await this.db.runAsync(
+      "UPDATE exercises SET mvt = ? WHERE id = ?",
+      [mvt, exerciseId]
+    );
   }
 
   /**

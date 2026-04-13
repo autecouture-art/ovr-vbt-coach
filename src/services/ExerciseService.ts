@@ -99,6 +99,7 @@ class ExerciseService {
         exercise.ignore_first_rep_as_setup ??
         preset.ignore_first_rep_as_setup ??
         false,
+      auto_start_rom_cm: exercise.auto_start_rom_cm ?? preset.auto_start_rom_cm,
     };
 
     await DatabaseService.saveExercise(newExercise);
@@ -203,6 +204,8 @@ class ExerciseService {
             rom_range_max_cm:
               existing.rom_range_max_cm ?? merged.rom_range_max_cm,
             rom_data_points: existing.rom_data_points ?? merged.rom_data_points,
+            auto_start_rom_cm:
+              existing.auto_start_rom_cm ?? merged.auto_start_rom_cm,
           }
         : merged;
 

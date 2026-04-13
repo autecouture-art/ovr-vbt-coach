@@ -490,6 +490,10 @@ export function proposeNewMVT(highLoadReps: RepData[]): number | null {
   return null;
 }
 
+// Re-export new utility modules
+export { estimate1RMFourPoint } from './OneRMCalculator';
+export { estimateRPEFromVelocityLoss, estimateRPEFromMeanVelocity } from './RPECalculator';
+
 export default {
   filterOutliers,
   calculateVelocityLoss,

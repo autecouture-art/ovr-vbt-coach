@@ -8,7 +8,7 @@ import { useTrainingStore } from "../store/trainingStore";
 import BLEService from "../services/BLEService";
 import AudioService from "../services/AudioService";
 import { VBTLogic } from "../services/VBTLogic";
-import VBTCalculations, { getVelocityAt1RM } from "../utils/VBTCalculations";
+import VBTCalculations, { getVelocityAt1RM, estimate1RMFourPoint } from "../utils/VBTCalculations";
 import DatabaseService from "../services/DatabaseService";
 import ExerciseService from "../services/ExerciseService";
 import AICoachService from "../services/AICoachService";
@@ -74,6 +74,8 @@ export const useSessionLogic = (onPRDetected?: PRCallback, onAutoStart?: AutoSta
   const lastRepTime = useRef<number>(Date.now()); // 最後のレップ検出時刻
   const autoFinishTimer = useRef<ReturnType<typeof setTimeout> | null>(null); // 自動完了タイマー
   const isWarmupSet = useRef(false); // ウォームアップセットフラグ
+  const lastAcceptedRepSignature = useRef<string | null>(null);
+  const lastAcceptedRepAt = useRef<number>(0);
 
   // --- Setup finishSet for reuse ---
 
@@ -176,6 +178,8 @@ export const useSessionLogic = (onPRDetected?: PRCallback, onAutoStart?: AutoSta
       isWarmupSet.current = false;
 
       // Storeに保存
+      lastAcceptedRepSignature.current = null;
+      lastAcceptedRepAt.current = 0;
       completeSet(newSet);
 
       // === VBT Intelligence 更新 ===
@@ -216,6 +220,32 @@ export const useSessionLogic = (onPRDetected?: PRCallback, onAutoStart?: AutoSta
           // repsOverrideが指定された場合はそれを使う（自動終了時の最終レップ含む）
           for (const rep of repsToSave) {
             await DatabaseService.insertRep(rep);
+          }
+
+          try {
+            const lift = currentLift || "Unknown";
+            const sessionReps = await DatabaseService.getRepsForSession(
+              currentSession.session_id,
+            );
+            const oneRMEstimate = await estimate1RMFourPoint(
+              lift,
+              updatedHistory.filter(
+                (set) => set.lift === lift && !set.is_warmup,
+              ),
+              sessionReps,
+              currentExercise?.mvt ?? 0.15,
+              async () =>
+                await DatabaseService.getHistoricalVelocityData(lift, 12),
+            );
+
+            if (oneRMEstimate.estimated1RM > 0) {
+              updateVBTIntelligence({
+                estimated1RM: oneRMEstimate.estimated1RM,
+                estimated1RM_confidence: oneRMEstimate.confidence,
+              });
+            }
+          } catch (estimateError) {
+            console.error("[finishSet] 4-point 1RM estimation failed:", estimateError);
           }
 
           // === PR検知 ===
@@ -322,7 +352,8 @@ export const useSessionLogic = (onPRDetected?: PRCallback, onAutoStart?: AutoSta
   const handleDataReceived = useCallback(
     async (data: RepVeloData) => {
       // 0. Auto-start mode: セッションが開始されていない場合で、自動スタートモードが有効な場合に自動開始
-      if (!isSessionActive && settings.enable_auto_start_session && data.rom_cm > 5) {
+      const autoStartRomThreshold = currentExercise?.auto_start_rom_cm ?? settings.auto_start_rom_cm;
+      if (!isSessionActive && settings.enable_auto_start_session && data.rom_cm > autoStartRomThreshold) {
         console.log("[handleDataReceived] Auto-starting session on movement detection");
         onAutoStart?.();
         return;
@@ -348,6 +379,21 @@ export const useSessionLogic = (onPRDetected?: PRCallback, onAutoStart?: AutoSta
       // 3. Process Rep Logic
       const minRom = currentExercise?.min_rom_threshold ?? 10.0;
       const isValidRep = data.rom_cm > minRom;
+      const repSignature = [
+        data.raw_mean_v ?? Math.round(data.mean_velocity * 100),
+        data.raw_rom ?? Math.round(data.rom_cm * 10),
+        data.rep_duration_ms,
+      ].join(":");
+      const now = Date.now();
+
+      if (
+        isValidRep &&
+        repSignature === lastAcceptedRepSignature.current &&
+        now - lastAcceptedRepAt.current < 800
+      ) {
+        console.log("[handleDataReceived] Duplicate rep payload ignored", repSignature);
+        return;
+      }
 
       // 最後のレップ検出時刻を更新
       lastRepTime.current = Date.now();
@@ -430,6 +476,8 @@ export const useSessionLogic = (onPRDetected?: PRCallback, onAutoStart?: AutoSta
         };
 
         // 5. Add to Store
+        lastAcceptedRepSignature.current = repSignature;
+        lastAcceptedRepAt.current = now;
         addRep(newRep);
 
         // 6. Intelligent 1RM Estimator (初動レップで計算)

@@ -160,6 +160,9 @@ export interface Exercise {
   mvt?: number; // Minimum Velocity Threshold (e.g., 0.15 for bench, 0.3 for squat)
   ignore_first_rep_as_setup?: boolean;
   velocity_loss_threshold?: number; // 種目別VLカットオフ (%)
+  auto_start_rom_cm?: number; // 自動スタートROM閾値 (cm) - 種目別オーバーライド
+  training_cue?: string; // トレーニングキュー（実行時の意識ポイントなど）
+  focus_note?: string; // フォーカスノート（種目ごとの注意点など）
 }
 
 export interface TrainingSession {
@@ -282,6 +285,7 @@ export interface AppSettings {
   enable_audio_velocity_readout: boolean;
   enable_audio_faster_cue: boolean;
   enable_auto_start_session: boolean; // 自動スタートモード
+  auto_start_rom_cm: number; // 自動スタートROM閾値 (cm) - デフォルト 5
 }
 
 // ========================================

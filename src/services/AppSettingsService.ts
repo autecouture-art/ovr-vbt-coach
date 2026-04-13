@@ -16,6 +16,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   enable_audio_velocity_readout: false,
   enable_audio_faster_cue: true,
   enable_auto_start_session: false,
+  auto_start_rom_cm: 5,
 };
 
 export async function loadAppSettings(): Promise<AppSettings> {

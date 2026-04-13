@@ -207,3 +207,77 @@ Remaining:
 - Wait for App Store Connect/TestFlight processing (usually 15-30 minutes).
 - Verify build 74 appears in TestFlight.
 - Real-device testing recommended for all features implemented in recent sessions.
+
+## 2026-04-13 (Codex / GPT-5 + Claude CLI via Z.AI GLM sonnet/opus)
+Scope: Feedback triage after device test, introduce a canonical improvement tracker, and implement a first pass on session/AI/graph follow-ups.
+Actions:
+- Confirmed Claude CLI is currently pointed at Z.AI GLM and verified both `--model sonnet` and `--model opus` respond through the CLI.
+- Added `docs/IMPROVEMENT_TRACKER.md` as the canonical improvement table for all agents and updated `AGENTS.md` to require reading/updating it.
+- Launched two GLM worker tasks via the project-leader workflow:
+  - `glm-sonnet-session`: session/settings/memo oriented changes
+  - `glm-opus-ai`: AI context / estimation / graph oriented changes
+- Reviewed worker output and only kept changes that were coherent with the current repo.
+- Fixed a broken duplicated block in `app/(tabs)/session.tsx` that had been left in the file.
+- Added same-load recent history cards to the session screen and removed duplicated same-weight history rendering.
+- Added duplicate-rep suppression in `useSessionLogic` by ignoring identical rep payloads received within 800ms.
+- Strengthened AI coach context with same-weight history, recent session notes, and exercise cue/focus metadata.
+- Added category-first exercise selection to graph mode and replaced fixed graph zones with percentile-based history-derived zones (with fallback).
+- Integrated a 4-point / historical-fallback 1RM estimator after set save, and surfaced velocity-loss-based estimated RPE in session history.
+- Added an explicit `履歴から V@1RM を最適化` button and made accepted MVT updates propagate to both the LVP profile and the exercise master.
+Results:
+- `pnpm -s tsc --noEmit` passed after the integrated changes.
+- Improvement requests now have a single canonical tracking document that future Codex/Claude/GLM/Gemini sessions can update.
+- The following items moved to implemented in the tracker:
+  - same-load velocity history
+  - AI coach context enrichment
+  - 4-point 1RM update
+  - V@1RM optimization button + persistence
+  - graph category selection
+  - graph dynamic velocity zones
+  - set-level estimated RPE
+- Existing implemented features were confirmed and tracked explicitly:
+  - exercise master cue/focus notes
+  - session note editing from session mode
+Remaining:
+- Battery percentage issue is still unresolved; current UI exposes CNS Battery only, and a true sensor battery pipeline may still be missing.
+- Auto-start still needs another pass; current movement trigger (`ROM > 5cm`) did not satisfy device testing.
+- Duplicate-rep suppression must be re-tested on device because the fix is heuristic.
+- If the next agent continues this work, start from `docs/IMPROVEMENT_TRACKER.md` and `git diff` rather than the old TODO file.
+
+
+## 2026-04-13 (Claude Sonnet 4.6 via Z.AI GLM)
+Scope: Auto-start ROM threshold configuration
+Actions:
+- Added `auto_start_rom_cm` field to `AppSettings` type with default value of 5cm.
+- Added `auto_start_rom_cm` field to `Exercise` type for per-exercise override.
+- Updated `AppSettingsService` to include the new field in `DEFAULT_APP_SETTINGS` and persistence.
+- Modified `useSessionLogic` to use per-exercise override with fallback to settings default.
+- Enhanced settings tab UI with ROM threshold selector (3cm, 5cm, 7cm, 10cm options).
+- Added exercise-specific auto-start ROM editing in exercise master edit form.
+- Updated `mergeExerciseWithPreset` in `exerciseCatalog.ts` to merge auto_start_rom_cm.
+- Updated `ExerciseService.syncCatalog` to preserve existing auto_start_rom_cm values.
+Results:
+- `pnpm -s tsc --noEmit` validation needed.
+- Auto-start ROM threshold is now configurable at both app-level and exercise-level.
+- Settings UI allows global configuration with visual feedback (current threshold displayed).
+- Exercise master editing allows per-exercise override with "既定" (default) option.
+- Auto-start logic follows precedence: exercise.override > settings.default.
+Remaining:
+- Type-check and build to verify no compilation errors.
+- Real-device testing to confirm auto-start behavior with configurable thresholds.
+- Consider TestFlight upload after verification.
+
+## 2026-04-13 (Codex review + GLM Sonnet auto-start threshold pass)
+Scope: Make auto-start ROM threshold configurable globally and per exercise, then prepare for commit/build.
+Actions:
+- Used the global `glm-priority-workflow` and project-leader orchestration to route the task to a GLM Sonnet worker.
+- Reviewed the partial worker changes and completed the missing persistence integration in `DatabaseService` and `ExerciseService`.
+- Added a global app setting for auto-start ROM threshold (`auto_start_rom_cm`, default 5cm).
+- Added an exercise-level override for auto-start ROM threshold and surfaced it in exercise-master editing.
+- Updated session auto-start detection to use exercise override first, then global default.
+- Updated the improvement tracker so auto-start is back in implemented state pending new device testing.
+Results:
+- Auto-start threshold is no longer hard-coded to 5cm.
+- Users can now tune it globally and override it per exercise from settings.
+Remaining:
+- Device testing is still required to confirm the threshold choices are appropriate per lift.
