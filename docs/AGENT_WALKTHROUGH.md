@@ -281,3 +281,29 @@ Results:
 - Users can now tune it globally and override it per exercise from settings.
 Remaining:
 - Device testing is still required to confirm the threshold choices are appropriate per lift.
+
+## 2026-04-13 (Codex / GPT-5 + Claude CLI via Z.AI GLM sonnet)
+Scope: Commit the integrated session/intelligence/auto-start changes, push `main`, and ship a new TestFlight build.
+Actions:
+- Final-reviewed the integrated working tree after GLM-assisted implementation and kept the canonical repo at `/Volumes/0RICON_APP/Developer/MyFiles/repvelocoach-git-sync-20260320/repo`.
+- Committed the feature batch as `825c4a2` (`Improve session intelligence and configurable auto-start`) and pushed it to `origin/main`.
+- Bumped the iOS/TestFlight build number from `74` to `75` in all three required sources:
+  - `app.config.ts`
+  - `ios/RepVeloCoach/Info.plist`
+  - `ios/RepVeloCoach.xcodeproj/project.pbxproj`
+- Committed the build bump as `fb20d70` (`Bump iOS build number to 75 for TestFlight`) and pushed it to `origin/main`.
+- Ran the repo-local upload flow:
+  - `source ~/.zshrc && FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT=20 FASTLANE_XCODEBUILD_SETTINGS_RETRIES=6 bash scripts/deploy.sh`
+- Verified archive, IPA export, and App Store Connect upload success from the fastlane output.
+Results:
+- GitHub `main` now contains the auto-start threshold changes and the session/intelligence improvements.
+- TestFlight/App Store Connect upload succeeded for version `2.3.5` build `75`.
+- Generated IPA: `ios/fastlane_export/RepVeloCoach.ipa`
+- Fastlane summary: `build_app` 316s, `upload_to_testflight` 61s.
+Remaining:
+- Wait for App Store Connect/TestFlight processing for build `75`.
+- Device-test the new auto-start threshold controls:
+  - global default threshold in settings
+  - per-exercise override in exercise master
+  - expected precedence `exercise override > global setting`
+- If another iOS upload is needed, bump above `75` before the next run.
