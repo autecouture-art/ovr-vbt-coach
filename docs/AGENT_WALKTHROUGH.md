@@ -307,3 +307,24 @@ Remaining:
   - per-exercise override in exercise master
   - expected precedence `exercise override > global setting`
 - If another iOS upload is needed, bump above `75` before the next run.
+
+## 2026-04-14 (Codex / GPT-5 + Claude CLI Sonnet)
+Scope: Add a repo-root Claude bootstrap document so Claude can reliably work in the canonical repo and follow the correct TestFlight workflow.
+Actions:
+- Launched Claude CLI (`claude --model sonnet`) against the canonical repo and asked it to draft a repo-root `CLAUDE.md` based only on:
+  - `AGENTS.md`
+  - `CURRENT_STATUS.md`
+  - `TESTFLIGHT_DEPLOYMENT.md`
+  - `docs/AGENT_WALKTHROUGH.md`
+- Reviewed the generated draft and condensed it into an operational `CLAUDE.md` focused on:
+  - canonical repo path
+  - release state
+  - mandatory tracker/walkthrough rules
+  - exact TestFlight upload steps
+  - post-upload recording requirements
+- Kept the build/upload source of truth repo-local rather than home-directory skill-local.
+Results:
+- The repo now has a root `CLAUDE.md` that Claude Code can read before editing or building.
+- Claude-specific onboarding now points at the same canonical repo and the same TestFlight workflow used by Codex.
+Remaining:
+- If release workflow changes again, update both `TESTFLIGHT_DEPLOYMENT.md` and `CLAUDE.md` together.
