@@ -741,7 +741,7 @@ export default function SessionScreen() {
               {isConnected ? "センサー接続中" : "センサー未接続"}
             </Text>
           </View>
-          {currentHeartRate && (
+          {currentHeartRate != null && (
             <View style={styles.hrBadge}>
               <Text style={styles.hrValue}>{Math.round(currentHeartRate)}</Text>
               <Text style={styles.hrUnit}>bpm (心拍数)</Text>

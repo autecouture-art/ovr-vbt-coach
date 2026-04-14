@@ -424,3 +424,26 @@ Remaining:
 - Wait for App Store Connect/TestFlight processing for build `76`.
 - Device-test the redesign on Home and Session with live telemetry.
 - If another iOS upload is needed, bump above `76` before the next run.
+
+## 2026-04-14 (Codex / GPT-5)
+Scope: AirPods Pro 3 / HealthKit live heart-rate ingestion into the session screen.
+Actions:
+- Reviewed the existing session heart-rate plumbing and confirmed the UI/store were already prepared to render `currentHeartRate` in both the session status area and the rest timer.
+- Replaced the stub `src/services/HealthService.ts` with a real native bridge wrapper using `NativeModules` and `NativeEventEmitter`.
+- Added `ios/RepVeloCoach/HealthKitHeartRateModule.swift` and `ios/RepVeloCoach/HealthKitHeartRateModule.m` to expose HealthKit authorization and live heart-rate updates to React Native.
+- Added HealthKit usage descriptions to `app.config.ts` and `ios/RepVeloCoach/Info.plist`.
+- Added the HealthKit entitlement in `ios/RepVeloCoach/RepVeloCoach.entitlements` and registered the new native files in the Xcode project.
+- First native implementation used `HKWorkoutSession` / `HKLiveWorkoutBuilder`, but simulator build failed because those APIs exceeded the current iOS 15.1 deployment target constraints in this project.
+- Reworked the native implementation to use `HKObserverQuery` + `HKAnchoredObjectQuery` for heart-rate sample subscription instead.
+- Adjusted the session screen HR render guard from truthy-only to `currentHeartRate != null` so low values do not disappear.
+- Validated TypeScript with `pnpm -s tsc --noEmit`.
+- Validated the iOS native side with simulator build:
+  - `xcodebuild -workspace ios/RepVeloCoach.xcworkspace -scheme RepVeloCoach -configuration Debug -sdk iphonesimulator -destination 'platform=iOS Simulator,id=1C0615D0-1B04-46D5-92F9-A6BC66AF765B' build | xcpretty --no-color`
+Results:
+- Simulator build succeeded after switching to the HealthKit sample-query approach.
+- Heart-rate ingestion is now implemented end-to-end in code for iOS and is wired into the existing session UI.
+- The feature still needs real-device verification with AirPods Pro 3 and Health permissions.
+Remaining:
+- Confirm on device that AirPods Pro 3 actually streams heart-rate samples into HealthKit quickly enough during a live session.
+- If live updates lag, the next iteration should evaluate whether workout-session APIs can be conditionally used on newer iOS versions while keeping the sample-query fallback for iOS 15.1.
+- Before shipping, commit the new native files with `git add -f` because `/ios` is ignored by repo rules and the new files will not be picked up automatically.

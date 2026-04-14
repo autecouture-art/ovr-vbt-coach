@@ -46,10 +46,12 @@
   - exclude the welcome message from outbound history
 - This fix passed `pnpm -s tsc --noEmit` locally, was committed, and shipped in TestFlight build `72`, but still needs real-device verification.
 - Exercise selection ergonomics were improved, but user feedback should still verify category chip sizing and list visibility.
-- AirPods/HealthKit heart-rate ingestion is still backed by a stub `HealthService`; the rest-timer UI is ready, but actual live HR capture still needs native integration.
+- AirPods Pro 3 / HealthKit live heart-rate ingestion is now implemented with a native iOS bridge; simulator build succeeded, but real-device verification is still required.
 - Audio/music resume behavior after voice prompts still needs real-device confirmation.
+- AirPods Pro 3 heart-rate flow still needs on-device permission and live-stream validation.
 
 - Historical session detail now supports editing set load, RPE, and notes, with rep/load/session aggregates kept in sync.
+- Session heart-rate UI now accepts HealthKit live updates through `currentHeartRate` and shows them in the session telemetry area and rest timer.
 
 ## Validation Status
 - TypeScript check passed after the latest GLM history normalization change: `pnpm -s tsc --noEmit`

@@ -42,6 +42,10 @@ const config: ExpoConfig = {
         "This app uses the camera to record your workout videos for form analysis.",
       NSMicrophoneUsageDescription:
         "This app uses the microphone for voice commands during your workouts.",
+      NSHealthShareUsageDescription:
+        "This app reads your heart rate during training and saves workout data so your rest timing and session analysis stay accurate.",
+      NSHealthUpdateUsageDescription:
+        "This app writes workout sessions to Health so live heart rate from supported Apple devices can be used during training.",
       NSPhotoLibraryUsageDescription:
         "This app saves workout videos to your photo library.",
       NSLocationWhenInUseUsageDescription:
