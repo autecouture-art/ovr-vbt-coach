@@ -380,3 +380,21 @@ Remaining:
   - rest timer
   - recent history cards
   - graph/history/settings screens later
+
+## 2026-04-14 (Codex / GPT-5 + Claude CLI via Z.AI GLM sonnet+opus)
+Scope: Continue the dark-tech redesign and complete the second-pass Session polish before the next TestFlight build.
+Actions:
+- Used GLM again for two smaller Session redesign slices instead of another unsafe full-file rewrite.
+- Accepted the Session second-pass visual changes that improved:
+  - session start banner
+  - active session banner / pause control
+  - rest banner styling
+  - recent history card styling
+  - session history card styling
+- Kept the redesign strictly visual and layout-oriented; no session logic, BLE logic, DB flow, or state transitions were changed.
+- Re-ran `pnpm -s tsc --noEmit` after the integrated second-pass changes.
+Results:
+- Session screen now has a broader dark/high-tech treatment beyond the first safe pass.
+- TypeScript check passed.
+Remaining:
+- Commit and upload a new TestFlight build so the redesign can be evaluated on device.
