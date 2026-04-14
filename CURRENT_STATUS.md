@@ -3,7 +3,7 @@
 ## Canonical Workspace
 - Repo root: /Volumes/0RICON_APP/Developer/MyFiles/repvelocoach-git-sync-20260320/repo
 - Branch: main
-- HEAD at record time: fb20d70 (`Bump iOS build number to 75 for TestFlight`)
+- HEAD at record time: ec178af (`Bump iOS build number to 76 for TestFlight`)
 - Treat this repo as the only active source of truth.
 - Legacy folders such as `/Volumes/0RICON_APP/Developer/MyFiles/RepVeloCoach` and `/Volumes/0RICON_APP/Developer/MyFiles/ovr-vbt-coach-local` are reference/archive only unless explicitly proven newer.
 
@@ -11,16 +11,16 @@
 - App name: RepVelo VBT Coach
 - iOS bundle id: `com.autecouture.repvelocoach.hh`
 - Marketing version: `2.3.5`
-- Native iOS build number in `ios/RepVeloCoach/Info.plist`: `75`
-- Expo config build number in `app.config.ts`: `75`
-- Latest known successful TestFlight upload: build `75` (uploaded from this repo; processing delay on App Store Connect is normal)
+- Native iOS build number in `ios/RepVeloCoach/Info.plist`: `76`
+- Expo config build number in `app.config.ts`: `76`
+- Latest known successful TestFlight upload: build `76` (uploaded from this repo; processing delay on App Store Connect is normal)
 
 ## Important Mismatch
-- `app.config.ts`, `ios/RepVeloCoach/Info.plist`, and `ios/RepVeloCoach.xcodeproj/project.pbxproj` are now aligned at build `75`.
-- Before the next release, bump to a value higher than `75` and keep all three sources synchronized.
+- `app.config.ts`, `ios/RepVeloCoach/Info.plist`, and `ios/RepVeloCoach.xcodeproj/project.pbxproj` are now aligned at build `76`.
+- Before the next release, bump to a value higher than `76` and keep all three sources synchronized.
 
 ## Current Working Tree
-- Working tree was clean immediately after the successful build `75` upload.
+- Working tree was clean immediately before the successful build `76` upload.
 
 ## What Was Implemented Recently
 - Added direct GLM mode using locally stored API key and API URL.
@@ -53,7 +53,7 @@
 
 ## Validation Status
 - TypeScript check passed after the latest GLM history normalization change: `pnpm -s tsc --noEmit`
-- TestFlight upload succeeded for version `2.3.5` build `75`.
+- TestFlight upload succeeded for version `2.3.5` build `76`.
 - Build numbers are now aligned across all three sources (app.config.ts, Info.plist, project.pbxproj).
 - Real-device verification is still required for:
   - AI Coach live send success
@@ -85,8 +85,8 @@ These are already enforced in `AGENTS.md`:
 - Record TestFlight build numbers and upload results.
 
 ## Recommended Next Steps
-1. Wait for App Store Connect/TestFlight processing for build `75` (usually 15-30 minutes).
-2. Device-test TestFlight build `75`, focusing on:
+1. Wait for App Store Connect/TestFlight processing for build `76` (usually 15-30 minutes).
+2. Device-test TestFlight build `76`, focusing on:
    - Recent exercise history card behavior
    - Auto-finish on background feature
    - AI Coach send path

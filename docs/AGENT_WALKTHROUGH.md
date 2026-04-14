@@ -398,3 +398,29 @@ Results:
 - TypeScript check passed.
 Remaining:
 - Commit and upload a new TestFlight build so the redesign can be evaluated on device.
+
+## 2026-04-14 (Codex / GPT-5 + Claude CLI via Z.AI GLM sonnet+opus)
+Scope: Ship the redesign first pass and second-pass Session polish in a new TestFlight build.
+Actions:
+- Committed the accepted redesign first pass as `bcb9563` (`Start dark tech redesign for home and session`).
+- Committed the accepted Session second-pass polish as `2573c18` (`Polish session screen dark tech redesign`).
+- Bumped the iOS/TestFlight build number from `75` to `76` in all three required sources:
+  - `app.config.ts`
+  - `ios/RepVeloCoach/Info.plist`
+  - `ios/RepVeloCoach.xcodeproj/project.pbxproj`
+- Committed the build bump as `ec178af` (`Bump iOS build number to 76 for TestFlight`).
+- First archive attempt failed in `xcodebuild` with a transient `Bus error: 10` during pod/native compilation.
+- Second attempt failed because `ios/build/generated/...` React Native codegen files had been removed and had not all been regenerated before archive compilation.
+- Confirmed the missing codegen outputs were regenerated under `ios/build/generated/ios`, then re-ran the same repo-local deploy flow without deleting them.
+- Ran the canonical upload command:
+  - `source ~/.zshrc && FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT=20 FASTLANE_XCODEBUILD_SETTINGS_RETRIES=6 bash scripts/deploy.sh`
+- Verified archive success, IPA export success, and App Store Connect upload success from fastlane output.
+Results:
+- GitHub `main` contains the redesign commits and build bump through `ec178af`.
+- TestFlight/App Store Connect upload succeeded for version `2.3.5` build `76`.
+- Generated IPA: `ios/fastlane_export/RepVeloCoach.ipa`
+- Fastlane summary: `build_app` 422s, `upload_to_testflight` 67s.
+Remaining:
+- Wait for App Store Connect/TestFlight processing for build `76`.
+- Device-test the redesign on Home and Session with live telemetry.
+- If another iOS upload is needed, bump above `76` before the next run.
