@@ -328,3 +328,55 @@ Results:
 - Claude-specific onboarding now points at the same canonical repo and the same TestFlight workflow used by Codex.
 Remaining:
 - If release workflow changes again, update both `TESTFLIGHT_DEPLOYMENT.md` and `CLAUDE.md` together.
+
+## 2026-04-14 (Codex / GPT-5 + Claude CLI via Z.AI GLM sonnet)
+Scope: Turn the user's dark/high-tech redesign brief into a canonical implementation direction for Home and Active Session.
+Actions:
+- Used the `glm-priority-workflow` and `project-leader` skills to route the redesign work through Claude CLI on Z.AI GLM.
+- Read the current Home (`app/(tabs)/index.tsx`) and Session (`app/(tabs)/session.tsx`) structures plus the existing `GarageTheme` token set.
+- Asked GLM for an implementation-oriented redesign plan and selected a hybrid direction:
+  - Home = Variant 2 base + Variant 1 telemetry polish
+  - Session = Variant 1 base + Variant 2 data hierarchy polish
+- Added `docs/UI_REDESIGN_BRIEF_2026-04-14.md` as the canonical design brief for this redesign pass.
+- Added two tracker entries so future Codex/Claude/GLM agents can continue the redesign without re-deciding direction.
+Results:
+- The redesign direction is now documented in-repo rather than only in chat.
+- Home and Session redesign are explicitly tracked as active work items.
+Remaining:
+- Execute the first-pass UI implementation for `app/(tabs)/index.tsx` and `app/(tabs)/session.tsx`.
+- Run typecheck after the visual pass.
+- Device-test readability and interaction density after implementation.
+
+## 2026-04-14 (Codex / GPT-5 + Claude CLI via Z.AI GLM sonnet+opus)
+Scope: Start the actual Home / Active Session redesign with a multi-agent flow while keeping the repo stable.
+Actions:
+- Split the redesign into smaller slices after the previous full-file GLM attempt had broken JSX and TypeScript.
+- Ran parallel GLM workers:
+  - `glm-sonnet-home-slice1` for `app/(tabs)/index.tsx`
+  - `glm-opus-session-slice1` for `app/(tabs)/session.tsx`
+- Accepted the Home first-pass redesign as the base direction:
+  - cockpit-style hero
+  - telemetry cards
+  - premium sensor link panel
+  - premium action cards
+  - refined recent activity list
+- Rejected the first large Session redesign patch because it broke JSX/type safety.
+- Reverted the broken Session patch, then applied a smaller safe visual pass focused on:
+  - stronger header styling
+  - premium status card styling
+  - stronger exercise selector styling
+  - more pronounced live data card styling
+- Removed some decorative symbols from the Home action buttons to keep the visual language cleaner.
+- Re-ran `pnpm -s tsc --noEmit` after the accepted changes.
+Results:
+- Home screen now has a clear first-pass dark/high-tech visual redesign.
+- Active Session screen has a safe first-pass polish without touching business logic.
+- TypeScript check passed after reverting the broken GLM patch and keeping only the accepted slices.
+Remaining:
+- Device-test the new Home readability and action-card ergonomics.
+- Device-test Session readability under actual live telemetry.
+- Continue the redesign in smaller passes:
+  - Session control area
+  - rest timer
+  - recent history cards
+  - graph/history/settings screens later

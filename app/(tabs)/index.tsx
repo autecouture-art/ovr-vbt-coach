@@ -192,91 +192,106 @@ export default function HomeScreen() {
     }
   };
 
-  const statusCards = useMemo(
-    () => [
-      { label: 'LINK', value: isConnected ? 'LIVE' : isScanning ? 'SCAN' : 'STBY' },
-      { label: 'MODE', value: isConnected ? 'READY' : 'IDLE' },
-      { label: 'QUEUE', value: String(recentSessions.length) },
-    ],
-    [isConnected, isScanning, recentSessions.length],
-  );
+  const signalStrength = isConnected ? '100%' : isScanning ? '65%' : '0%';
+  const dataRate = isConnected ? '120 Hz' : '--- Hz';
+  const latency = isConnected ? '12 ms' : '--- ms';
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={{ paddingTop: insets.top + 10, paddingBottom: 36 }}>
+      {/* HERO SECTION - High-Performance Cockpit */}
       <View style={styles.hero}>
-        <Text style={styles.eyebrow}>VBTトレーニングコーチ</Text>
-        <Text style={styles.title}>RepVelo VBT Coach</Text>
-        <Text style={styles.subtitle}>速度ベースで科学的にトレーニング</Text>
-
-        <View style={styles.metricsRow}>
-          {statusCards.map((item) => (
-            <View key={item.label} style={styles.metricCard}>
-              <Text style={styles.metricLabel}>{item.label}</Text>
-              <Text style={styles.metricValue}>{item.value}</Text>
+        <View style={styles.heroTop}>
+          <View style={styles.heroLeft}>
+            <Text style={styles.eyebrow}>VBT TRAINING SYSTEM</Text>
+            <Text style={styles.title}>RepVelo Coach</Text>
+          </View>
+          <View style={styles.heroRight}>
+            <View style={styles.systemIndicator}>
+              <View style={[styles.indicatorDot, isConnected && styles.indicatorDotActive]} />
+              <Text style={styles.indicatorText}>{isConnected ? 'LIVE' : 'OFFLINE'}</Text>
             </View>
-          ))}
+          </View>
+        </View>
+        <Text style={styles.subtitle}>Velocity-Based Training Platform</Text>
+
+        <View style={styles.cockpitRow}>
+          <View style={styles.telemetryCard}>
+            <Text style={styles.telemetryLabel}>NETWORK</Text>
+            <View style={styles.telemetryValueRow}>
+              <Text style={styles.telemetryValue}>{isConnected ? 'ONLINE' : 'OFFLINE'}</Text>
+              <View style={[styles.telemetryBar, { width: signalStrength }]} />
+            </View>
+          </View>
+
+          <View style={styles.telemetryCard}>
+            <Text style={styles.telemetryLabel}>RATE</Text>
+            <Text style={styles.telemetryValue}>{dataRate}</Text>
+          </View>
+
+          <View style={styles.telemetryCard}>
+            <Text style={styles.telemetryLabel}>PING</Text>
+            <Text style={styles.telemetryValue}>{latency}</Text>
+          </View>
         </View>
       </View>
 
+      {/* TELEMETRY PANEL - Premium Connection Status */}
       {!isWeb && (
-        <View style={styles.panel}>
+        <View style={styles.telemetryPanel}>
           <View style={styles.panelHeader}>
-            <Text style={styles.panelKicker}>LINK STATUS</Text>
-            <View style={styles.statusInline}>
-              <Text style={styles.statusTitle}>センサー接続</Text>
-              <View
-                style={[
-                  styles.statusDot,
-                  { backgroundColor: isConnected ? GarageTheme.success : GarageTheme.danger },
-                ]}
-              />
-              <Text style={[styles.statusValue, isConnected ? styles.statusOnline : styles.statusOffline]}>
-                {isScanning ? 'スキャン中' : isConnected ? '接続済み' : '未接続'}
-              </Text>
+            <View style={styles.panelTitleRow}>
+              <Text style={styles.panelKicker}>SENSOR LINK</Text>
+              <View style={[styles.statusBadge, isConnected && styles.statusBadgeConnected]}>
+                <View style={[styles.statusPulse, isConnected && styles.statusPulseActive]} />
+                <Text style={styles.statusText}>{isScanning ? 'SCANNING' : isConnected ? 'CONNECTED' : 'OFFLINE'}</Text>
+              </View>
             </View>
             {(foundDevice?.name || lastDeviceInfo.name) && (
-              <Text style={styles.deviceText}>Device: {foundDevice?.name ?? lastDeviceInfo.name}</Text>
+              <View style={styles.deviceInfo}>
+                <Text style={styles.deviceLabel}>DEVICE_ID</Text>
+                <Text style={styles.deviceValue}>{foundDevice?.name ?? lastDeviceInfo.name ?? 'N/A'}</Text>
+              </View>
             )}
           </View>
 
           {isScanning ? (
-            <View style={styles.bleButton}>
-              <ActivityIndicator color="#fff" />
-              <Text style={styles.bleButtonText}>スキャン中...</Text>
+            <View style={styles.actionButton}>
+              <ActivityIndicator color={GarageTheme.accent} />
+              <Text style={styles.actionButtonText}>SCANNING...</Text>
             </View>
           ) : isConnected ? (
-            <TouchableOpacity style={styles.bleButton} onPress={handleDisconnect}>
-              <Text style={styles.bleButtonText}>デバイスを切断</Text>
+            <TouchableOpacity style={styles.actionButton} onPress={handleDisconnect}>
+              <Text style={styles.actionButtonText}>DISCONNECT</Text>
             </TouchableOpacity>
           ) : lastDeviceInfo.id ? (
             <>
-              <TouchableOpacity style={styles.bleButton} onPress={handleReconnect}>
-                <Text style={styles.bleButtonText}>前回デバイスへ再接続</Text>
+              <TouchableOpacity style={[styles.actionButton, styles.actionButtonPrimary]} onPress={handleReconnect}>
+                <Text style={styles.actionButtonText}>RECONNECT</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.bleButton, styles.bleButtonSecondary]} onPress={handleConnectBLE}>
-                <Text style={styles.bleButtonText}>BLEデバイスに接続</Text>
+              <TouchableOpacity style={[styles.actionButton, styles.actionButtonSecondary]} onPress={handleConnectBLE}>
+                <Text style={styles.actionButtonText}>SCAN DEVICES</Text>
               </TouchableOpacity>
             </>
           ) : (
-            <TouchableOpacity style={styles.bleButton} onPress={handleConnectBLE}>
-              <Text style={styles.bleButtonText}>BLEデバイスに接続</Text>
+            <TouchableOpacity style={[styles.actionButton, styles.actionButtonPrimary]} onPress={handleConnectBLE}>
+              <Text style={styles.actionButtonText}>SCAN DEVICES</Text>
             </TouchableOpacity>
           )}
 
           {isScanning && discoveredDevices.length > 0 && (
-            <View style={styles.deviceList}>
+            <View style={styles.deviceGrid}>
               {discoveredDevices.slice(0, 4).map((device) => (
                 <TouchableOpacity
                   key={device.id}
-                  style={styles.deviceRow}
+                  style={styles.deviceCard}
                   onPress={() => {
                     setIsScanning(false);
                     setDiscoveredDevices([]);
                     void connectToDevice(device);
                   }}
                 >
-                  <Text style={styles.deviceRowName}>{device.name || '(名前なし)'}</Text>
-                  <Text style={styles.deviceRowMeta}>{device.id}</Text>
+                  <Text style={styles.deviceCardName}>{device.name || '(UNKNOWN)'}</Text>
+                  <Text style={styles.deviceCardId}>{device.id.slice(-8)}</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -284,54 +299,88 @@ export default function HomeScreen() {
         </View>
       )}
 
+      {/* PREMIUM ACTION CARDS - Tracks */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>トレーニングを始める</Text>
+        <Text style={styles.sectionTitle}>TRAINING MODULES</Text>
 
-        <TouchableOpacity style={[styles.trackCard, styles.trackPrimary]} onPress={() => router.navigate('/(tabs)/session')}>
-          <View style={styles.trackHeader}>
-            <Text style={styles.trackCode}>TRACK 01</Text>
-            <Text style={styles.trackAction}>ENTER</Text>
+        <TouchableOpacity style={[styles.premiumCard, styles.premiumCardPrimary]} onPress={() => router.navigate('/(tabs)/session')}>
+          <View style={styles.premiumCardHeader}>
+            <View style={styles.premiumCardLeft}>
+              <Text style={styles.premiumCardCode}>MODULE_01</Text>
+              <Text style={styles.premiumCardStatus}>SENSOR TRAINING</Text>
+            </View>
+            <View style={styles.premiumCardRight}>
+              <Text style={styles.premiumCardArrow}>→</Text>
+            </View>
           </View>
-          <Text style={styles.trackTitle}>センサーを使ってトレーニング</Text>
-          <Text style={styles.trackDescription}>速度を計測しながらトレーニング</Text>
+          <Text style={styles.premiumCardTitle}>Live Velocity Tracking</Text>
+          <Text style={styles.premiumCardDesc}>Real-time speed measurement during training</Text>
+          <View style={styles.premiumCardFooter}>
+            <View style={styles.premiumCardTag}>
+              <Text style={styles.premiumCardTagText}>RECOMMENDED</Text>
+            </View>
+          </View>
         </TouchableOpacity>
 
-        <TouchableOpacity style={[styles.trackCard, styles.trackSecondary]} onPress={() => router.navigate('/(tabs)/manual')}>
-          <View style={styles.trackHeader}>
-            <Text style={styles.trackCode}>TRACK 02</Text>
-            <Text style={styles.trackAction}>EDIT</Text>
+        <TouchableOpacity style={[styles.premiumCard, styles.premiumCardSecondary]} onPress={() => router.navigate('/(tabs)/manual')}>
+          <View style={styles.premiumCardHeader}>
+            <View style={styles.premiumCardLeft}>
+              <Text style={styles.premiumCardCode}>MODULE_02</Text>
+              <Text style={styles.premiumCardStatus}>MANUAL LOGGING</Text>
+            </View>
+            <View style={styles.premiumCardRight}>
+              <Text style={styles.premiumCardArrow}>→</Text>
+            </View>
           </View>
-          <Text style={styles.trackTitle}>手動で記録する</Text>
-          <Text style={styles.trackDescription}>セットログを入力</Text>
+          <Text style={styles.premiumCardTitle}>Manual Entry Mode</Text>
+          <Text style={styles.premiumCardDesc}>Record sets and reps manually</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={[styles.trackCard, styles.trackTertiary]} onPress={() => router.navigate('/(tabs)/graph')}>
-          <View style={styles.trackHeader}>
-            <Text style={styles.trackCode}>TRACK 03</Text>
-            <Text style={styles.trackAction}>VIEW</Text>
+        <TouchableOpacity style={[styles.premiumCard, styles.premiumCardTertiary]} onPress={() => router.navigate('/(tabs)/graph')}>
+          <View style={styles.premiumCardHeader}>
+            <View style={styles.premiumCardLeft}>
+              <Text style={styles.premiumCardCode}>MODULE_03</Text>
+              <Text style={styles.premiumCardStatus}>ANALYTICS</Text>
+            </View>
+            <View style={styles.premiumCardRight}>
+              <Text style={styles.premiumCardArrow}>→</Text>
+            </View>
           </View>
-          <Text style={styles.trackTitle}>進捗を見る</Text>
-          <Text style={styles.trackDescription}>グラフとトレンドを確認</Text>
+          <Text style={styles.premiumCardTitle}>Performance Dashboard</Text>
+          <Text style={styles.premiumCardDesc}>View progress trends and graphs</Text>
         </TouchableOpacity>
       </View>
 
+      {/* RECENT ACTIVITY LIST - Refined Design */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>RECENT RUNS</Text>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>RECENT ACTIVITY</Text>
+          <Text style={styles.sectionCount}>{String(recentSessions.length).padStart(2, '0')}</Text>
+        </View>
         {recentSessions.length === 0 ? (
-          <View style={styles.emptyCard}>
-            <Text style={styles.emptyText}>まだセッションがありません</Text>
+          <View style={styles.activityEmpty}>
+            <Text style={styles.activityEmptyText}>NO SESSIONS RECORDED</Text>
           </View>
         ) : (
-          recentSessions.map((session) => (
+          recentSessions.map((session, index) => (
             <TouchableOpacity
               key={session.session_id}
-              style={styles.sessionCard}
+              style={styles.activityCard}
               onPress={() => router.push({ pathname: '/session-detail', params: { sessionId: session.session_id } })}
             >
-              <Text style={styles.sessionDate}>{session.date}</Text>
-              <Text style={styles.sessionMeta}>
-                {session.total_sets} sets / {Math.round(session.total_volume)} kg
-              </Text>
+              <View style={styles.activityLeft}>
+                <Text style={styles.activityIndex}>{String(index + 1).padStart(2, '0')}</Text>
+                <View style={styles.activityDivider} />
+                <View style={styles.activityContent}>
+                  <Text style={styles.activityDate}>{session.date}</Text>
+                  <Text style={styles.activityMeta}>
+                    {session.total_sets} SETS × {Math.round(session.total_volume)} KG
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.activityRight}>
+                <Text style={styles.activityArrow}>›</Text>
+              </View>
             </TouchableOpacity>
           ))
         )}
@@ -347,240 +396,450 @@ const styles = StyleSheet.create({
   },
   hero: {
     marginHorizontal: 16,
-    paddingHorizontal: 18,
-    paddingVertical: 22,
-    borderRadius: 26,
+    paddingHorizontal: 20,
+    paddingVertical: 24,
+    borderRadius: 28,
     backgroundColor: GarageTheme.surface,
     borderWidth: 1,
     borderColor: GarageTheme.borderStrong,
     shadowColor: GarageTheme.accent,
-    shadowOpacity: 0.18,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.25,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 8,
+  },
+  heroTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 8,
+  },
+  heroLeft: {
+    flex: 1,
+  },
+  heroRight: {
+    marginLeft: 12,
   },
   eyebrow: {
-    color: GarageTheme.accent,
-    fontSize: 11,
-    letterSpacing: 2.2,
+    color: GarageTheme.accentSoft,
+    fontSize: 10,
+    letterSpacing: 2.4,
     fontWeight: '700',
-    marginBottom: 12,
+    marginBottom: 10,
+    textTransform: 'uppercase',
   },
   title: {
     color: GarageTheme.textStrong,
-    fontSize: 38,
-    lineHeight: 40,
+    fontSize: 36,
+    lineHeight: 38,
     fontWeight: '800',
-    marginBottom: 10,
-    letterSpacing: 0.6,
+    letterSpacing: 0.8,
   },
   subtitle: {
     color: GarageTheme.textMuted,
-    fontSize: 14,
-    marginBottom: 18,
+    fontSize: 13,
+    marginBottom: 20,
+    letterSpacing: 0.4,
   },
-  metricsRow: {
+  systemIndicator: {
     flexDirection: 'row',
-    gap: 10,
+    alignItems: 'center',
+    backgroundColor: GarageTheme.panel,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: GarageTheme.border,
   },
-  metricCard: {
+  indicatorDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 999,
+    backgroundColor: GarageTheme.textSubtle,
+    marginRight: 6,
+  },
+  indicatorDotActive: {
+    backgroundColor: GarageTheme.success,
+    shadowColor: GarageTheme.success,
+    shadowOpacity: 0.6,
+    shadowRadius: 4,
+  },
+  indicatorText: {
+    color: GarageTheme.textStrong,
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1,
+  },
+  cockpitRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  telemetryCard: {
     flex: 1,
     borderRadius: 16,
-    paddingVertical: 12,
+    paddingVertical: 14,
     paddingHorizontal: 12,
     backgroundColor: GarageTheme.panel,
     borderWidth: 1,
     borderColor: GarageTheme.border,
   },
-  metricLabel: {
-    color: GarageTheme.textMuted,
-    fontSize: 10,
-    letterSpacing: 1.6,
+  telemetryLabel: {
+    color: GarageTheme.textSubtle,
+    fontSize: 9,
+    letterSpacing: 1.8,
     fontWeight: '700',
-    marginBottom: 6,
+    marginBottom: 8,
+    textTransform: 'uppercase',
   },
-  metricValue: {
+  telemetryValueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  telemetryValue: {
     color: GarageTheme.textStrong,
-    fontSize: 22,
+    fontSize: 16,
     fontWeight: '800',
+    letterSpacing: 0.5,
   },
-  panel: {
+  telemetryBar: {
+    height: 4,
+    backgroundColor: GarageTheme.accent,
+    borderRadius: 2,
+    minWidth: 20,
+  },
+  telemetryPanel: {
     marginTop: 16,
     marginHorizontal: 16,
-    borderRadius: 22,
-    padding: 16,
+    borderRadius: 24,
+    padding: 18,
     backgroundColor: GarageTheme.surface,
     borderWidth: 1,
     borderColor: GarageTheme.border,
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
   },
   panelHeader: {
-    marginBottom: 14,
+    marginBottom: 16,
+  },
+  panelTitleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
   },
   panelKicker: {
     color: GarageTheme.accentSoft,
     fontSize: 10,
-    letterSpacing: 1.8,
+    letterSpacing: 2,
     fontWeight: '700',
-    marginBottom: 10,
+    textTransform: 'uppercase',
   },
-  statusInline: {
+  statusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-  },
-  statusTitle: {
-    flex: 1,
-    color: GarageTheme.textStrong,
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  statusDot: {
-    width: 10,
-    height: 10,
+    backgroundColor: GarageTheme.chipAlt,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     borderRadius: 999,
-  },
-  statusValue: {
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  statusOnline: {
-    color: GarageTheme.success,
-  },
-  statusOffline: {
-    color: GarageTheme.danger,
-  },
-  deviceText: {
-    marginTop: 8,
-    color: GarageTheme.textMuted,
-    fontSize: 12,
-  },
-  bleButton: {
-    minHeight: 52,
-    borderRadius: 14,
-    backgroundColor: GarageTheme.panel,
     borderWidth: 1,
-    borderColor: GarageTheme.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 10,
-    paddingHorizontal: 14,
-    flexDirection: 'row',
-    gap: 10,
-  },
-  bleButtonSecondary: {
-    backgroundColor: GarageTheme.surfaceAlt,
     borderColor: GarageTheme.border,
   },
-  bleButtonText: {
+  statusBadgeConnected: {
+    backgroundColor: 'rgba(110, 231, 168, 0.12)',
+    borderColor: GarageTheme.success,
+  },
+  statusPulse: {
+    width: 6,
+    height: 6,
+    borderRadius: 999,
+    backgroundColor: GarageTheme.textSubtle,
+    marginRight: 6,
+  },
+  statusPulseActive: {
+    backgroundColor: GarageTheme.success,
+    shadowColor: GarageTheme.success,
+    shadowOpacity: 0.8,
+    shadowRadius: 6,
+  },
+  statusText: {
     color: GarageTheme.textStrong,
-    fontSize: 16,
+    fontSize: 10,
     fontWeight: '700',
+    letterSpacing: 1,
   },
-  deviceList: {
-    marginTop: 12,
-    gap: 10,
-  },
-  deviceRow: {
+  deviceInfo: {
+    backgroundColor: GarageTheme.panel,
     borderRadius: 12,
-    backgroundColor: GarageTheme.surfaceAlt,
     padding: 12,
     borderWidth: 1,
     borderColor: GarageTheme.border,
   },
-  deviceRowName: {
-    color: GarageTheme.textStrong,
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  deviceRowMeta: {
+  deviceLabel: {
     color: GarageTheme.textSubtle,
-    fontSize: 11,
-    marginTop: 4,
+    fontSize: 9,
+    letterSpacing: 1.6,
+    fontWeight: '700',
+    marginBottom: 4,
+    textTransform: 'uppercase',
   },
-  section: {
-    marginTop: 18,
-    marginHorizontal: 16,
-  },
-  sectionTitle: {
+  deviceValue: {
     color: GarageTheme.textStrong,
     fontSize: 13,
-    fontWeight: '800',
-    marginBottom: 14,
-    letterSpacing: 2,
+    fontWeight: '600',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
-  trackCard: {
-    borderRadius: 22,
-    paddingHorizontal: 18,
-    paddingVertical: 18,
-    borderWidth: 1,
-    marginBottom: 14,
-  },
-  trackPrimary: {
+  actionButton: {
+    minHeight: 56,
+    borderRadius: 16,
     backgroundColor: GarageTheme.panel,
+    borderWidth: 1,
+    borderColor: GarageTheme.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  actionButtonPrimary: {
+    backgroundColor: GarageTheme.accent + '12',
     borderColor: GarageTheme.accent,
   },
-  trackSecondary: {
-    backgroundColor: GarageTheme.surface,
-    borderColor: GarageTheme.accentSoft,
-  },
-  trackTertiary: {
+  actionButtonSecondary: {
     backgroundColor: GarageTheme.surfaceAlt,
     borderColor: GarageTheme.borderStrong,
   },
-  trackHeader: {
+  actionButtonIcon: {
+    fontSize: 18,
+    color: GarageTheme.textStrong,
+  },
+  actionButtonText: {
+    color: GarageTheme.textStrong,
+    fontSize: 15,
+    fontWeight: '700',
+    letterSpacing: 1,
+  },
+  deviceGrid: {
+    marginTop: 14,
+    gap: 10,
+  },
+  deviceCard: {
+    borderRadius: 14,
+    backgroundColor: GarageTheme.surfaceAlt,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: GarageTheme.border,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 12,
+    alignItems: 'center',
   },
-  trackCode: {
-    color: GarageTheme.accentSoft,
-    fontSize: 10,
-    letterSpacing: 2,
+  deviceCardName: {
+    color: GarageTheme.textStrong,
+    fontSize: 14,
     fontWeight: '700',
   },
-  trackAction: {
-    color: GarageTheme.textStrong,
+  deviceCardId: {
+    color: GarageTheme.textSubtle,
     fontSize: 11,
-    letterSpacing: 1.5,
-    fontWeight: '800',
+    fontWeight: '600',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
-  trackTitle: {
-    color: '#fff8f4',
-    fontSize: 28,
-    lineHeight: 30,
-    fontWeight: '800',
-    marginBottom: 6,
+  section: {
+    marginTop: 20,
+    marginHorizontal: 16,
   },
-  trackDescription: {
-    color: '#d1b7a7',
-    fontSize: 14,
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 14,
   },
-  emptyCard: {
-    borderRadius: 18,
-    backgroundColor: '#151112',
-    padding: 18,
-    borderWidth: 1,
-    borderColor: '#302224',
-  },
-  emptyText: {
-    color: '#b8a9a2',
-    fontSize: 14,
-  },
-  sessionCard: {
-    borderRadius: 16,
-    backgroundColor: '#151112',
-    borderWidth: 1,
-    borderColor: '#302224',
-    padding: 14,
-    marginBottom: 10,
-  },
-  sessionDate: {
+  sectionTitle: {
     color: GarageTheme.textStrong,
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 2.2,
+    textTransform: 'uppercase',
+  },
+  sectionCount: {
+    color: GarageTheme.accentSoft,
     fontSize: 14,
+    fontWeight: '800',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  premiumCard: {
+    borderRadius: 24,
+    padding: 20,
+    borderWidth: 1,
+    marginBottom: 14,
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  premiumCardPrimary: {
+    backgroundColor: GarageTheme.panel,
+    borderColor: GarageTheme.accent,
+    shadowColor: GarageTheme.accent,
+    shadowOpacity: 0.2,
+  },
+  premiumCardSecondary: {
+    backgroundColor: GarageTheme.surface,
+    borderColor: GarageTheme.accentSoft,
+  },
+  premiumCardTertiary: {
+    backgroundColor: GarageTheme.surfaceAlt,
+    borderColor: GarageTheme.borderStrong,
+  },
+  premiumCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 16,
+  },
+  premiumCardLeft: {
+    flex: 1,
+  },
+  premiumCardRight: {
+    marginLeft: 12,
+  },
+  premiumCardCode: {
+    color: GarageTheme.accentSoft,
+    fontSize: 9,
+    letterSpacing: 2,
+    fontWeight: '700',
+    marginBottom: 6,
+    textTransform: 'uppercase',
+  },
+  premiumCardStatus: {
+    color: GarageTheme.textMuted,
+    fontSize: 11,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  premiumCardArrow: {
+    fontSize: 20,
+    color: GarageTheme.accent,
+    fontWeight: '300',
+  },
+  premiumCardTitle: {
+    color: GarageTheme.textStrong,
+    fontSize: 24,
+    lineHeight: 28,
+    fontWeight: '800',
+    marginBottom: 8,
+    letterSpacing: 0.5,
+  },
+  premiumCardDesc: {
+    color: GarageTheme.textMuted,
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 16,
+  },
+  premiumCardFooter: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  premiumCardTag: {
+    backgroundColor: GarageTheme.accent + '18',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: GarageTheme.accent + '40',
+  },
+  premiumCardTagText: {
+    color: GarageTheme.accent,
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 1,
+  },
+  activityEmpty: {
+    borderRadius: 20,
+    backgroundColor: GarageTheme.surface,
+    padding: 32,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: GarageTheme.border,
+  },
+  activityEmptyIcon: {
+    fontSize: 40,
+    color: GarageTheme.borderStrong,
+    marginBottom: 12,
+  },
+  activityEmptyText: {
+    color: GarageTheme.textSubtle,
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+  },
+  activityCard: {
+    borderRadius: 18,
+    backgroundColor: GarageTheme.surface,
+    borderWidth: 1,
+    borderColor: GarageTheme.border,
+    padding: 16,
+    marginBottom: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  activityLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  activityIndex: {
+    color: GarageTheme.accentSoft,
+    fontSize: 14,
+    fontWeight: '800',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    marginRight: 14,
+    minWidth: 24,
+  },
+  activityDivider: {
+    width: 1,
+    height: 32,
+    backgroundColor: GarageTheme.border,
+    marginRight: 14,
+  },
+  activityContent: {
+    flex: 1,
+  },
+  activityDate: {
+    color: GarageTheme.textStrong,
+    fontSize: 15,
     fontWeight: '700',
     marginBottom: 4,
   },
-  sessionMeta: {
-    color: '#a59187',
+  activityMeta: {
+    color: GarageTheme.textSubtle,
     fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 0.3,
+  },
+  activityRight: {
+    marginLeft: 12,
+  },
+  activityArrow: {
+    fontSize: 18,
+    color: GarageTheme.textMuted,
+    fontWeight: '300',
   },
 });
