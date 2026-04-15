@@ -4,7 +4,13 @@
  * UI is now a "Dumb Component" driven by global state
  */
 
-import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+} from "react";
 import {
   View,
   Text,
@@ -87,7 +93,7 @@ export default function SessionScreen() {
       } catch (e) {
         console.error("セッション作成失敗:", e);
       }
-    }
+    },
   );
 
   // Global State
@@ -244,9 +250,7 @@ export default function SessionScreen() {
           try {
             await finishSet();
             await refreshSessionAllReps();
-            console.log(
-              "[SessionScreen] Auto-finish completed successfully",
-            );
+            console.log("[SessionScreen] Auto-finish completed successfully");
           } catch (error) {
             console.error("[SessionScreen] Auto-finish failed:", error);
           }
@@ -418,17 +422,20 @@ export default function SessionScreen() {
   };
 
   const handleAddMissedRep = async () => {
-    if (!currentSession?.session_id || !currentLift) return;
+    if (!currentSession?.session_id || !selectedSet) return;
 
     try {
-      // 手動追加レップを作成
+      const targetSetReps =
+        repsBySetKey.get(getSetKey(selectedSet.lift, selectedSet.set_index)) ??
+        [];
+
       const newRep: RepData = {
         id: `manual_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         session_id: currentSession.session_id,
-        lift: currentLift,
-        set_index: currentSetIndex,
-        rep_index: repHistory.length + 1,
-        load_kg: currentLoad,
+        lift: selectedSet.lift,
+        set_index: selectedSet.set_index,
+        rep_index: targetSetReps.length + 1,
+        load_kg: selectedSet.load_kg,
         device_type: "manual",
         mean_velocity: null,
         peak_velocity: null,
@@ -437,11 +444,24 @@ export default function SessionScreen() {
         mean_power_w: null,
         timestamp: new Date().toISOString(),
         is_valid_rep: false,
-        set_type: "normal",
+        set_type: selectedSet.set_type,
         notes: "手動追加",
       };
 
       await DatabaseService.insertRep(newRep);
+      await DatabaseService.recalculateAndUpdateSet(
+        currentSession.session_id,
+        selectedSet.lift,
+        selectedSet.set_index,
+      );
+      const metrics = await DatabaseService.recalculateSetMetrics(
+        currentSession.session_id,
+        selectedSet.lift,
+        selectedSet.set_index,
+      );
+      if (metrics) {
+        updateSetHistory(selectedSet.set_index, selectedSet.lift, metrics);
+      }
       await refreshSessionAllReps();
 
       Alert.alert("成功", "レップを追加しました");
@@ -542,7 +562,10 @@ export default function SessionScreen() {
   const handleSaveSessionNote = async () => {
     if (!currentSession?.session_id) return;
     try {
-      await DatabaseService.updateSessionNotes(currentSession.session_id, sessionNote);
+      await DatabaseService.updateSessionNotes(
+        currentSession.session_id,
+        sessionNote,
+      );
       setEditingSessionNote(false);
       Alert.alert("保存完了", "セッションノートを保存しました");
     } catch (error) {
@@ -778,28 +801,35 @@ export default function SessionScreen() {
         </View>
 
         {/* Training Cue & Focus Note */}
-        {currentExercise && (currentExercise.training_cue || currentExercise.focus_note) && (
-          <View style={styles.trainingNotesCard}>
-            {currentExercise.training_cue && (
-              <View style={styles.noteSection}>
-                <Text style={styles.noteLabel}>トレーニングキュー</Text>
-                <Text style={styles.noteText}>{currentExercise.training_cue}</Text>
-              </View>
-            )}
-            {currentExercise.focus_note && (
-              <View style={styles.noteSection}>
-                <Text style={styles.noteLabel}>フォーカスノート</Text>
-                <Text style={styles.noteText}>{currentExercise.focus_note}</Text>
-              </View>
-            )}
-          </View>
-        )}
+        {currentExercise &&
+          (currentExercise.training_cue || currentExercise.focus_note) && (
+            <View style={styles.trainingNotesCard}>
+              {currentExercise.training_cue && (
+                <View style={styles.noteSection}>
+                  <Text style={styles.noteLabel}>トレーニングキュー</Text>
+                  <Text style={styles.noteText}>
+                    {currentExercise.training_cue}
+                  </Text>
+                </View>
+              )}
+              {currentExercise.focus_note && (
+                <View style={styles.noteSection}>
+                  <Text style={styles.noteLabel}>フォーカスノート</Text>
+                  <Text style={styles.noteText}>
+                    {currentExercise.focus_note}
+                  </Text>
+                </View>
+              )}
+            </View>
+          )}
 
         {/* Session Note */}
         {isSessionActive && (
           <View style={styles.sessionNoteCard}>
             <View style={styles.sessionNoteHeader}>
-              <Text style={styles.sessionNoteLabel}>今日のトレーニングメモ</Text>
+              <Text style={styles.sessionNoteLabel}>
+                今日のトレーニングメモ
+              </Text>
               <TouchableOpacity
                 onPress={() => setEditingSessionNote(!editingSessionNote)}
                 style={styles.sessionNoteEditButton}
@@ -999,7 +1029,9 @@ export default function SessionScreen() {
             style={styles.optimizeMvtButton}
             onPress={() => void calculateAndProposeMVT()}
           >
-            <Text style={styles.optimizeMvtButtonText}>履歴から V@1RM を最適化</Text>
+            <Text style={styles.optimizeMvtButtonText}>
+              履歴から V@1RM を最適化
+            </Text>
           </TouchableOpacity>
         )}
 
@@ -1334,7 +1366,10 @@ export default function SessionScreen() {
         {/* Action Buttons */}
         <View style={styles.buttonContainer}>
           <TouchableOpacity
-            style={[styles.warmupButton, isWarmupMode && styles.warmupButtonActive]}
+            style={[
+              styles.warmupButton,
+              isWarmupMode && styles.warmupButtonActive,
+            ]}
             onPress={() => {
               const newMode = !isWarmupMode;
               setIsWarmupMode(newMode);
@@ -1411,7 +1446,9 @@ export default function SessionScreen() {
         {/* 直近同重量の速度履歴 */}
         {sameLoadRecentHistory.length > 0 && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>直近同重量 {formatLoadKg(currentLoad)}kg の速度履歴</Text>
+            <Text style={styles.sectionTitle}>
+              直近同重量 {formatLoadKg(currentLoad)}kg の速度履歴
+            </Text>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -1440,18 +1477,26 @@ export default function SessionScreen() {
                     <View style={styles.recentHistoryStats}>
                       <View style={styles.recentHistoryStat}>
                         <Text style={styles.recentHistoryStatLabel}>回数</Text>
-                        <Text style={styles.recentHistoryStatValue}>{set.reps}</Text>
+                        <Text style={styles.recentHistoryStatValue}>
+                          {set.reps}
+                        </Text>
                       </View>
                       {set.avg_velocity ? (
                         <View style={styles.recentHistoryStat}>
-                          <Text style={styles.recentHistoryStatLabel}>平均速度</Text>
-                          <Text style={styles.recentHistoryStatValue}>{set.avg_velocity.toFixed(2)}</Text>
+                          <Text style={styles.recentHistoryStatLabel}>
+                            平均速度
+                          </Text>
+                          <Text style={styles.recentHistoryStatValue}>
+                            {set.avg_velocity.toFixed(2)}
+                          </Text>
                         </View>
                       ) : null}
                       {set.velocity_loss != null ? (
                         <View style={styles.recentHistoryStat}>
                           <Text style={styles.recentHistoryStatLabel}>VL</Text>
-                          <Text style={styles.recentHistoryStatValue}>{set.velocity_loss.toFixed(1)}%</Text>
+                          <Text style={styles.recentHistoryStatValue}>
+                            {set.velocity_loss.toFixed(1)}%
+                          </Text>
                         </View>
                       ) : null}
                     </View>
@@ -1465,9 +1510,7 @@ export default function SessionScreen() {
         {/* 最近の種目履歴 */}
         {recentExerciseHistory.length > 0 && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>
-              最近の{currentLift}履歴
-            </Text>
+            <Text style={styles.sectionTitle}>最近の{currentLift}履歴</Text>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -1495,17 +1538,13 @@ export default function SessionScreen() {
                     </Text>
                     <View style={styles.recentHistoryStats}>
                       <View style={styles.recentHistoryStat}>
-                        <Text style={styles.recentHistoryStatLabel}>
-                          重量
-                        </Text>
+                        <Text style={styles.recentHistoryStatLabel}>重量</Text>
                         <Text style={styles.recentHistoryStatValue}>
                           {formatLoadKg(set.load_kg)}
                         </Text>
                       </View>
                       <View style={styles.recentHistoryStat}>
-                        <Text style={styles.recentHistoryStatLabel}>
-                          回数
-                        </Text>
+                        <Text style={styles.recentHistoryStatLabel}>回数</Text>
                         <Text style={styles.recentHistoryStatValue}>
                           {set.reps}
                         </Text>
@@ -1614,10 +1653,14 @@ export default function SessionScreen() {
                           : "-"}
                       </Text>
                       <Text style={styles.setMetricChipText}>
-                        心拍 {set.avg_hr != null ? `${Math.round(set.avg_hr)} bpm` : "-"}
+                        心拍{" "}
+                        {set.avg_hr != null
+                          ? `${Math.round(set.avg_hr)} bpm`
+                          : "-"}
                       </Text>
                       <Text style={styles.setMetricChipText}>
-                        推定RPE {estimatedRPE ? estimatedRPE.rpe.toFixed(1) : "-"}
+                        推定RPE{" "}
+                        {estimatedRPE ? estimatedRPE.rpe.toFixed(1) : "-"}
                       </Text>
                     </View>
                     <SetVelocityMiniChart reps={trackedReps} />
@@ -1681,9 +1724,7 @@ export default function SessionScreen() {
               ? () => handleEditSetLoad(selectedSet)
               : undefined
           }
-          onExcludeRep={
-            !historicalSessionReps ? handleExclude : undefined
-          }
+          onExcludeRep={!historicalSessionReps ? handleExclude : undefined}
           onMarkFailedRep={
             !historicalSessionReps ? handleMarkFailedRep : undefined
           }
@@ -2624,7 +2665,12 @@ const styles = StyleSheet.create({
   },
   coachBadgeText: { fontSize: 11, fontWeight: "800", letterSpacing: 1 },
   coachContent: { flex: 1 },
-  coachMessage: { fontSize: 15, fontWeight: "700", marginBottom: 6, lineHeight: 20 },
+  coachMessage: {
+    fontSize: 15,
+    fontWeight: "700",
+    marginBottom: 6,
+    lineHeight: 20,
+  },
   coachAction: { fontSize: 13, color: GarageTheme.textMuted, lineHeight: 18 },
   // AIコーチボタン（ヘッダー）
   coachNavButton: {

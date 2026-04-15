@@ -447,3 +447,17 @@ Remaining:
 - Confirm on device that AirPods Pro 3 actually streams heart-rate samples into HealthKit quickly enough during a live session.
 - If live updates lag, the next iteration should evaluate whether workout-session APIs can be conditionally used on newer iOS versions while keeping the sample-query fallback for iOS 15.1.
 - Before shipping, commit the new native files with `git add -f` because `/ios` is ignored by repo rules and the new files will not be picked up automatically.
+
+## 2026-04-15 (Codex / GPT-5)
+Scope: Fix post-test issues in manual entry recent-weight reflection and session-side manual rep addition, then prepare a new TestFlight build.
+Actions:
+- Investigated manual entry history refresh and confirmed the quick-select weights only came from historical DB sets, excluding sets just saved in the current manual-entry session.
+- Added a merged `recentSetsForDisplay` source in `src/screens/ManualEntryScreen.tsx` so current-session saved sets are surfaced immediately in the recent-weight buttons and recent-set list.
+- Investigated session-side manual rep addition and confirmed the detail modal was adding reps to the currently active set instead of the set currently opened in the modal.
+- Updated `app/(tabs)/session.tsx` so manual rep addition now targets `selectedSet`, uses its `lift/load/set_index`, recalculates set metrics, updates set history, and refreshes session reps after insertion.
+- Validated the JS side with `pnpm -s tsc --noEmit`.
+Results:
+- Manual entry should now reflect the just-saved load immediately in recent-weight quick select.
+- Manual rep addition from set detail should now affect the visible set rather than an unrelated in-progress set.
+Remaining:
+- Ship and verify both fixes on device via the next TestFlight build.
