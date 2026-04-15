@@ -496,3 +496,21 @@ Results:
 Remaining:
 - Check on device whether the date range and bar density are readable when an exercise has many logged days.
 - If needed, add a range filter (7d / 30d / all) in a later pass.
+
+
+## 2026-04-15 (Codex / GPT-5 + GLM sonnet)
+Scope: Extend graph mode beyond daily e1RM with range filters, smoothing, and cross-exercise comparison.
+Actions:
+- Requested a focused implementation proposal from GLM sonnet for `app/(tabs)/graph.tsx` covering 7d/30d/all filters, a smoothed trend line, and exercise comparison.
+- Rejected the expensive part of the GLM proposal that would re-query every exercise independently; instead integrated a single-pass per-session aggregation for comparison data.
+- Added `DateRange` filtering for the daily e1RM trend (`7日 / 30日 / 全期間`).
+- Added an SVG-based chart layer using `react-native-svg` with bars for daily best e1RM and a smoothed polyline overlay.
+- Added an exercise comparison section that shows the latest e1RM snapshot across recorded exercises.
+- Kept the existing volume trend and velocity trend sections intact under the new e1RM trend block.
+- Validated with `pnpm -s tsc --noEmit`.
+Results:
+- Trend tab now includes date-range filtering, smoothed e1RM visualization, and cross-exercise comparison.
+- GLM was used for the implementation proposal; final integration was reviewed and adjusted locally to avoid wasteful DB access.
+Remaining:
+- Real-device review should confirm chart readability when many days are visible in `全期間`.
+- If labels become crowded, the next pass should add a horizontal scroll or sparse x-axis labeling.

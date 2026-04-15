@@ -12,6 +12,7 @@ import {
   Text,
   TouchableOpacity,
   View,
+  useWindowDimensions,
 } from "react-native";
 import { useIsFocused } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -29,11 +30,21 @@ import type {
   SetData,
   Exercise,
 } from "@/src/types/index";
+import Svg, { Circle, Line, Polyline, Rect } from "react-native-svg";
 
 type DailyE1rmPoint = {
   date: string;
   label: string;
   e1rm: number;
+  setCount: number;
+};
+
+type DateRange = "7d" | "30d" | "all";
+
+type ExerciseComparisonPoint = {
+  exercise: string;
+  e1rm: number;
+  label: string;
   setCount: number;
 };
 
@@ -154,11 +165,44 @@ const buildDailyE1rmTrend = (sets: SetData[]): DailyE1rmPoint[] => {
     }));
 };
 
+const filterByDateRange = (
+  points: DailyE1rmPoint[],
+  range: DateRange,
+): DailyE1rmPoint[] => {
+  if (range === "all") return points;
+
+  const latest = points[points.length - 1];
+  if (!latest) return [];
+
+  const endDate = new Date(`${latest.date}T23:59:59`);
+  const days = range === "7d" ? 7 : 30;
+  const startDate = new Date(endDate);
+  startDate.setDate(startDate.getDate() - (days - 1));
+
+  return points.filter(
+    (point) => new Date(`${point.date}T00:00:00`) >= startDate,
+  );
+};
+
+const calculateSmoothedTrend = (points: DailyE1rmPoint[]): number[] => {
+  if (points.length <= 2) return points.map((point) => point.e1rm);
+
+  return points.map((_, index) => {
+    const start = Math.max(0, index - 1);
+    const end = Math.min(points.length, index + 2);
+    const window = points.slice(start, end);
+    const average =
+      window.reduce((sum, point) => sum + point.e1rm, 0) / window.length;
+    return Number(average.toFixed(1));
+  });
+};
+
 type TabType = "lvp" | "trend" | "zones";
 
 export default function GraphScreen() {
   const insets = useSafeAreaInsets();
   const isFocused = useIsFocused();
+  const { width: screenWidth } = useWindowDimensions();
   const [activeTab, setActiveTab] = useState<TabType>("lvp");
   const [selectedExercise, setSelectedExercise] = useState("ベンチプレス");
   const [selectedGroup, setSelectedGroup] =
@@ -167,6 +211,10 @@ export default function GraphScreen() {
   const [sessions, setSessions] = useState<SessionData[]>([]);
   const [recentSets, setRecentSets] = useState<SetData[]>([]);
   const [exerciseTrendSets, setExerciseTrendSets] = useState<SetData[]>([]);
+  const [dateRange, setDateRange] = useState<DateRange>("30d");
+  const [exerciseComparisons, setExerciseComparisons] = useState<
+    ExerciseComparisonPoint[]
+  >([]);
   const [loading, setLoading] = useState(true);
   const [e1rmEstimate, setE1rmEstimate] = useState<number | null>(null);
   const [exercisesList, setExercisesList] = useState<Exercise[]>([]);
@@ -225,6 +273,16 @@ export default function GraphScreen() {
     [exerciseTrendSets],
   );
 
+  const filteredDailyE1rmTrend = useMemo(
+    () => filterByDateRange(dailyE1rmTrend, dateRange),
+    [dailyE1rmTrend, dateRange],
+  );
+
+  const smoothedDailyE1rmTrend = useMemo(
+    () => calculateSmoothedTrend(filteredDailyE1rmTrend),
+    [filteredDailyE1rmTrend],
+  );
+
   const loadData = async () => {
     setLoading(true);
     try {
@@ -253,21 +311,50 @@ export default function GraphScreen() {
       const allSessions = await DatabaseService.getSessions();
       setSessions(allSessions.slice(0, 10));
 
-      // 直近30セッションから選択種目のセットデータを集計
-      const allSets: SetData[] = [];
+      const selectedExerciseSets: SetData[] = [];
+      const comparisonSource = new Map<string, SetData[]>();
+
       for (const session of allSessions.slice(0, 30)) {
         const sets = await DatabaseService.getSetsForSession(
           session.session_id,
         );
-        const filtered = sets.filter((s) => s.lift === selectedExercise);
-        allSets.push(...filtered);
+        for (const set of sets) {
+          const existing = comparisonSource.get(set.lift);
+          if (existing) {
+            existing.push(set);
+          } else {
+            comparisonSource.set(set.lift, [set]);
+          }
+
+          if (set.lift === selectedExercise) {
+            selectedExerciseSets.push(set);
+          }
+        }
       }
-      allSets.sort(
+
+      selectedExerciseSets.sort(
         (a, b) =>
           new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
       );
-      setExerciseTrendSets(allSets);
-      setRecentSets(allSets.slice(0, 20));
+
+      const comparisons = Array.from(comparisonSource.entries())
+        .map(([exercise, sets]) => {
+          const trend = buildDailyE1rmTrend(sets);
+          const latest = trend[trend.length - 1];
+          if (!latest) return null;
+          return {
+            exercise,
+            e1rm: latest.e1rm,
+            label: latest.label,
+            setCount: latest.setCount,
+          };
+        })
+        .filter((value): value is ExerciseComparisonPoint => value !== null)
+        .sort((a, b) => b.e1rm - a.e1rm);
+
+      setExerciseComparisons(comparisons);
+      setExerciseTrendSets(selectedExerciseSets);
+      setRecentSets(selectedExerciseSets.slice(0, 20));
     } catch (error) {
       console.error("LVPデータ読み込み失敗:", error);
     } finally {
@@ -374,16 +461,84 @@ export default function GraphScreen() {
       );
     }
 
-    const maxE1rm = Math.max(...dailyE1rmTrend.map((point) => point.e1rm));
-    const latest = dailyE1rmTrend[dailyE1rmTrend.length - 1];
-    const best = dailyE1rmTrend.reduce(
+    if (filteredDailyE1rmTrend.length === 0) {
+      return (
+        <View style={styles.noDataContainer}>
+          <Text style={styles.noDataText}>
+            {selectedExercise} の{" "}
+            {dateRange === "7d"
+              ? "7日"
+              : dateRange === "30d"
+                ? "30日"
+                : "全期間"}{" "}
+            データがありません
+          </Text>
+          <Text style={styles.noDataSubText}>
+            フィルター範囲を広げると表示される可能性があります
+          </Text>
+        </View>
+      );
+    }
+
+    const latest = filteredDailyE1rmTrend[filteredDailyE1rmTrend.length - 1];
+    const best = filteredDailyE1rmTrend.reduce(
       (top, point) => (point.e1rm > top.e1rm ? point : top),
-      dailyE1rmTrend[0],
+      filteredDailyE1rmTrend[0],
     );
+
+    const maxE1rm = Math.max(
+      ...filteredDailyE1rmTrend.map((point) => point.e1rm),
+    );
+    const minE1rm = Math.min(
+      ...filteredDailyE1rmTrend.map((point) => point.e1rm),
+    );
+    const chartWidth = Math.max(screenWidth - 64, 260);
+    const chartHeight = 188;
+    const chartPadding = { top: 16, right: 12, bottom: 18, left: 12 };
+    const plotWidth = chartWidth - chartPadding.left - chartPadding.right;
+    const plotHeight = chartHeight - chartPadding.top - chartPadding.bottom;
+    const range = Math.max(1, maxE1rm - minE1rm);
+
+    const getX = (index: number) =>
+      chartPadding.left +
+      (filteredDailyE1rmTrend.length === 1
+        ? plotWidth / 2
+        : (index / (filteredDailyE1rmTrend.length - 1)) * plotWidth);
+    const getY = (value: number) =>
+      chartPadding.top + ((maxE1rm - value) / range) * plotHeight;
+
+    const smoothPoints = smoothedDailyE1rmTrend
+      .map((value, index) => `${getX(index)},${getY(value)}`)
+      .join(" ");
 
     return (
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>{selectedExercise} / DAILY e1RM</Text>
+        <View style={styles.dateRangeFilter}>
+          {(["7d", "30d", "all"] as DateRange[]).map((rangeOption) => (
+            <TouchableOpacity
+              key={rangeOption}
+              style={[
+                styles.dateRangeButton,
+                dateRange === rangeOption && styles.dateRangeButtonActive,
+              ]}
+              onPress={() => setDateRange(rangeOption)}
+            >
+              <Text
+                style={[
+                  styles.dateRangeButtonText,
+                  dateRange === rangeOption && styles.dateRangeButtonTextActive,
+                ]}
+              >
+                {rangeOption === "7d"
+                  ? "7日"
+                  : rangeOption === "30d"
+                    ? "30日"
+                    : "全期間"}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
         <View style={styles.trendSummaryRow}>
           <View style={styles.trendSummaryCard}>
             <Text style={styles.trendSummaryLabel}>最新</Text>
@@ -400,32 +555,131 @@ export default function GraphScreen() {
             <Text style={styles.trendSummaryMeta}>{best.label}</Text>
           </View>
         </View>
-        {dailyE1rmTrend.map((point) => {
-          const pct = maxE1rm > 0 ? (point.e1rm / maxE1rm) * 100 : 0;
+
+        <View style={styles.svgChartContainer}>
+          <Svg width={chartWidth} height={chartHeight}>
+            {[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
+              const y = chartPadding.top + plotHeight * ratio;
+              return (
+                <Line
+                  key={`grid-${ratio}`}
+                  x1={chartPadding.left}
+                  y1={y}
+                  x2={chartWidth - chartPadding.right}
+                  y2={y}
+                  stroke={GarageTheme.border}
+                  strokeWidth={1}
+                  opacity={0.5}
+                />
+              );
+            })}
+
+            {filteredDailyE1rmTrend.map((point, index) => {
+              const x = getX(index) - 6;
+              const width =
+                filteredDailyE1rmTrend.length === 1
+                  ? 12
+                  : Math.max(
+                      8,
+                      plotWidth /
+                        Math.max(filteredDailyE1rmTrend.length * 2, 10),
+                    );
+              const y = getY(point.e1rm);
+              const height = chartHeight - chartPadding.bottom - y;
+
+              return (
+                <Rect
+                  key={point.date}
+                  x={x}
+                  y={y}
+                  width={width}
+                  height={Math.max(height, 6)}
+                  rx={3}
+                  fill={GarageTheme.accentSoft}
+                  opacity={0.35}
+                />
+              );
+            })}
+
+            <Polyline
+              points={smoothPoints}
+              fill="none"
+              stroke={GarageTheme.accent}
+              strokeWidth={3}
+              strokeLinejoin="round"
+              strokeLinecap="round"
+            />
+
+            {smoothedDailyE1rmTrend.map((value, index) => (
+              <Circle
+                key={`${filteredDailyE1rmTrend[index]?.date}-point`}
+                cx={getX(index)}
+                cy={getY(value)}
+                r={4}
+                fill={GarageTheme.accent}
+                stroke={GarageTheme.background}
+                strokeWidth={2}
+              />
+            ))}
+          </Svg>
+
+          <View style={styles.chartLabelRow}>
+            {filteredDailyE1rmTrend.map((point) => (
+              <Text key={point.date} style={styles.chartLabelText}>
+                {point.label}
+              </Text>
+            ))}
+          </View>
+        </View>
+
+        <Text style={styles.unitLabel}>青線: 平滑線 / バー: 日次最高 e1RM</Text>
+      </View>
+    );
+  };
+
+  const renderExerciseComparison = () => {
+    if (exerciseComparisons.length === 0) {
+      return (
+        <View style={styles.noDataContainer}>
+          <Text style={styles.noDataText}>種目比較データがありません</Text>
+          <Text style={styles.noDataSubText}>
+            複数の種目を記録すると比較表示されます
+          </Text>
+        </View>
+      );
+    }
+
+    const maxE1rm = Math.max(...exerciseComparisons.map((item) => item.e1rm));
+
+    return (
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>EXERCISE COMPARISON</Text>
+        <Text style={styles.subLabel}>各種目の最新 e1RM</Text>
+        {exerciseComparisons.map((item) => {
+          const pct = maxE1rm > 0 ? (item.e1rm / maxE1rm) * 100 : 0;
           return (
-            <View key={point.date} style={styles.barRow}>
-              <Text style={styles.barLabel}>{point.label}</Text>
+            <View key={item.exercise} style={styles.barRow}>
+              <Text style={styles.comparisonExerciseLabel} numberOfLines={1}>
+                {item.exercise}
+              </Text>
               <View style={styles.barTrack}>
                 <View
                   style={[
                     styles.barFill,
-                    {
-                      width: `${pct}%`,
-                      backgroundColor: GarageTheme.accentSoft,
-                    },
+                    { width: `${pct}%`, backgroundColor: GarageTheme.success },
                   ]}
                 />
               </View>
-              <View style={styles.e1rmValueWrap}>
-                <Text style={[styles.barValue, styles.e1rmBarValue]}>
-                  {point.e1rm.toFixed(1)}
+              <View style={styles.comparisonValueWrap}>
+                <Text style={[styles.barValue, styles.comparisonValueText]}>
+                  {item.e1rm.toFixed(1)}
                 </Text>
-                <Text style={styles.e1rmSetCount}>{point.setCount}set</Text>
+                <Text style={styles.comparisonDateLabel}>{item.label}</Text>
               </View>
             </View>
           );
         })}
-        <Text style={styles.unitLabel}>日次の最高 e1RM を表示</Text>
+        <Text style={styles.unitLabel}>種目別の最新 e1RM を比較</Text>
       </View>
     );
   };
@@ -637,6 +891,7 @@ export default function GraphScreen() {
           {activeTab === "trend" && (
             <>
               {renderDailyE1rmTrend()}
+              {renderExerciseComparison()}
               {renderVolumeTrend()}
               {renderVelocityTrend()}
             </>
@@ -810,6 +1065,49 @@ const styles = StyleSheet.create({
     textAlign: "right",
   },
 
+  dateRangeFilter: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 12,
+  },
+  dateRangeButton: {
+    flex: 1,
+    paddingVertical: 8,
+    alignItems: "center",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: GarageTheme.border,
+    backgroundColor: GarageTheme.surfaceAlt,
+  },
+  dateRangeButtonActive: {
+    borderColor: GarageTheme.accent,
+    backgroundColor: GarageTheme.panel,
+  },
+  dateRangeButtonText: {
+    color: GarageTheme.textMuted,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  dateRangeButtonTextActive: { color: GarageTheme.textStrong },
+  svgChartContainer: {
+    backgroundColor: GarageTheme.surfaceAlt,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: GarageTheme.border,
+    padding: 12,
+  },
+  chartLabelRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 8,
+    gap: 6,
+  },
+  chartLabelText: {
+    flex: 1,
+    color: GarageTheme.textSubtle,
+    fontSize: 10,
+    textAlign: "center",
+  },
   trendSummaryRow: {
     flexDirection: "row",
     gap: 10,
@@ -842,6 +1140,19 @@ const styles = StyleSheet.create({
   e1rmValueWrap: { width: 52, alignItems: "flex-end" },
   e1rmBarValue: { width: "auto", color: GarageTheme.accentSoft },
   e1rmSetCount: { fontSize: 10, color: GarageTheme.textSubtle, marginTop: 2 },
+  comparisonExerciseLabel: {
+    width: 92,
+    fontSize: 12,
+    color: GarageTheme.textStrong,
+    textAlign: "right",
+  },
+  comparisonValueWrap: { width: 56, alignItems: "flex-end" },
+  comparisonValueText: { width: "auto", color: GarageTheme.success },
+  comparisonDateLabel: {
+    fontSize: 10,
+    color: GarageTheme.textSubtle,
+    marginTop: 2,
+  },
   noDataContainer: { padding: 48, alignItems: "center" },
   noDataText: { fontSize: 16, color: GarageTheme.textMuted, marginBottom: 8 },
   noDataSubText: {
