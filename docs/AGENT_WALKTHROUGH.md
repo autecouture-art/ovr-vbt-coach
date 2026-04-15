@@ -461,3 +461,38 @@ Results:
 - Manual rep addition from set detail should now affect the visible set rather than an unrelated in-progress set.
 Remaining:
 - Ship and verify both fixes on device via the next TestFlight build.
+
+## 2026-04-15 (Codex / GPT-5)
+Scope: TestFlight build attempt for manual-entry/session fixes and HealthKit-enabled build.
+Actions:
+- Committed manual-entry recent-weight reflection fix and session detail manual-rep-add fix as `9f2d78b`.
+- Bumped build number to `77` across `app.config.ts`, `ios/RepVeloCoach/Info.plist`, and `ios/RepVeloCoach.xcodeproj/project.pbxproj` as commit `58a2b45`.
+- Added explicit HealthKit `SystemCapabilities` declaration in the Xcode project as commit `45ff9df` to help automatic signing recognize the new capability.
+- Ran the repo-local TestFlight workflow twice with:
+  - `FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT=20 FASTLANE_XCODEBUILD_SETTINGS_RETRIES=6 bash scripts/deploy.sh`
+Results:
+- Build `77` did not upload.
+- Archive failed before IPA export because signing/provisioning is not aligned with the newly added HealthKit entitlement.
+- First fatal errors:
+  - `Provisioning profile "iOS Team Provisioning Profile: *" doesn't include the HealthKit capability.`
+  - `Provisioning profile "iOS Team Provisioning Profile: *" doesn't include the com.apple.developer.healthkit entitlement.`
+  - `No Accounts: Add a new account in Accounts settings.`
+Remaining:
+- Apple Developer portal or local Xcode signing setup must be updated before any HealthKit-enabled TestFlight build can succeed.
+- After capability/profile/account alignment, re-run `scripts/deploy.sh` using build `77` or bump above it if another local archive already consumes `77`.
+
+
+## 2026-04-15 (Codex / GPT-5)
+Scope: Extend graph mode with a daily e1RM trend for the selected exercise.
+Actions:
+- Updated `app/(tabs)/graph.tsx` to collect up to 30 recent sessions worth of sets for the selected exercise instead of only the small velocity subset.
+- Added `buildDailyE1rmTrend()` to aggregate the best e1RM per day from saved sets.
+- Added a new `renderDailyE1rmTrend()` section to the graph `進捗` tab, with latest/best summary cards and per-day bars.
+- Kept existing velocity trend behavior by continuing to expose the latest 20 sets separately.
+- Validated with `pnpm -s tsc --noEmit`.
+Results:
+- Graph mode now shows a day-by-day e1RM trend for the currently selected exercise.
+- Existing LVP and velocity-zone views remain intact.
+Remaining:
+- Check on device whether the date range and bar density are readable when an exercise has many logged days.
+- If needed, add a range filter (7d / 30d / all) in a later pass.

@@ -4,7 +4,7 @@
  * DBから実データを取得してグラフ表示
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   ScrollView,
@@ -12,36 +12,75 @@ import {
   Text,
   TouchableOpacity,
   View,
-} from 'react-native';
-import { useIsFocused } from '@react-navigation/native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import DatabaseService from '@/src/services/DatabaseService';
-import { GarageTheme } from '@/src/constants/garageTheme';
-import AICoachService from '@/src/services/AICoachService';
+} from "react-native";
+import { useIsFocused } from "@react-navigation/native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import DatabaseService from "@/src/services/DatabaseService";
+import { GarageTheme } from "@/src/constants/garageTheme";
+import AICoachService from "@/src/services/AICoachService";
 import {
   EXERCISE_SELECTION_GROUPS,
   matchesExerciseSelectionGroup,
   type ExerciseSelectionGroupId,
-} from '@/src/constants/exerciseCatalog';
-import type { LVPData, SessionData, SetData, Exercise } from '@/src/types/index';
+} from "@/src/constants/exerciseCatalog";
+import type {
+  LVPData,
+  SessionData,
+  SetData,
+  Exercise,
+} from "@/src/types/index";
+
+type DailyE1rmPoint = {
+  date: string;
+  label: string;
+  e1rm: number;
+  setCount: number;
+};
 
 const DEFAULT_VELOCITY_ZONES = [
-  { name: 'POWER', minV: 1.0, maxV: 1.5, color: GarageTheme.accentSoft, desc: '爆発的な出力領域' },
-  { name: 'SPEED STRENGTH', minV: 0.75, maxV: 1.0, color: GarageTheme.accent, desc: '速度優位の筋力領域' },
-  { name: 'HYPERTROPHY', minV: 0.5, maxV: 0.75, color: GarageTheme.success, desc: '筋量寄りの領域' },
-  { name: 'MAX STRENGTH', minV: 0.0, maxV: 0.5, color: GarageTheme.danger, desc: '高強度領域' },
+  {
+    name: "POWER",
+    minV: 1.0,
+    maxV: 1.5,
+    color: GarageTheme.accentSoft,
+    desc: "爆発的な出力領域",
+  },
+  {
+    name: "SPEED STRENGTH",
+    minV: 0.75,
+    maxV: 1.0,
+    color: GarageTheme.accent,
+    desc: "速度優位の筋力領域",
+  },
+  {
+    name: "HYPERTROPHY",
+    minV: 0.5,
+    maxV: 0.75,
+    color: GarageTheme.success,
+    desc: "筋量寄りの領域",
+  },
+  {
+    name: "MAX STRENGTH",
+    minV: 0.0,
+    maxV: 0.5,
+    color: GarageTheme.danger,
+    desc: "高強度領域",
+  },
 ];
 
 const percentile = (values: number[], ratio: number) => {
   if (values.length === 0) return 0;
-  const idx = Math.min(values.length - 1, Math.max(0, Math.floor((values.length - 1) * ratio)));
+  const idx = Math.min(
+    values.length - 1,
+    Math.max(0, Math.floor((values.length - 1) * ratio)),
+  );
   return values[idx];
 };
 
 const buildVelocityZonesFromHistory = (sets: SetData[]) => {
   const velocities = sets
     .map((set) => set.avg_velocity)
-    .filter((value): value is number => typeof value === 'number' && value > 0)
+    .filter((value): value is number => typeof value === "number" && value > 0)
     .sort((a, b) => a - b);
 
   if (velocities.length < 4) {
@@ -54,24 +93,80 @@ const buildVelocityZonesFromHistory = (sets: SetData[]) => {
   const max = velocities[velocities.length - 1];
 
   return [
-    { name: 'MAX STRENGTH', minV: 0, maxV: Number(p25.toFixed(2)), color: GarageTheme.danger, desc: '履歴下位25%の低速域' },
-    { name: 'HYPERTROPHY', minV: Number(p25.toFixed(2)), maxV: Number(p50.toFixed(2)), color: GarageTheme.success, desc: '履歴25-50%の中低速域' },
-    { name: 'SPEED STRENGTH', minV: Number(p50.toFixed(2)), maxV: Number(p75.toFixed(2)), color: GarageTheme.accent, desc: '履歴50-75%の中高速域' },
-    { name: 'POWER', minV: Number(p75.toFixed(2)), maxV: Number(Math.max(max, p75 + 0.05).toFixed(2)), color: GarageTheme.accentSoft, desc: '履歴上位25%の高速域' },
+    {
+      name: "MAX STRENGTH",
+      minV: 0,
+      maxV: Number(p25.toFixed(2)),
+      color: GarageTheme.danger,
+      desc: "履歴下位25%の低速域",
+    },
+    {
+      name: "HYPERTROPHY",
+      minV: Number(p25.toFixed(2)),
+      maxV: Number(p50.toFixed(2)),
+      color: GarageTheme.success,
+      desc: "履歴25-50%の中低速域",
+    },
+    {
+      name: "SPEED STRENGTH",
+      minV: Number(p50.toFixed(2)),
+      maxV: Number(p75.toFixed(2)),
+      color: GarageTheme.accent,
+      desc: "履歴50-75%の中高速域",
+    },
+    {
+      name: "POWER",
+      minV: Number(p75.toFixed(2)),
+      maxV: Number(Math.max(max, p75 + 0.05).toFixed(2)),
+      color: GarageTheme.accentSoft,
+      desc: "履歴上位25%の高速域",
+    },
   ];
 };
 
-type TabType = 'lvp' | 'trend' | 'zones';
+const buildDailyE1rmTrend = (sets: SetData[]): DailyE1rmPoint[] => {
+  const byDate = new Map<string, { e1rm: number; setCount: number }>();
+
+  for (const set of sets) {
+    if (typeof set.e1rm !== "number" || set.e1rm <= 0) continue;
+    const dateKey = (set.timestamp ?? "").slice(0, 10);
+    if (!dateKey) continue;
+
+    const existing = byDate.get(dateKey);
+    if (!existing) {
+      byDate.set(dateKey, { e1rm: set.e1rm, setCount: 1 });
+      continue;
+    }
+
+    byDate.set(dateKey, {
+      e1rm: Math.max(existing.e1rm, set.e1rm),
+      setCount: existing.setCount + 1,
+    });
+  }
+
+  return Array.from(byDate.entries())
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([date, value]) => ({
+      date,
+      label: date.slice(5).replace("-", "/"),
+      e1rm: Number(value.e1rm.toFixed(1)),
+      setCount: value.setCount,
+    }));
+};
+
+type TabType = "lvp" | "trend" | "zones";
 
 export default function GraphScreen() {
   const insets = useSafeAreaInsets();
   const isFocused = useIsFocused();
-  const [activeTab, setActiveTab] = useState<TabType>('lvp');
-  const [selectedExercise, setSelectedExercise] = useState('ベンチプレス');
-  const [selectedGroup, setSelectedGroup] = useState<ExerciseSelectionGroupId>('all');
+  const [activeTab, setActiveTab] = useState<TabType>("lvp");
+  const [selectedExercise, setSelectedExercise] = useState("ベンチプレス");
+  const [selectedGroup, setSelectedGroup] =
+    useState<ExerciseSelectionGroupId>("all");
   const [lvpData, setLvpData] = useState<LVPData | null>(null);
   const [sessions, setSessions] = useState<SessionData[]>([]);
   const [recentSets, setRecentSets] = useState<SetData[]>([]);
+  const [exerciseTrendSets, setExerciseTrendSets] = useState<SetData[]>([]);
   const [loading, setLoading] = useState(true);
   const [e1rmEstimate, setE1rmEstimate] = useState<number | null>(null);
   const [exercisesList, setExercisesList] = useState<Exercise[]>([]);
@@ -86,7 +181,10 @@ export default function GraphScreen() {
     try {
       const exs = await DatabaseService.getExercises();
       setExercisesList(exs);
-      if (exs.length > 0 && (!selectedExercise || selectedExercise === 'ベンチプレス')) {
+      if (
+        exs.length > 0 &&
+        (!selectedExercise || selectedExercise === "ベンチプレス")
+      ) {
         setSelectedExercise(exs[0].name);
       }
     } catch (e) {
@@ -101,13 +199,18 @@ export default function GraphScreen() {
   }, [isFocused, selectedExercise]);
 
   const filteredExercises = useMemo(
-    () => exercisesList.filter((exercise) => matchesExerciseSelectionGroup(exercise, selectedGroup)),
+    () =>
+      exercisesList.filter((exercise) =>
+        matchesExerciseSelectionGroup(exercise, selectedGroup),
+      ),
     [exercisesList, selectedGroup],
   );
 
   useEffect(() => {
     if (filteredExercises.length === 0) return;
-    if (!filteredExercises.some((exercise) => exercise.name === selectedExercise)) {
+    if (
+      !filteredExercises.some((exercise) => exercise.name === selectedExercise)
+    ) {
       setSelectedExercise(filteredExercises[0].name);
     }
   }, [filteredExercises, selectedExercise]);
@@ -115,6 +218,11 @@ export default function GraphScreen() {
   const velocityZones = useMemo(
     () => buildVelocityZonesFromHistory(recentSets),
     [recentSets],
+  );
+
+  const dailyE1rmTrend = useMemo(
+    () => buildDailyE1rmTrend(exerciseTrendSets),
+    [exerciseTrendSets],
   );
 
   const loadData = async () => {
@@ -145,16 +253,23 @@ export default function GraphScreen() {
       const allSessions = await DatabaseService.getSessions();
       setSessions(allSessions.slice(0, 10));
 
-      // 最新5セッションのセットデータを集める
+      // 直近30セッションから選択種目のセットデータを集計
       const allSets: SetData[] = [];
-      for (const session of allSessions.slice(0, 5)) {
-        const sets = await DatabaseService.getSetsForSession(session.session_id);
-        const filtered = sets.filter(s => s.lift === selectedExercise);
+      for (const session of allSessions.slice(0, 30)) {
+        const sets = await DatabaseService.getSetsForSession(
+          session.session_id,
+        );
+        const filtered = sets.filter((s) => s.lift === selectedExercise);
         allSets.push(...filtered);
       }
+      allSets.sort(
+        (a, b) =>
+          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+      );
+      setExerciseTrendSets(allSets);
       setRecentSets(allSets.slice(0, 20));
     } catch (error) {
-      console.error('LVPデータ読み込み失敗:', error);
+      console.error("LVPデータ読み込み失敗:", error);
     } finally {
       setLoading(false);
     }
@@ -176,7 +291,7 @@ export default function GraphScreen() {
     return (
       <View style={styles.barsContainer}>
         <Text style={styles.subLabel}>負荷 → 速度プロファイル</Text>
-        {loads.map(load => {
+        {loads.map((load) => {
           const vel = Math.max(0, lvpData.intercept + lvpData.slope * load);
           const pct = (vel / maxVel) * 100;
           const zone = AICoachService.getZone(vel);
@@ -184,9 +299,16 @@ export default function GraphScreen() {
             <View key={load} style={styles.barRow}>
               <Text style={styles.barLabel}>{load}kg</Text>
               <View style={styles.barTrack}>
-                <View style={[styles.barFill, { width: `${pct}%`, backgroundColor: zone.color }]} />
+                <View
+                  style={[
+                    styles.barFill,
+                    { width: `${pct}%`, backgroundColor: zone.color },
+                  ]}
+                />
               </View>
-              <Text style={[styles.barValue, { color: zone.color }]}>{vel.toFixed(2)}</Text>
+              <Text style={[styles.barValue, { color: zone.color }]}>
+                {vel.toFixed(2)}
+              </Text>
             </View>
           );
         })}
@@ -199,13 +321,17 @@ export default function GraphScreen() {
     if (sessions.length === 0) {
       return (
         <View style={styles.noDataContainer}>
-          <Text style={styles.noDataText}>まだセッションデータがありません</Text>
-          <Text style={styles.noDataSubText}>トレーニングを記録してください</Text>
+          <Text style={styles.noDataText}>
+            まだセッションデータがありません
+          </Text>
+          <Text style={styles.noDataSubText}>
+            トレーニングを記録してください
+          </Text>
         </View>
       );
     }
 
-    const maxVol = Math.max(...sessions.map(s => s.total_volume || 0));
+    const maxVol = Math.max(...sessions.map((s) => s.total_volume || 0));
     return (
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>SESSION VOLUME</Text>
@@ -216,7 +342,12 @@ export default function GraphScreen() {
             <View key={idx} style={styles.barRow}>
               <Text style={styles.barLabel}>{session.date.slice(5)}</Text>
               <View style={styles.barTrack}>
-                <View style={[styles.barFill, { width: `${pct}%`, backgroundColor: GarageTheme.accent }]} />
+                <View
+                  style={[
+                    styles.barFill,
+                    { width: `${pct}%`, backgroundColor: GarageTheme.accent },
+                  ]}
+                />
               </View>
               <Text style={[styles.barValue, { color: GarageTheme.accent }]}>
                 {Math.round(vol).toLocaleString()}
@@ -229,29 +360,105 @@ export default function GraphScreen() {
     );
   };
 
+  const renderDailyE1rmTrend = () => {
+    if (dailyE1rmTrend.length === 0) {
+      return (
+        <View style={styles.noDataContainer}>
+          <Text style={styles.noDataText}>
+            {selectedExercise} の e1RM データがありません
+          </Text>
+          <Text style={styles.noDataSubText}>
+            セット記録が増えると日別推移を表示します
+          </Text>
+        </View>
+      );
+    }
+
+    const maxE1rm = Math.max(...dailyE1rmTrend.map((point) => point.e1rm));
+    const latest = dailyE1rmTrend[dailyE1rmTrend.length - 1];
+    const best = dailyE1rmTrend.reduce(
+      (top, point) => (point.e1rm > top.e1rm ? point : top),
+      dailyE1rmTrend[0],
+    );
+
+    return (
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>{selectedExercise} / DAILY e1RM</Text>
+        <View style={styles.trendSummaryRow}>
+          <View style={styles.trendSummaryCard}>
+            <Text style={styles.trendSummaryLabel}>最新</Text>
+            <Text style={styles.trendSummaryValue}>
+              {latest.e1rm.toFixed(1)} kg
+            </Text>
+            <Text style={styles.trendSummaryMeta}>{latest.label}</Text>
+          </View>
+          <View style={styles.trendSummaryCard}>
+            <Text style={styles.trendSummaryLabel}>最高</Text>
+            <Text style={styles.trendSummaryValue}>
+              {best.e1rm.toFixed(1)} kg
+            </Text>
+            <Text style={styles.trendSummaryMeta}>{best.label}</Text>
+          </View>
+        </View>
+        {dailyE1rmTrend.map((point) => {
+          const pct = maxE1rm > 0 ? (point.e1rm / maxE1rm) * 100 : 0;
+          return (
+            <View key={point.date} style={styles.barRow}>
+              <Text style={styles.barLabel}>{point.label}</Text>
+              <View style={styles.barTrack}>
+                <View
+                  style={[
+                    styles.barFill,
+                    {
+                      width: `${pct}%`,
+                      backgroundColor: GarageTheme.accentSoft,
+                    },
+                  ]}
+                />
+              </View>
+              <View style={styles.e1rmValueWrap}>
+                <Text style={[styles.barValue, styles.e1rmBarValue]}>
+                  {point.e1rm.toFixed(1)}
+                </Text>
+                <Text style={styles.e1rmSetCount}>{point.setCount}set</Text>
+              </View>
+            </View>
+          );
+        })}
+        <Text style={styles.unitLabel}>日次の最高 e1RM を表示</Text>
+      </View>
+    );
+  };
+
   // 最近のセット速度トレンド
   const renderVelocityTrend = () => {
     if (recentSets.length === 0) {
       return (
         <View style={styles.noDataContainer}>
-          <Text style={styles.noDataText}>{selectedExercise} のデータがありません</Text>
+          <Text style={styles.noDataText}>
+            {selectedExercise} のデータがありません
+          </Text>
         </View>
       );
     }
 
     return (
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>{selectedExercise} / VELOCITY TREND</Text>
+        <Text style={styles.sectionTitle}>
+          {selectedExercise} / VELOCITY TREND
+        </Text>
         {recentSets.map((set, idx) => {
           const vel = set.avg_velocity ?? 0;
           const zone = AICoachService.getZone(vel);
           return (
             <View key={idx} style={styles.trendRow}>
               <Text style={styles.trendSetLabel}>#{set.set_index}</Text>
-              <Text style={styles.trendLoad}>{set.load_kg}kg×{set.reps}</Text>
+              <Text style={styles.trendLoad}>
+                {set.load_kg}kg×{set.reps}
+              </Text>
               <View style={styles.trendZone}>
                 <Text style={[styles.trendZoneText, { color: zone.color }]}>
-                  {zone.name}  {vel.toFixed(2)} m/s
+                  {zone.name} {vel.toFixed(2)} m/s
                 </Text>
               </View>
             </View>
@@ -265,36 +472,64 @@ export default function GraphScreen() {
     <ScrollView style={styles.container}>
       <View style={[styles.header, { paddingTop: (insets.top || 0) + 12 }]}>
         <Text style={styles.title}>LVP GRAPH</Text>
-        <TouchableOpacity style={styles.refreshChip} onPress={() => void handleRefresh()}>
+        <TouchableOpacity
+          style={styles.refreshChip}
+          onPress={() => void handleRefresh()}
+        >
           <Text style={styles.refreshChipText}>最新化</Text>
         </TouchableOpacity>
       </View>
 
       {/* 種目選択（カテゴリ起点） */}
-      {activeTab !== 'zones' && exercisesList.length > 0 && (
+      {activeTab !== "zones" && exercisesList.length > 0 && (
         <View style={styles.exercisePickerSection}>
           <Text style={styles.exercisePickerLabel}>CATEGORY / EXERCISE</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.exerciseScroll}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.exerciseScroll}
+          >
             {EXERCISE_SELECTION_GROUPS.map((group) => (
               <TouchableOpacity
                 key={group.id}
-                style={[styles.groupChip, selectedGroup === group.id && styles.groupChipActive]}
+                style={[
+                  styles.groupChip,
+                  selectedGroup === group.id && styles.groupChipActive,
+                ]}
                 onPress={() => setSelectedGroup(group.id)}
               >
-                <Text style={[styles.groupChipText, selectedGroup === group.id && styles.groupChipTextActive]}>
+                <Text
+                  style={[
+                    styles.groupChipText,
+                    selectedGroup === group.id && styles.groupChipTextActive,
+                  ]}
+                >
                   {group.label}
                 </Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.exerciseScroll}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.exerciseScroll}
+          >
             {filteredExercises.map((ex) => (
               <TouchableOpacity
                 key={ex.id}
-                style={[styles.exerciseButton, selectedExercise === ex.name && styles.exerciseButtonActive]}
+                style={[
+                  styles.exerciseButton,
+                  selectedExercise === ex.name && styles.exerciseButtonActive,
+                ]}
                 onPress={() => setSelectedExercise(ex.name)}
               >
-                <Text style={[styles.exerciseButtonText, selectedExercise === ex.name && styles.exerciseButtonTextActive]}>
+                <Text
+                  style={[
+                    styles.exerciseButtonText,
+                    selectedExercise === ex.name &&
+                      styles.exerciseButtonTextActive,
+                  ]}
+                >
                   {ex.name}
                 </Text>
               </TouchableOpacity>
@@ -305,23 +540,30 @@ export default function GraphScreen() {
 
       {/* タブ切替 */}
       <View style={styles.tabBar}>
-        {(['lvp', 'trend', 'zones'] as TabType[]).map(tab => (
+        {(["lvp", "trend", "zones"] as TabType[]).map((tab) => (
           <TouchableOpacity
             key={tab}
             style={[styles.tab, activeTab === tab && styles.tabActive]}
             onPress={() => setActiveTab(tab)}
           >
-            <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>
-              {tab === 'lvp' ? 'LVP' : tab === 'trend' ? '進捗' : '速度ゾーン'}
+            <Text
+              style={[
+                styles.tabText,
+                activeTab === tab && styles.tabTextActive,
+              ]}
+            >
+              {tab === "lvp" ? "LVP" : tab === "trend" ? "進捗" : "速度ゾーン"}
             </Text>
           </TouchableOpacity>
         ))}
       </View>
 
-      {activeTab !== 'zones' && filteredExercises.length === 0 && !loading ? (
+      {activeTab !== "zones" && filteredExercises.length === 0 && !loading ? (
         <View style={styles.noDataContainer}>
           <Text style={styles.noDataText}>種目データがまだありません</Text>
-          <Text style={styles.noDataSubText}>手動入力かセッション記録を作成するとここに表示されます</Text>
+          <Text style={styles.noDataSubText}>
+            手動入力かセッション記録を作成するとここに表示されます
+          </Text>
         </View>
       ) : null}
 
@@ -332,30 +574,54 @@ export default function GraphScreen() {
       ) : (
         <>
           {/* LVPタブ */}
-          {activeTab === 'lvp' && lvpData && (
+          {activeTab === "lvp" && lvpData && (
             <>
               {/* 統計カード */}
               <View style={styles.statsGrid}>
                 <View style={styles.statCard}>
                   <Text style={styles.statLabel}>Vmax</Text>
-                  <Text style={styles.statValue}>{lvpData.vmax.toFixed(2)}</Text>
+                  <Text style={styles.statValue}>
+                    {lvpData.vmax.toFixed(2)}
+                  </Text>
                   <Text style={styles.statUnit}>m/s</Text>
                 </View>
                 <View style={styles.statCard}>
                   <Text style={styles.statLabel}>V@1RM</Text>
-                  <Text style={styles.statValue}>{lvpData.v1rm.toFixed(2)}</Text>
+                  <Text style={styles.statValue}>
+                    {lvpData.v1rm.toFixed(2)}
+                  </Text>
                   <Text style={styles.statUnit}>m/s</Text>
                 </View>
                 <View style={styles.statCard}>
                   <Text style={styles.statLabel}>R²</Text>
-                  <Text style={[styles.statValue, { color: lvpData.r_squared > 0.9 ? GarageTheme.success : GarageTheme.warning }]}>
+                  <Text
+                    style={[
+                      styles.statValue,
+                      {
+                        color:
+                          lvpData.r_squared > 0.9
+                            ? GarageTheme.success
+                            : GarageTheme.warning,
+                      },
+                    ]}
+                  >
                     {lvpData.r_squared.toFixed(2)}
                   </Text>
                   <Text style={styles.statUnit}>適合度</Text>
                 </View>
-                <View style={[styles.statCard, { borderColor: GarageTheme.borderStrong, borderWidth: 1 }]}>
+                <View
+                  style={[
+                    styles.statCard,
+                    { borderColor: GarageTheme.borderStrong, borderWidth: 1 },
+                  ]}
+                >
                   <Text style={styles.statLabel}>推定1RM</Text>
-                  <Text style={[styles.statValue, { color: GarageTheme.accentSoft }]}>
+                  <Text
+                    style={[
+                      styles.statValue,
+                      { color: GarageTheme.accentSoft },
+                    ]}
+                  >
                     {e1rmEstimate?.toFixed(1)}
                   </Text>
                   <Text style={styles.statUnit}>kg</Text>
@@ -368,23 +634,36 @@ export default function GraphScreen() {
           )}
 
           {/* 進捗タブ */}
-          {activeTab === 'trend' && (
+          {activeTab === "trend" && (
             <>
+              {renderDailyE1rmTrend()}
               {renderVolumeTrend()}
               {renderVelocityTrend()}
             </>
           )}
 
           {/* 速度ゾーンタブ */}
-          {activeTab === 'zones' && (
+          {activeTab === "zones" && (
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>速度ゾーンガイド</Text>
               {velocityZones.map((zone) => (
-                <View key={zone.name} style={[styles.zoneCard, { borderLeftColor: zone.color }]}>
-                  <View style={[styles.zoneIndicator, { backgroundColor: zone.color }]} />
+                <View
+                  key={zone.name}
+                  style={[styles.zoneCard, { borderLeftColor: zone.color }]}
+                >
+                  <View
+                    style={[
+                      styles.zoneIndicator,
+                      { backgroundColor: zone.color },
+                    ]}
+                  />
                   <View style={styles.zoneInfo}>
-                    <Text style={[styles.zoneName, { color: zone.color }]}>{zone.name}</Text>
-                    <Text style={styles.zoneRange}>{zone.minV} – {zone.maxV} m/s</Text>
+                    <Text style={[styles.zoneName, { color: zone.color }]}>
+                      {zone.name}
+                    </Text>
+                    <Text style={styles.zoneRange}>
+                      {zone.minV} – {zone.maxV} m/s
+                    </Text>
                     <Text style={styles.zoneDesc}>{zone.desc}</Text>
                   </View>
                 </View>
@@ -399,10 +678,28 @@ export default function GraphScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: GarageTheme.background },
-  header: { padding: 16, borderBottomWidth: 1, borderBottomColor: GarageTheme.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  title: { fontSize: 22, fontWeight: 'bold', color: GarageTheme.textStrong },
-  refreshChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: GarageTheme.border, backgroundColor: GarageTheme.panel },
-  refreshChipText: { color: GarageTheme.textStrong, fontSize: 12, fontWeight: '700' },
+  header: {
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: GarageTheme.border,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  title: { fontSize: 22, fontWeight: "bold", color: GarageTheme.textStrong },
+  refreshChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: GarageTheme.border,
+    backgroundColor: GarageTheme.panel,
+  },
+  refreshChipText: {
+    color: GarageTheme.textStrong,
+    fontSize: 12,
+    fontWeight: "700",
+  },
   exercisePickerSection: {
     paddingHorizontal: 16,
     paddingTop: 16,
@@ -410,17 +707,20 @@ const styles = StyleSheet.create({
   exercisePickerLabel: {
     color: GarageTheme.accentSoft,
     fontSize: 11,
-    fontWeight: '800',
+    fontWeight: "800",
     letterSpacing: 1.5,
     marginBottom: 10,
   },
   tabBar: {
-    flexDirection: 'row', margin: 16, backgroundColor: GarageTheme.surfaceAlt,
-    borderRadius: 10, padding: 4,
+    flexDirection: "row",
+    margin: 16,
+    backgroundColor: GarageTheme.surfaceAlt,
+    borderRadius: 10,
+    padding: 4,
   },
-  tab: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 7 },
+  tab: { flex: 1, paddingVertical: 8, alignItems: "center", borderRadius: 7 },
   tabActive: { backgroundColor: GarageTheme.accent },
-  tabText: { color: GarageTheme.textMuted, fontSize: 14, fontWeight: '600' },
+  tabText: { color: GarageTheme.textMuted, fontSize: 14, fontWeight: "600" },
   tabTextActive: { color: GarageTheme.textStrong },
   exerciseScroll: { marginBottom: 4 },
   groupChip: {
@@ -428,69 +728,150 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: '#3a261d',
-    backgroundColor: '#141414',
+    borderColor: "#3a261d",
+    backgroundColor: "#141414",
     marginRight: 8,
     marginBottom: 10,
   },
   groupChipActive: {
-    backgroundColor: '#5b2515',
+    backgroundColor: "#5b2515",
     borderColor: GarageTheme.accent,
   },
-  groupChipText: { color: GarageTheme.textMuted, fontSize: 12, fontWeight: '700' },
+  groupChipText: {
+    color: GarageTheme.textMuted,
+    fontSize: 12,
+    fontWeight: "700",
+  },
   groupChipTextActive: { color: GarageTheme.textStrong },
   exerciseButton: {
-    paddingHorizontal: 16, paddingVertical: 8,
-    backgroundColor: GarageTheme.surfaceAlt, borderRadius: 20, marginRight: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: GarageTheme.surfaceAlt,
+    borderRadius: 20,
+    marginRight: 8,
   },
-  exerciseButtonActive: { backgroundColor: GarageTheme.panel, borderColor: GarageTheme.accent, borderWidth: 1 },
+  exerciseButtonActive: {
+    backgroundColor: GarageTheme.panel,
+    borderColor: GarageTheme.accent,
+    borderWidth: 1,
+  },
   exerciseButtonText: { color: GarageTheme.textMuted, fontSize: 13 },
-  exerciseButtonTextActive: { color: GarageTheme.textStrong, fontWeight: '600' },
-  loadingContainer: { padding: 60, alignItems: 'center' },
+  exerciseButtonTextActive: {
+    color: GarageTheme.textStrong,
+    fontWeight: "600",
+  },
+  loadingContainer: { padding: 60, alignItems: "center" },
   statsGrid: {
-    flexDirection: 'row', flexWrap: 'wrap',
-    paddingHorizontal: 12, marginBottom: 8,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    paddingHorizontal: 12,
+    marginBottom: 8,
   },
   statCard: {
-    width: '48%', margin: '1%',
-    backgroundColor: GarageTheme.surfaceAlt, borderRadius: 10,
-    padding: 12, alignItems: 'center',
+    width: "48%",
+    margin: "1%",
+    backgroundColor: GarageTheme.surfaceAlt,
+    borderRadius: 10,
+    padding: 12,
+    alignItems: "center",
   },
   statLabel: { fontSize: 11, color: GarageTheme.textMuted, marginBottom: 4 },
-  statValue: { fontSize: 22, fontWeight: 'bold', color: GarageTheme.accent },
+  statValue: { fontSize: 22, fontWeight: "bold", color: GarageTheme.accent },
   statUnit: { fontSize: 11, color: GarageTheme.textSubtle, marginTop: 2 },
   section: { padding: 16 },
-  sectionTitle: { fontSize: 16, fontWeight: 'bold', color: GarageTheme.textStrong, marginBottom: 12 },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: GarageTheme.textStrong,
+    marginBottom: 12,
+  },
   subLabel: { fontSize: 13, color: GarageTheme.textMuted, marginBottom: 12 },
   barsContainer: { gap: 8 },
-  barRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  barLabel: { width: 44, fontSize: 12, color: GarageTheme.textMuted, textAlign: 'right' },
-  barTrack: {
-    flex: 1, height: 18, backgroundColor: GarageTheme.surfaceAlt,
-    borderRadius: 4, overflow: 'hidden',
+  barRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  barLabel: {
+    width: 44,
+    fontSize: 12,
+    color: GarageTheme.textMuted,
+    textAlign: "right",
   },
-  barFill: { height: '100%', borderRadius: 4, minWidth: 4 },
-  barValue: { width: 40, fontSize: 12, textAlign: 'right' },
-  unitLabel: { fontSize: 11, color: GarageTheme.textSubtle, marginTop: 8, textAlign: 'right' },
-  noDataContainer: { padding: 48, alignItems: 'center' },
+  barTrack: {
+    flex: 1,
+    height: 18,
+    backgroundColor: GarageTheme.surfaceAlt,
+    borderRadius: 4,
+    overflow: "hidden",
+  },
+  barFill: { height: "100%", borderRadius: 4, minWidth: 4 },
+  barValue: { width: 40, fontSize: 12, textAlign: "right" },
+  unitLabel: {
+    fontSize: 11,
+    color: GarageTheme.textSubtle,
+    marginTop: 8,
+    textAlign: "right",
+  },
+
+  trendSummaryRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginBottom: 14,
+  },
+  trendSummaryCard: {
+    flex: 1,
+    backgroundColor: GarageTheme.surfaceAlt,
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: GarageTheme.border,
+  },
+  trendSummaryLabel: {
+    fontSize: 11,
+    color: GarageTheme.textMuted,
+    marginBottom: 4,
+  },
+  trendSummaryValue: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: GarageTheme.textStrong,
+  },
+  trendSummaryMeta: {
+    fontSize: 11,
+    color: GarageTheme.textSubtle,
+    marginTop: 2,
+  },
+  e1rmValueWrap: { width: 52, alignItems: "flex-end" },
+  e1rmBarValue: { width: "auto", color: GarageTheme.accentSoft },
+  e1rmSetCount: { fontSize: 10, color: GarageTheme.textSubtle, marginTop: 2 },
+  noDataContainer: { padding: 48, alignItems: "center" },
   noDataText: { fontSize: 16, color: GarageTheme.textMuted, marginBottom: 8 },
-  noDataSubText: { fontSize: 13, color: GarageTheme.textSubtle, textAlign: 'center' },
+  noDataSubText: {
+    fontSize: 13,
+    color: GarageTheme.textSubtle,
+    textAlign: "center",
+  },
   trendRow: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#2a2a2a',
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#2a2a2a",
   },
   trendSetLabel: { width: 28, fontSize: 12, color: GarageTheme.textSubtle },
   trendLoad: { width: 80, fontSize: 13, color: GarageTheme.textStrong },
-  trendZone: { flex: 1, alignItems: 'flex-end' },
-  trendZoneText: { fontSize: 14, fontWeight: '600' },
+  trendZone: { flex: 1, alignItems: "flex-end" },
+  trendZoneText: { fontSize: 14, fontWeight: "600" },
   zoneCard: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: GarageTheme.surfaceAlt, padding: 14,
-    borderRadius: 10, marginBottom: 10, borderLeftWidth: 4,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: GarageTheme.surfaceAlt,
+    padding: 14,
+    borderRadius: 10,
+    marginBottom: 10,
+    borderLeftWidth: 4,
   },
   zoneIndicator: { width: 4, height: 50, borderRadius: 2, marginRight: 12 },
   zoneInfo: { flex: 1 },
-  zoneName: { fontSize: 16, fontWeight: 'bold', marginBottom: 2 },
+  zoneName: { fontSize: 16, fontWeight: "bold", marginBottom: 2 },
   zoneRange: { fontSize: 13, color: GarageTheme.textMuted, marginBottom: 2 },
   zoneDesc: { fontSize: 12, color: GarageTheme.textSubtle },
 });

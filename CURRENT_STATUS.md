@@ -13,7 +13,7 @@
 - Marketing version: `2.3.5`
 - Native iOS build number in `ios/RepVeloCoach/Info.plist`: `76`
 - Expo config build number in `app.config.ts`: `76`
-- Latest known successful TestFlight upload: build `76` (uploaded from this repo; processing delay on App Store Connect is normal)
+- Latest known successful TestFlight upload: build `76` (uploaded from this repo; processing delay on App Store Connect is normal)\n- Latest attempted TestFlight upload: build `77` failed at archive/signing because HealthKit capability is not yet present in the effective provisioning setup on this Mac.
 
 ## Important Mismatch
 - `app.config.ts`, `ios/RepVeloCoach/Info.plist`, and `ios/RepVeloCoach.xcodeproj/project.pbxproj` are now aligned at build `76`.
@@ -87,8 +87,8 @@ These are already enforced in `AGENTS.md`:
 - Record TestFlight build numbers and upload results.
 
 ## Recommended Next Steps
-1. Wait for App Store Connect/TestFlight processing for build `76` (usually 15-30 minutes).
-2. Device-test TestFlight build `76`, focusing on:
+1. Fix HealthKit signing: enable HealthKit on the App ID / regenerate the App Store provisioning profile, or add the correct Apple Developer account in Xcode so automatic signing can update the capability.
+2. Re-run TestFlight upload for build `77` after signing is fixed.\n3. Device-test the next HealthKit-enabled build, focusing on:
    - Recent exercise history card behavior
    - Auto-finish on background feature
    - AI Coach send path
