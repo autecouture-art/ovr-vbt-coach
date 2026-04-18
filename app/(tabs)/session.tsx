@@ -1311,25 +1311,27 @@ export default function SessionScreen() {
               <View style={styles.dataRow}>
                 <Text style={styles.dataLabel}>Mean Power</Text>
                 <Text style={styles.dataValue}>
-                  {`${Math.round(
-                    liveData.mean_power_w ??
-                      VBTLogic.calculatePower(
-                        currentLoad,
-                        liveData.mean_velocity,
-                      ),
-                  )} W`}
+                  {liveData.mean_power_w != null
+                    ? `${Math.round(liveData.mean_power_w)} W`
+                    : `${Math.round(
+                        VBTLogic.calculatePower(
+                          currentLoad,
+                          liveData.mean_velocity,
+                        ),
+                      )} W`}
                 </Text>
               </View>
               <View style={styles.dataRow}>
                 <Text style={styles.dataLabel}>Peak Power</Text>
                 <Text style={styles.dataValue}>
-                  {`${Math.round(
-                    liveData.peak_power_w ??
-                      VBTLogic.calculatePower(
-                        currentLoad,
-                        liveData.peak_velocity,
-                      ),
-                  )} W`}
+                  {liveData.peak_power_w != null
+                    ? `${Math.round(liveData.peak_power_w)} W`
+                    : `${Math.round(
+                        VBTLogic.calculatePower(
+                          currentLoad,
+                          liveData.peak_velocity,
+                        ),
+                      )} W`}
                 </Text>
               </View>
               <TouchableOpacity

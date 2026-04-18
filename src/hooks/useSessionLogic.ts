@@ -532,9 +532,10 @@ export const useSessionLogic = (onPRDetected?: PRCallback, onAutoStart?: AutoSta
             AudioService.announceStopSet(reason);
           }
 
-          // 自動フィニッシュセット - 新しいレップを明示的に渡して最終レップ欠落を防止
-          const nextReps = [...repHistory, newRep];
-          finishSet(nextReps);
+          // 自動フィニッシュセットは無効化 - 警告のみでセット継続を許可
+          // ユーザーが手動でセット完了ボタンを押すまで記録を続ける
+          // const nextReps = [...repHistory, newRep];
+          // finishSet(nextReps);
         }
       }
     },
