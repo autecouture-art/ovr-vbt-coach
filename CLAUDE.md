@@ -18,8 +18,8 @@ are archive/reference only. All edits, scripts, builds, and uploads must come fr
 - App: `RepVelo VBT Coach`
 - Bundle ID: `com.autecouture.repvelocoach.hh`
 - Marketing version: `2.3.5`
-- Latest successful TestFlight upload: build `75`
-- Before the next upload, bump all build-number sources above `75`
+- Latest successful TestFlight upload: build `79`
+- Before the next upload, bump all build-number sources above `79`
 
 ## Mandatory Repo Rules
 

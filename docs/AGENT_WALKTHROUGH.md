@@ -568,6 +568,10 @@ Results:
 Note: For future Claude sessions, use skill-based deployment scripts:
   - Full build + upload: `bash ~/.claude/skills/repvelocoach-testflight/scripts/deploy.sh`
   - Upload existing IPA only: `bash ~/.claude/skills/repvelocoach-testflight/scripts/upload_only.sh`
+- Build 79 uploaded to TestFlight successfully (2026-04-21 08:06:54 JST)
+  - build_app: 195s
+  - upload_to_testflight: 57s
+  - Generated IPA: `ios/fastlane_export/RepVeloCoach.ipa` (20.9 MB)
 Remaining:
 - Device testing needed for all new features:
   - VL warning toggle functionality
