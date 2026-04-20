@@ -529,3 +529,51 @@ Results:
 - Bash commands now execute without confirmation prompts.
 Remaining:
 - User needs to update Apple Developer Program agreement in App Store Connect, then retry TestFlight upload with build 78 or bump to build 79.
+
+## 2026-04-21 (Claude Opus 4.7)
+Scope: Phase 1 & 2 implementation based on user testing feedback (10 improvement items).
+Actions:
+- Created improvement plan at `/Users/hoshinohideyuki/.claude/plans/fluttering-gliding-stallman.md` covering:
+  1. VL警告音のオンオフ機能
+  2. パワー表示修正とピークベロシティ表示追加
+  3. 音量制御実装
+  4. メモリリーク修正（HRポイント配列制限）
+  5. 心拍数シグナル表示（青・黄・赤3色）
+  6. 1eRM予測改善（全レップデータ活用）
+  7. V1RM更新ロジック修正（高負荷優先重み付け回帰）
+  8. 動的速度ゾーン実装（種目別履歴ベース）
+  9. 手動レップ追加モーダル
+  10. 音量調整UI
+- Implemented all Phase 1 (high priority) items:
+  - Added `enable_vl_warning: boolean` to AppSettings with default true
+  - Updated AppSettingsService with new default
+  - Modified useSessionLogic to check enable_vl_warning before announcing VL stop
+  - Added volume control to AudioService (setVolume method, volume parameter in speak)
+  - Fixed memory leak in trainingStore by limiting arrays to 100 items (.slice(-100))
+- Implemented Phase 2 (medium priority) items:
+  - Created HeartRateUtils.ts with recovery signal calculation (blue/yellow/red based on HR% of peak)
+  - Updated VBTCalculations.ts to use weighted regression prioritizing high-load data
+  - Added getDynamicZone async method to AICoachService for exercise-specific zones
+  - Updated RepVelocityChart.tsx to load and display dynamic zones
+  - Created ManualRepModal.tsx for manual rep entry with velocity and load inputs
+- Updated settings.tsx with VL warning toggle and volume adjustment UI (25/50/75/100% buttons)
+- Updated session.tsx with improved power display, peak velocity fallback, and HR signal display
+Results:
+- All 10 improvement items implemented in code
+- TypeScript validation passed
+- Git commit created: `78817b0` - "feat: セッションモード改善（Phase1&2）"
+- Git push to origin/main completed successfully
+- Build 78 IPA already exists from previous build (generated at 06:32 on 2026-04-21)
+- TestFlight upload completed by Codex via skill-based script
+Note: For future Claude sessions, use skill-based deployment scripts:
+  - Full build + upload: `bash ~/.claude/skills/repvelocoach-testflight/scripts/deploy.sh`
+  - Upload existing IPA only: `bash ~/.claude/skills/repvelocoach-testflight/scripts/upload_only.sh`
+Remaining:
+- Device testing needed for all new features:
+  - VL warning toggle functionality
+  - Volume control effectiveness
+  - HR signal color changes during recovery
+  - Improved 1eRM prediction accuracy
+  - V1RM graph updates with high-load priority
+  - Dynamic velocity zones per exercise
+  - Manual rep modal workflow
