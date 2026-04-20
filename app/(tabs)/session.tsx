@@ -34,6 +34,7 @@ import { VBTLogic } from "@/src/services/VBTLogic";
 import { RepDetailModal } from "@/src/components/RepDetailModal";
 import { SetEditModal } from "@/src/components/SetEditModal";
 import { RepVelocityChart } from "@/src/components/RepVelocityChart";
+import { ManualRepModal } from "@/src/components/ManualRepModal";
 import { calculateWarmupSteps, isBig3 } from "@/src/utils/WarmupLogic";
 import {
   formatLoadKg,
@@ -42,6 +43,7 @@ import {
 } from "@/src/constants/exerciseCatalog";
 import { GarageTheme } from "@/src/constants/garageTheme";
 import { estimateRPEFromVelocityLoss } from "@/src/utils/RPECalculator";
+import { calculateRecoverySignal, getPeakHeartRate } from "@/src/utils/HeartRateUtils";
 import {
   VelocityTooltip,
   VELOCITY_GLOSSARY,
@@ -56,6 +58,9 @@ export default function SessionScreen() {
   // PR検知時のモーダル状態
   const [prRecord, setPRRecord] = useState<PRRecord | null>(null);
   const [showPRModal, setShowPRModal] = useState(false);
+
+  // 手動レップ追加モーダル状態
+  const [showManualRepModal, setShowManualRepModal] = useState(false);
 
   // Custom Hook for Logic（PR検知コールバックを渡す）
   const {
@@ -704,46 +709,9 @@ export default function SessionScreen() {
           {/* AIコーチボタン */}
           <TouchableOpacity
             style={styles.coachNavButton}
-            onPress={() =>
-              router.push({
-                pathname: "/coach-chat",
-                params: {
-                  source: "session-live",
-                  message: isSessionActive
-                    ? "次のセットの推奨を教えて"
-                    : "今日のセッション計画を立てて",
-                  currentExercise: currentExercise?.name ?? currentLift ?? "",
-                  currentSet: String(currentSetIndex),
-                  loadKg: String(currentLoad),
-                  reps: String(currentReps),
-                  totalSets: String(setHistory.length),
-                  totalVolume: String(
-                    Math.round(
-                      setHistory.reduce(
-                        (sum, set) => sum + set.load_kg * set.reps,
-                        0,
-                      ),
-                    ),
-                  ),
-                  velocityLoss:
-                    setHistory.length > 0 &&
-                    setHistory[setHistory.length - 1]?.velocity_loss != null
-                      ? String(setHistory[setHistory.length - 1].velocity_loss)
-                      : "",
-                  meanVelocity:
-                    liveData?.mean_velocity != null
-                      ? String(liveData.mean_velocity)
-                      : "",
-                  peakVelocity:
-                    liveData?.peak_velocity != null
-                      ? String(liveData.peak_velocity)
-                      : "",
-                  sessionId: currentSession?.session_id ?? "",
-                },
-              })
-            }
+            onPress={() => router.push('/ai-coach')}
           >
-            <Text style={styles.coachNavButtonText}>COACH</Text>
+            <Text style={styles.coachNavButtonText}>AIコーチ</Text>
           </TouchableOpacity>
         </View>
 
@@ -767,7 +735,23 @@ export default function SessionScreen() {
           {currentHeartRate != null && (
             <View style={styles.hrBadge}>
               <Text style={styles.hrValue}>{Math.round(currentHeartRate)}</Text>
-              <Text style={styles.hrUnit}>bpm (心拍数)</Text>
+              <Text style={styles.hrUnit}>bpm</Text>
+              {(() => {
+                const peakHr =
+                  setHistory.length > 0 && setHistory[setHistory.length - 1].peak_hr
+                    ? setHistory[setHistory.length - 1].peak_hr!
+                    : getPeakHeartRate(sessionHRPoints);
+
+                if (peakHr > 0) {
+                  const signal = calculateRecoverySignal(currentHeartRate, peakHr);
+                  return (
+                    <View style={[styles.signalDot, { backgroundColor: signal.color }]}>
+                      <Text style={styles.signalLabel}>{signal.label}</Text>
+                    </View>
+                  );
+                }
+                return null;
+              })()}
             </View>
           )}
         </View>
@@ -1313,12 +1297,21 @@ export default function SessionScreen() {
                 <Text style={styles.dataValue}>
                   {liveData.mean_power_w != null
                     ? `${Math.round(liveData.mean_power_w)} W`
-                    : `${Math.round(
-                        VBTLogic.calculatePower(
-                          currentLoad,
-                          liveData.mean_velocity,
-                        ),
-                      )} W`}
+                    : liveData.mean_velocity != null
+                      ? `${Math.round(
+                          VBTLogic.calculatePower(
+                            currentLoad,
+                            liveData.mean_velocity,
+                          ),
+                        )} W`
+                      : liveData.peak_velocity != null
+                        ? `${Math.round(
+                            VBTLogic.calculatePower(
+                              currentLoad,
+                              liveData.peak_velocity,
+                            ),
+                          )} W`
+                        : "-"}
                 </Text>
               </View>
               <View style={styles.dataRow}>
@@ -1326,12 +1319,14 @@ export default function SessionScreen() {
                 <Text style={styles.dataValue}>
                   {liveData.peak_power_w != null
                     ? `${Math.round(liveData.peak_power_w)} W`
-                    : `${Math.round(
-                        VBTLogic.calculatePower(
-                          currentLoad,
-                          liveData.peak_velocity,
-                        ),
-                      )} W`}
+                    : liveData.peak_velocity != null
+                      ? `${Math.round(
+                          VBTLogic.calculatePower(
+                            currentLoad,
+                            liveData.peak_velocity,
+                          ),
+                        )} W`
+                      : "-"}
                 </Text>
               </View>
               <TouchableOpacity
@@ -1362,7 +1357,11 @@ export default function SessionScreen() {
 
         {/* レップ毎の平均速度推移グラフ */}
         {isSessionActive && repHistory && repHistory.length > 0 && (
-          <RepVelocityChart reps={repHistory} setIndex={currentSetIndex} />
+          <RepVelocityChart
+            reps={repHistory}
+            setIndex={currentSetIndex}
+            lift={currentLift}
+          />
         )}
 
         {/* Action Buttons */}
@@ -1917,6 +1916,21 @@ const styles = StyleSheet.create({
   },
   hrValue: { fontSize: 16, fontWeight: "bold", color: GarageTheme.danger },
   hrUnit: { fontSize: 10, color: GarageTheme.textMuted },
+  signalDot: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 999,
+    marginLeft: 4,
+  },
+  signalLabel: {
+    fontSize: 9,
+    fontWeight: "bold",
+    color: "#FFF",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
   statusDot: {
     width: 10,
     height: 10,

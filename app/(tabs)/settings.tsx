@@ -507,6 +507,60 @@ export default function SettingsTab() {
             trackColor={{ false: "#3b2b28", true: GarageTheme.accent }}
           />
         </View>
+
+        <View style={styles.toggleRow}>
+          <View>
+            <Text style={styles.toggleLabel}>VL警告音</Text>
+            <Text style={styles.toggleMeta}>
+              Velocity Loss閾値到達時に警告を再生
+            </Text>
+          </View>
+          <Switch
+            value={settings.enable_vl_warning}
+            onValueChange={(value) =>
+              void saveSettings({ ...settings, enable_vl_warning: value })
+            }
+            trackColor={{ false: "#3b2b28", true: GarageTheme.accent }}
+          />
+        </View>
+
+        <View style={styles.toggleRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.toggleLabel}>音量</Text>
+            <Text style={styles.toggleMeta}>
+              現在: {Math.round(settings.audio_volume * 100)}%
+            </Text>
+          </View>
+        </View>
+        <View style={styles.thresholdRow}>
+          {[0.25, 0.5, 0.75, 1.0].map((value) => {
+            const active = settings.audio_volume === value;
+            return (
+              <TouchableOpacity
+                key={value}
+                style={[
+                  styles.thresholdButton,
+                  active && styles.thresholdButtonActive,
+                ]}
+                onPress={() =>
+                  void saveSettings({
+                    ...settings,
+                    audio_volume: value,
+                  })
+                }
+              >
+                <Text
+                  style={[
+                    styles.thresholdText,
+                    active && styles.thresholdTextActive,
+                  ]}
+                >
+                  {Math.round(value * 100)}%
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
       </View>
 
       <View style={styles.card}>

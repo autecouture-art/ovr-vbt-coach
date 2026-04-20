@@ -293,11 +293,12 @@ export const useSessionLogic = (onPRDetected?: PRCallback, onAutoStart?: AutoSta
           }
 
           // === LVP自動更新 ===
-          // 十分なデータポイント（3セット以上）がある場合は線形回帰でLVPを更新
+          // セットごとにLVPを更新して1eRMを常に最新に保つ（1セット以上で更新）
+          // 品質チェックによりR² > 0.7の場合のみ更新 to誤ったLVP計算を防止
           const updatedSetsForLVP = updatedHistory.filter(
             (s) => s.avg_velocity && s.load_kg,
           );
-          if (updatedSetsForLVP.length >= 3) {
+          if (updatedSetsForLVP.length >= 1) {
             const lvp = VBTCalculations.calculateLVP(
               updatedSetsForLVP.map((s) => ({
                 load: s.load_kg,
@@ -306,7 +307,7 @@ export const useSessionLogic = (onPRDetected?: PRCallback, onAutoStart?: AutoSta
               currentExercise?.mvt,
             );
 
-            if (lvp && lvp.r_squared > 0.5) {
+            if (lvp && lvp.r_squared > 0.7) {
               await DatabaseService.saveLVPProfile({
                 ...lvp,
                 lift,
@@ -480,8 +481,10 @@ export const useSessionLogic = (onPRDetected?: PRCallback, onAutoStart?: AutoSta
         lastAcceptedRepAt.current = now;
         addRep(newRep);
 
-        // 6. Intelligent 1RM Estimator (初動レップで計算)
-        if (repHistory.length === 0 && data.mean_velocity > 0) {
+        // 6. Intelligent 1RM Estimator (セッション中の全レップデータを活用)
+        const allReps = [...repHistory, newRep];
+
+        if (data.mean_velocity > 0) {
           const lvp = await DatabaseService.getLVPProfile(currentLift || "");
           if (lvp && lvp.slope < 0) {
             // MVT基準のbaseline 1RMを計算（getVelocityAt1RM経由でmvtを優先）
@@ -490,27 +493,56 @@ export const useSessionLogic = (onPRDetected?: PRCallback, onAutoStart?: AutoSta
 
             // ガード条件1: ウォームアップが軽すぎる場合（例: 30%未満）は予測のブレが大きいため除外
             if (currentLoad >= baseline1RM * 0.3) {
-              const e1rm = VBTCalculations.estimateCurrentDay1RM(
-                currentLoad,
-                data.mean_velocity,
-                lvp,
+              // セッション中の有効なレップデータを収集（高速なレップを優先）
+              const validReps = allReps.filter(
+                (rep) => rep.mean_velocity !== null && rep.mean_velocity > 0
               );
 
-              // ガード条件2: 予測値が異常に変動した場合（例: ベースラインの±30%以上）は外れ値として無視
-              const diffRatio = Math.abs(e1rm - baseline1RM) / baseline1RM;
-              if (diffRatio <= 0.3) {
-                // 信頼度の計算: R² と変動幅に基づく
-                let confidence: "high" | "medium" | "low" = "low";
-                if (lvp.r_squared >= 0.8 && diffRatio <= 0.1) {
-                  confidence = "high";
-                } else if (lvp.r_squared >= 0.6 && diffRatio <= 0.2) {
-                  confidence = "medium";
-                }
-
-                updateVBTIntelligence({
-                  estimated1RM: e1rm,
-                  estimated1RM_confidence: confidence,
+              if (validReps.length > 0) {
+                // 最新のレップ、最高速度のレップ、高負荷のレップを優先的に分析
+                const sortedReps = [...validReps].sort((a, b) => {
+                  // 1. 速度で降順ソート（より良いパフォーマンスを優先）
+                  const velocityDiff = (b.mean_velocity || 0) - (a.mean_velocity || 0);
+                  // 2. 速度が同じ場合は負荷で降順（高負荷を優先）
+                  if (Math.abs(velocityDiff) < 0.01) {
+                    return b.load_kg - a.load_kg;
+                  }
+                  return velocityDiff;
                 });
+
+                // 上位3つのレップで1eRMを推定（平均化して安定性向上）
+                const topReps = sortedReps.slice(0, Math.min(3, sortedReps.length));
+                const e1rmEstimates = topReps.map((rep) =>
+                  VBTCalculations.estimateCurrentDay1RM(
+                    rep.load_kg,
+                    rep.mean_velocity!,
+                    lvp,
+                  )
+                );
+
+                // 中央値を使用して外れ値の影響を低減
+                const sortedEstimates = [...e1rmEstimates].sort((a, b) => a - b);
+                const medianIndex = Math.floor(sortedEstimates.length / 2);
+                const e1rm = sortedEstimates[medianIndex];
+
+                // ガード条件2: 予測値が異常に変動した場合（例: ベースラインの±30%以上）は外れ値として無視
+                const diffRatio = Math.abs(e1rm - baseline1RM) / baseline1RM;
+                if (diffRatio <= 0.3) {
+                  // 信頼度の計算: R² と変動幅、サンプル数に基づく
+                  let confidence: "high" | "medium" | "low" = "low";
+                  const sampleBonus = validReps.length >= 3 ? 0.1 : 0; // 複数レップで信頼度アップ
+
+                  if (lvp.r_squared >= 0.8 && diffRatio <= 0.1 - sampleBonus) {
+                    confidence = "high";
+                  } else if (lvp.r_squared >= 0.6 && diffRatio <= 0.2 - sampleBonus) {
+                    confidence = "medium";
+                  }
+
+                  updateVBTIntelligence({
+                    estimated1RM: e1rm,
+                    estimated1RM_confidence: confidence,
+                  });
+                }
               }
             }
           }
@@ -527,7 +559,7 @@ export const useSessionLogic = (onPRDetected?: PRCallback, onAutoStart?: AutoSta
           paperVL;
 
         if (!isAutoSetupRep && vLoss >= currentVLThreshold) {
-          if (settings.enable_audio_feedback) {
+          if (settings.enable_audio_feedback && settings.enable_vl_warning) {
             const reason = `速度低下率${vLoss.toFixed(1)}%が閾値(${currentVLThreshold}%)を超えました`;
             AudioService.announceStopSet(reason);
           }
@@ -579,6 +611,7 @@ export const useSessionLogic = (onPRDetected?: PRCallback, onAutoStart?: AutoSta
     void loadAppSettings().then((loaded) => {
       if (isMounted.current) {
         updateSettings(loaded);
+        AudioService.setVolume(loaded.audio_volume);
       }
     });
 
@@ -604,6 +637,12 @@ export const useSessionLogic = (onPRDetected?: PRCallback, onAutoStart?: AutoSta
       }
     };
   }, [setConnectionStatus]);
+
+  // --- Audio Volume Update on Settings Change ---
+  useEffect(() => {
+    AudioService.setVolume(settings.audio_volume);
+  }, [settings.audio_volume]);
+
   // --- Heart Rate Monitoring (Polling when Active) ---
   useEffect(() => {
     let hrTimerId: any = null;

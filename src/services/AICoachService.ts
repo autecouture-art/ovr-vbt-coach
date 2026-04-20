@@ -4,7 +4,8 @@
  * 将来的にはLLM APIを呼び出す基盤として設計
  */
 
-import type { SetData, AppSettings } from '../types/index';
+import type { SetData, AppSettings, VelocityZone } from '../types/index';
+import { getDynamicVelocityZones } from '../utils/VelocityZones';
 
 // 速度ゾーンの定義
 const VELOCITY_ZONES = {
@@ -29,13 +30,39 @@ export interface LoadSuggestion {
 
 export class AICoachService {
     /**
-     * 速度ゾーンを返す
+     * 速度ゾーンを返す（固定ゾーン・同期版）
      */
     static getZone(velocity: number): typeof VELOCITY_ZONES[keyof typeof VELOCITY_ZONES] {
         if (velocity >= VELOCITY_ZONES.power.min) return VELOCITY_ZONES.power;
         if (velocity >= VELOCITY_ZONES.strengthSpeed.min) return VELOCITY_ZONES.strengthSpeed;
         if (velocity >= VELOCITY_ZONES.hypertrophy.min) return VELOCITY_ZONES.hypertrophy;
         return VELOCITY_ZONES.strength;
+    }
+
+    /**
+     * 動的速度ゾーンを取得（種目別履歴ベース・非同期版）
+     */
+    static async getDynamicZone(lift: string, velocity: number): Promise<VelocityZone> {
+        try {
+            const zones = await getDynamicVelocityZones(lift);
+            for (const zone of zones) {
+                if (velocity >= zone.min_velocity && velocity < zone.max_velocity) {
+                    return zone;
+                }
+            }
+            // 該当するゾーンが見つからない場合は最も遅いゾーンを返す
+            return zones[zones.length - 1];
+        } catch (error) {
+            console.error('Failed to get dynamic zones, falling back to fixed:', error);
+            // フォールバック: 固定ゾーンを返す
+            return {
+                name: this.getZone(velocity).name.toLowerCase(),
+                min_velocity: 0,
+                max_velocity: velocity,
+                load_range: '',
+                color: this.getZone(velocity).color,
+            };
+        }
     }
 
     /**
@@ -210,6 +237,102 @@ export class AICoachService {
         return `${zone.emoji} ${setHistory.length}セット完了！\n` +
             `平均速度: ${avgVel.toFixed(2)} m/s (${zone.name}ゾーン)\n` +
             `最大重量: ${maxLoad} kg | 総ボリューム: ${Math.round(totalVolume).toLocaleString()} kg`;
+    }
+
+    /**
+     * Parse natural language query for PR challenge
+     * Extracts target weight and optional current weight/velocity from text
+     */
+    static parsePRChallengeQuery(query: string): {
+        targetWeight: number;
+        currentWeight?: number;
+        currentVelocity?: number;
+        exercise?: string;
+    } | null {
+        const lowerQuery = query.toLowerCase();
+
+        // Extract weight numbers (e.g., "110kg", "110キロ", "110 kg")
+        const weightPattern = /(\d+(?:\.\d+)?)\s*(kg|キロ|ｋｇ)/gi;
+        const weights = Array.from(query.matchAll(weightPattern));
+
+        if (weights.length === 0) return null;
+
+        const targetWeight = parseFloat(weights[0][1]);
+        const currentWeight = weights.length > 1 ? parseFloat(weights[1][1]) : undefined;
+
+        // Extract velocity if present (e.g., "0.35m/s", "0.35 m/s", "0.35")
+        const velocityPattern = /(\d+(?:\.\d+)?)\s*(m\/s|meter|メートル)/gi;
+        const velocities = Array.from(query.matchAll(velocityPattern));
+        const currentVelocity = velocities.length > 0 ? parseFloat(velocities[0][1]) : undefined;
+
+        // Extract exercise name (common exercises)
+        const exercises = ['bench', 'squat', 'deadlift', 'ベンチ', 'スクワット', 'デッドリフト', 'ベンチプレス'];
+        const exercise = exercises.find(ex => lowerQuery.includes(ex.toLowerCase()));
+
+        return {
+            targetWeight,
+            currentWeight,
+            currentVelocity,
+            exercise: exercise ? query.substring(query.indexOf(exercise.charAt(0)), query.indexOf(exercise.charAt(0)) + 10) : undefined,
+        };
+    }
+
+    /**
+     * Generate PR challenge advice using calculator
+     */
+    static generatePRChallengeAdvice(
+        targetWeight: number,
+        currentWeight: number | undefined,
+        currentVelocity: number | undefined,
+        lvp: { slope: number; intercept: number; mvt?: number; r_squared: number; sample_count: number }
+    ): CoachingAdvice {
+        const { calculatePRChallenge } = require('../utils/PRChallengeCalculator');
+
+        const result = calculatePRChallenge({
+            targetWeight,
+            currentWeight,
+            currentVelocity,
+            lvp: {
+                slope: lvp.slope,
+                intercept: lvp.intercept,
+                vmax: 0,
+                v1rm: lvp.mvt || 0.15,
+                mvt: lvp.mvt,
+                r_squared: lvp.r_squared,
+                sample_count: lvp.sample_count,
+                last_updated: new Date().toISOString(),
+                lift: '',
+            },
+        });
+
+        let emoji = '🤔';
+        let severity: 'info' | 'warning' | 'success' | 'alert' = 'info';
+
+        if (result.currentWeight && result.currentVelocity) {
+            if (result.velocityGap && result.velocityGap >= 0) {
+                emoji = '🚀';
+                severity = 'success';
+            } else if (result.velocityGap && result.velocityGap > -0.05) {
+                emoji = '💪';
+                severity = 'info';
+            } else {
+                emoji = '🎯';
+                severity = 'warning';
+            }
+        } else if (result.isAchievable) {
+            emoji = '⚡';
+            severity = 'info';
+        } else {
+            emoji = '📊';
+            severity = 'warning';
+        }
+
+        return {
+            message: result.advice,
+            emoji,
+            severity,
+            suggestedAction: result.recommendation,
+        };
     }
 }
 

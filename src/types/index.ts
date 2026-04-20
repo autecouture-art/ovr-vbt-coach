@@ -286,6 +286,7 @@ export interface AppSettings {
   enable_audio_faster_cue: boolean;
   enable_auto_start_session: boolean; // 自動スタートモード
   auto_start_rom_cm: number; // 自動スタートROM閾値 (cm) - デフォルト 5
+  enable_vl_warning: boolean; // VL警告音オンオフ - デフォルト true
 }
 
 // ========================================

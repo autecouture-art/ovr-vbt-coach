@@ -190,9 +190,9 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
   addRep: (rep: RepData) => {
     set((state) => ({
       repHistory: [...state.repHistory, rep],
-      // 心拍数があれば記録ポイントに追加
+      // 心拍数があれば記録ポイントに追加（最新100件に制限）
       setHRPoints: state.currentHeartRate
-        ? [...state.setHRPoints, state.currentHeartRate]
+        ? [...state.setHRPoints, state.currentHeartRate].slice(-100)
         : state.setHRPoints,
     }));
   },
@@ -300,7 +300,7 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
     if (bpm) {
       set((state) => ({
         currentHeartRate: bpm,
-        sessionHRPoints: [...state.sessionHRPoints, bpm],
+        sessionHRPoints: [...state.sessionHRPoints, bpm].slice(-100),
       }));
     } else {
       set({ currentHeartRate: null });

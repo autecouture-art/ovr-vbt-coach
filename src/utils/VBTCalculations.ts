@@ -189,22 +189,25 @@ export function calculateLVP(
   }
 
   const n = dataPoints.length;
-  // Use weighted regression? For now, standard linear.
-  const sumX = dataPoints.reduce((sum, p) => sum + p.load, 0);
-  const sumY = dataPoints.reduce((sum, p) => sum + p.velocity, 0);
-  const sumXY = dataPoints.reduce((sum, p) => sum + p.load * p.velocity, 0);
-  const sumXX = dataPoints.reduce((sum, p) => sum + p.load * p.load, 0);
+  // Weighted regression: 高負荷データを優先（重み = 負荷^2）
+  const weights = dataPoints.map(p => p.load * p.load);
+  const sumW = weights.reduce((sum, w) => sum + w, 0);
+  const sumX = dataPoints.reduce((sum, p, i) => sum + p.load * weights[i], 0);
+  const sumY = dataPoints.reduce((sum, p, i) => sum + p.velocity * weights[i], 0);
+  const sumXY = dataPoints.reduce((sum, p, i) => sum + p.load * p.velocity * weights[i], 0);
+  const sumXX = dataPoints.reduce((sum, p, i) => sum + p.load * p.load * weights[i], 0);
 
-  // Linear regression: y = mx + b
-  const slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
-  const intercept = (sumY - slope * sumX) / n;
+  // Weighted linear regression: y = mx + b
+  const slope = (sumW * sumXY - sumX * sumY) / (sumW * sumXX - sumX * sumX);
+  const intercept = (sumY - slope * sumX) / sumW;
 
-  // Calculate R-squared
-  const meanY = sumY / n;
-  const ssTotal = dataPoints.reduce((sum, p) => sum + Math.pow(p.velocity - meanY, 2), 0);
-  const ssResidual = dataPoints.reduce(
-    (sum, p) => sum + Math.pow(p.velocity - (slope * p.load + intercept), 2),
-    0
+  // Calculate weighted R-squared
+  const meanY = sumY / sumW;
+  const ssTotal = dataPoints.reduce((sum, p, i) =>
+    sum + weights[i] * Math.pow(p.velocity - meanY, 2), 0
+  );
+  const ssResidual = dataPoints.reduce((sum, p, i) =>
+    sum + weights[i] * Math.pow(p.velocity - (slope * p.load + intercept), 2), 0
   );
   const rSquared = 1 - ssResidual / ssTotal;
 
@@ -302,6 +305,64 @@ export function calculateReadiness(
     deltaV: Math.round(deltaV * 1000) / 1000,
     readinessLevel,
     loadAdjustment,
+  };
+}
+
+/**
+ * Calculate performance trend across multiple sessions
+ * Analyzes velocity changes over time to determine if athlete is improving, stable, or declining
+ */
+export function calculateReadinessTrend(
+  sessionData: Array<{ avg_velocity: number; date: string; load_kg: number }>
+): {
+  trend: 'improving' | 'stable' | 'declining';
+  delta_percent: number;
+  confidence: 'high' | 'medium' | 'low';
+} {
+  if (sessionData.length < 2) {
+    return {
+      trend: 'stable',
+      delta_percent: 0,
+      confidence: 'low',
+    };
+  }
+
+  // Split data: recent half vs older half
+  const midPoint = Math.floor(sessionData.length / 2);
+  const recentSessions = sessionData.slice(0, midPoint);
+  const olderSessions = sessionData.slice(midPoint);
+
+  // Calculate average velocity for each half
+  const recentAvg = recentSessions.reduce((sum, s) => sum + s.avg_velocity, 0) / recentSessions.length;
+  const olderAvg = olderSessions.reduce((sum, s) => sum + s.avg_velocity, 0) / olderSessions.length;
+
+  // Calculate percentage change
+  const deltaPercent = ((recentAvg - olderAvg) / olderAvg) * 100;
+
+  // Determine trend
+  let trend: 'improving' | 'stable' | 'declining';
+  if (deltaPercent > 3) {
+    trend = 'improving';
+  } else if (deltaPercent < -3) {
+    trend = 'declining';
+  } else {
+    trend = 'stable';
+  }
+
+  // Determine confidence based on sample size
+  let confidence: 'high' | 'medium' | 'low';
+  if (sessionData.length >= 10) {
+    confidence = 'high';
+  } else if (sessionData.length >= 5) {
+    confidence = 'medium';
+  } else {
+    confidence = 'low';
+  }
+
+  return {
+    trend,
+    delta_percent: Math.round(deltaPercent * 10) / 10,
+    confidence,
   };
 }
 

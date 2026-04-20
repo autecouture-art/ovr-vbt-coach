@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import type { RepData } from '../types/index';
 import AICoachService from '../services/AICoachService';
@@ -6,15 +6,64 @@ import AICoachService from '../services/AICoachService';
 interface Props {
   reps: RepData[];
   setIndex: number;
+  lift?: string;
 }
 
-export function RepVelocityChart({ reps, setIndex }: Props) {
+export function RepVelocityChart({ reps, setIndex, lift }: Props) {
+  const [dynamicZones, setDynamicZones] = useState<Record<number, any>>({});
+  const [loading, setLoading] = useState(true);
+
   const setReps = reps.filter((rep) => rep.set_index === setIndex && !rep.is_excluded);
+
+  // 動的ゾーンを非同期で取得
+  useEffect(() => {
+    if (!lift || setReps.length === 0) {
+      setLoading(false);
+      return;
+    }
+
+    let isMounted = true;
+
+    const loadZones = async () => {
+      try {
+        const zonesMap: Record<number, any> = {};
+        await Promise.all(
+          setReps.map(async (rep) => {
+            if (rep.mean_velocity !== null) {
+              const zone = await AICoachService.getDynamicZone(lift, rep.mean_velocity);
+              zonesMap[rep.rep_index] = zone;
+            }
+          })
+        );
+        if (isMounted) {
+          setDynamicZones(zonesMap);
+          setLoading(false);
+        }
+      } catch (error) {
+        console.error('Failed to load dynamic zones:', error);
+        if (isMounted) setLoading(false);
+      }
+    };
+
+    loadZones();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [lift, setReps]);
 
   if (setReps.length === 0) {
     return (
       <View style={styles.empty}>
         <Text style={styles.emptyText}>まだレップデータがありません</Text>
+      </View>
+    );
+  }
+
+  if (loading && lift) {
+    return (
+      <View style={styles.empty}>
+        <Text style={styles.emptyText}>ゾーン計算中...</Text>
       </View>
     );
   }
@@ -26,14 +75,16 @@ export function RepVelocityChart({ reps, setIndex }: Props) {
       {setReps.map((rep) => {
         const velocity = rep.mean_velocity ?? 0;
         const width = `${Math.max(6, (velocity / maxVelocity) * 100)}%` as `${number}%`;
-        const zone = AICoachService.getZone(velocity);
+        // 動的ゾーンがあれば使用、なければ固定ゾーンを使用
+        const zone = dynamicZones[rep.rep_index] || AICoachService.getZone(velocity);
+        const color = zone.color || zone;
         return (
           <View key={rep.id ?? `${rep.set_index}-${rep.rep_index}`} style={styles.row}>
             <Text style={styles.label}>R{rep.rep_index}</Text>
             <View style={styles.track}>
-              <View style={[styles.fill, { width, backgroundColor: zone.color }]} />
+              <View style={[styles.fill, { width, backgroundColor: color }]} />
             </View>
-            <Text style={[styles.value, { color: zone.color }]}>{velocity.toFixed(2)}</Text>
+            <Text style={[styles.value, { color }]}>{velocity.toFixed(2)}</Text>
           </View>
         );
       })}

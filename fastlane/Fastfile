@@ -7,6 +7,9 @@ OUTPUT_DIRECTORY = 'ios/fastlane_export'
 OUTPUT_NAME = 'RepVeloCoach.ipa'
 BUILD_PATH = 'ios/build'
 ARCHIVE_PATH = 'ios/build/RepVeloCoach.xcarchive'
+PROFILE_NAME = 'RepVeloCoach AppStore HealthKit'
+PROFILE_FILENAME = 'RepVeloCoach_AppStore.mobileprovision'
+CODE_SIGN_IDENTITY = 'Apple Distribution'
 
 default_platform(:ios)
 
@@ -32,8 +35,9 @@ platform :ios do
       app_identifier: APP_IDENTIFIER,
       api_key: api_key,
       team_id: TEAM_ID,
+      provisioning_name: PROFILE_NAME,
       skip_certificate_verification: true,
-      filename: 'RepVeloCoach_AppStore.mobileprovision'
+      filename: PROFILE_FILENAME
     )
 
     build_app(
@@ -47,10 +51,12 @@ platform :ios do
       build_path: BUILD_PATH,
       archive_path: ARCHIVE_PATH,
       export_team_id: TEAM_ID,
-      xcargs: "DEVELOPMENT_TEAM=#{TEAM_ID} CODE_SIGN_STYLE=Automatic -allowProvisioningUpdates",
-      export_xcargs: '-allowProvisioningUpdates',
+      xcargs: "DEVELOPMENT_TEAM=#{TEAM_ID} CODE_SIGN_STYLE=Manual PROVISIONING_PROFILE_SPECIFIER='#{PROFILE_NAME}' CODE_SIGN_IDENTITY='#{CODE_SIGN_IDENTITY}'",
       export_options: {
-        signingStyle: 'automatic'
+        signingStyle: 'manual',
+        provisioningProfiles: {
+          APP_IDENTIFIER => PROFILE_NAME
+        }
       }
     )
 

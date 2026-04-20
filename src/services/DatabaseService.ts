@@ -785,6 +785,33 @@ class DatabaseService {
     return (await this.db.getAllAsync(query, params)) as SetData[];
   }
 
+  /**
+   * Get best velocity at a specific load for PR display
+   * Returns the fastest average velocity achieved at approximately the given load
+   */
+  async getBestVelocityAtLoad(
+    lift: string,
+    loadKg: number
+  ): Promise<{ avg_velocity: number; date: string; reps: number } | null> {
+    if (!(await this.ensureReady())) return null;
+
+    // Query sets within ±0.5kg of target load to find best velocity
+    const result = await this.db.getFirstAsync(
+      `SELECT avg_velocity, timestamp, reps
+       FROM sets
+       WHERE lift = ?
+       AND load_kg >= ?
+       AND load_kg < ?
+       AND avg_velocity IS NOT NULL
+       AND is_warmup = 0
+       ORDER BY avg_velocity DESC
+       LIMIT 1`,
+      [lift, loadKg - 0.5, loadKg + 0.5]
+    ) as { avg_velocity: number; timestamp: string; reps: number } | null;
+
+    return result || null;
+  }
+
   async getSetsForSession(sessionId: string): Promise<SetData[]> {
     if (!(await this.ensureReady())) return [];
 

@@ -8,6 +8,7 @@ import * as Speech from 'expo-speech';
 
 class AudioService {
   private isEnabled: boolean = true;
+  private volume: number = 1.0;
   private soundCache: { [key: string]: Audio.Sound } = {};
 
   async initialize(): Promise<void> {
@@ -28,7 +29,15 @@ class AudioService {
     this.isEnabled = enabled;
   }
 
-  async speak(text: string, language: string = 'ja-JP'): Promise<void> {
+  setVolume(volume: number) {
+    this.volume = Math.max(0, Math.min(1, volume));
+  }
+
+  getVolume(): number {
+    return this.volume;
+  }
+
+  async speak(text: string, language: string = 'ja-JP', volume?: number): Promise<void> {
     if (!this.isEnabled) return;
 
     try {
@@ -36,6 +45,7 @@ class AudioService {
         language,
         rate: 1.1,
         pitch: 1.0,
+        volume: volume ?? this.volume,
       });
     } catch (error) {
       console.error('Speech error:', error);
