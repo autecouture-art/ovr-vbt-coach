@@ -199,7 +199,7 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
 
   completeSet: (setData: SetData) => {
     set((state) => ({
-      setHistory: [...state.setHistory, setData],
+      setHistory: [...state.setHistory, setData].slice(-50), // Keep only last 50 sets
       currentSetIndex: state.currentSetIndex + 1,
       repHistory: [], // Clear reps for next set
       liveData: null,
