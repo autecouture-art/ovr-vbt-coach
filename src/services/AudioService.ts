@@ -6,6 +6,10 @@
 import { Audio } from 'expo-av';
 import * as Speech from 'expo-speech';
 
+// Interruption mode constants for audio ducking
+const INTERRUPTION_MODE_IOS_DUCK_OTHERS = 1; // Audio.InterruptionModeIOS.DuckOthers
+const INTERRUPTION_MODE_ANDROID_DUCK_OTHERS = 1; // Audio.InterruptionModeAndroid.DuckOthers
+
 class AudioService {
   private isEnabled: boolean = true;
   private volume: number = 1.0;
@@ -18,8 +22,11 @@ class AudioService {
         staysActiveInBackground: false,
         allowsRecordingIOS: false,
         shouldDuckAndroid: true,
+        // Duck other audio (music) during voice announcements
+        interruptionModeIOS: INTERRUPTION_MODE_IOS_DUCK_OTHERS,
+        interruptionModeAndroid: INTERRUPTION_MODE_ANDROID_DUCK_OTHERS,
       });
-      console.log('Audio Service initialized');
+      console.log('Audio Service initialized with ducking enabled');
     } catch (error) {
       console.error('Failed to initialize Audio Service:', error);
     }

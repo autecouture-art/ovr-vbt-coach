@@ -784,6 +784,59 @@ export default function SessionScreen() {
           )}
         </View>
 
+        {/* VL Threshold Quick Setting */}
+        {currentExercise && (
+          <View style={styles.vlSettingsCard}>
+            <View style={styles.vlSettingsHeader}>
+              <Text style={styles.vlSettingsTitle}>VL閾値</Text>
+              <View style={styles.vlToggleRow}>
+                <Text style={styles.vlToggleLabel}>オン</Text>
+                <TouchableOpacity
+                  style={[
+                    styles.vlToggleButton,
+                    settings.enable_vl_warning ? styles.vlToggleOn : styles.vlToggleOff,
+                  ]}
+                  onPress={() => updateSettings({ enable_vl_warning: !settings.enable_vl_warning })}
+                >
+                  <View style={[
+                    styles.vlToggleKnob,
+                    settings.enable_vl_warning ? styles.vlToggleKnobOn : styles.vlToggleKnobOff,
+                  ]} />
+                </TouchableOpacity>
+              </View>
+            </View>
+            {settings.enable_vl_warning && (
+              <View style={styles.vlThresholdButtons}>
+                {[10, 15, 20, 25, 30].map((threshold) => {
+                  const currentThreshold = currentExercise.velocity_loss_threshold ?? settings.velocity_loss_threshold;
+                  const isSelected = currentThreshold === threshold;
+                  return (
+                    <TouchableOpacity
+                      key={threshold}
+                      style={[
+                        styles.vlThresholdButton,
+                        isSelected ? styles.vlThresholdButtonSelected : styles.vlThresholdButtonUnselected,
+                      ]}
+                      onPress={async () => {
+                        const updatedExercise = { ...currentExercise, velocity_loss_threshold: threshold };
+                        setCurrentExercise(updatedExercise);
+                        await ExerciseService.updateExercise(updatedExercise);
+                      }}
+                    >
+                      <Text style={[
+                        styles.vlThresholdButtonText,
+                        isSelected ? styles.vlThresholdButtonTextSelected : styles.vlThresholdButtonTextUnselected,
+                      ]}>
+                        {threshold}%
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            )}
+          </View>
+        )}
+
         {/* Training Cue & Focus Note */}
         {currentExercise &&
           (currentExercise.training_cue || currentExercise.focus_note) && (
@@ -2975,5 +3028,88 @@ const styles = StyleSheet.create({
     color: GarageTheme.textMuted,
     letterSpacing: 0.4,
     textTransform: "uppercase",
+  },
+  // VL設定カード
+  vlSettingsCard: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+    padding: 14,
+    backgroundColor: GarageTheme.surface,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: GarageTheme.border,
+  },
+  vlSettingsHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
+  vlSettingsTitle: {
+    fontSize: 12,
+    fontWeight: "bold",
+    color: GarageTheme.textMuted,
+    letterSpacing: 0.6,
+  },
+  vlToggleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
+  vlToggleLabel: {
+    fontSize: 13,
+    color: GarageTheme.textStrong,
+    fontWeight: "600",
+  },
+  vlToggleButton: {
+    width: 48,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: GarageTheme.border,
+    padding: 2,
+  },
+  vlToggleButtonOn: {
+    backgroundColor: GarageTheme.accent,
+  },
+  vlToggleKnob: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: GarageTheme.textStrong,
+    shadowColor: "#000",
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
+  },
+  vlToggleKnobOn: {
+    alignSelf: "flex-end",
+    backgroundColor: GarageTheme.background,
+  },
+  vlThresholdButtons: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  vlThresholdButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: GarageTheme.background,
+    borderWidth: 1,
+    borderColor: GarageTheme.border,
+  },
+  vlThresholdButtonSelected: {
+    backgroundColor: GarageTheme.accent + "20",
+    borderColor: GarageTheme.accent,
+  },
+  vlThresholdButtonText: {
+    fontSize: 12,
+    color: GarageTheme.textMuted,
+    fontWeight: "700",
+  },
+  vlThresholdButtonTextSelected: {
+    color: GarageTheme.accent,
   },
 });
