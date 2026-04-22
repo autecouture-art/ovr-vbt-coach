@@ -33,7 +33,7 @@
 		</dict>
 	</array>
 	<key>CFBundleVersion</key>
-	<string>79</string>
+	<string>80</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>LSMinimumSystemVersion</key>
@@ -53,14 +53,14 @@
 	<string>This app uses Bluetooth to connect to RepVelo Velocity sensors.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>This app uses the camera to record your workout videos for form analysis.</string>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>This app may use location services for enhanced training features.</string>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>Allow $(PRODUCT_NAME) to access your microphone.</string>
 	<key>NSHealthShareUsageDescription</key>
 	<string>RepVelo Coach reads your heart rate during training and saves workout data so your rest timing and session analysis stay accurate.</string>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>RepVelo Coach writes workout sessions to Health so live heart rate from supported Apple devices can be used during training.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>This app may use location services for enhanced training features.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Allow $(PRODUCT_NAME) to access your microphone.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>This app saves workout videos to your photo library.</string>
 	<key>NSUserActivityTypes</key>
