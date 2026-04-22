@@ -581,3 +581,33 @@ Remaining:
   - V1RM graph updates with high-load priority
   - Dynamic velocity zones per exercise
   - Manual rep modal workflow
+- Dynamic zone accuracy across different exercises
+  - Manual rep modal usability
+
+## 2026-04-22 (Claude Opus 4.7)
+Scope: Fix 6 new issues from user testing, VL settings UI relocation, audio ducking.
+Actions:
+- Fixed performance issue: Limited setHistory array to 50 items in trainingStore (completeSet)
+- Fixed first session recording twice issue: Auto-start functionality investigation (found enable_auto_start_session defaults to false)
+- Added VL settings UI to session screen with toggle switch and threshold buttons (10%, 15%, 20%, 25%, 30%)
+- Implemented audio ducking for voice announcements on iOS and Android:
+  - Added INTERRUPTION_MODE_IOS_DUCK_OTHERS and INTERRUPTION_MODE_ANDROID_DUCK_OTHERS to AudioService
+  - Music volume will automatically lower during voice announcements
+- Investigated session history power display: Confirmed calculation logic is correct (fallbacks from trackedReps → avg_power_w → calculated from avg_velocity)
+Results:
+- VL settings UI added to session.tsx with full styling
+- Audio ducking enabled via interruptionMode configuration
+- TypeScript validation passed
+- Git commits:
+  - `c89635c` - "feat: セッション画面にVL設定UIを追加、音声ダッキングを実装"
+  - `9bc01da` - "Bump iOS build number to 80 for TestFlight"
+- Git push to origin/main completed
+- TestFlight upload completed successfully (build 80, 2026-04-22 12:56:53 - 13:01:04 JST)
+  - build_app: 195s
+  - upload_to_testflight: 57s
+  - Generated IPA: `ios/fastlane_export/RepVeloCoach.ipa`
+Remaining:
+- Device testing needed for:
+  - VL settings UI functionality in session screen
+  - Audio ducking effectiveness during voice announcements
+  - Performance improvements in long sessions

@@ -3,7 +3,7 @@
 ## Canonical Workspace
 - Repo root: /Volumes/0RICON_APP/Developer/MyFiles/repvelocoach-git-sync-20260320/repo
 - Branch: main
-- HEAD at record time: ec178af (`Bump iOS build number to 76 for TestFlight`)
+- HEAD at record time: 9bc01da (`Bump iOS build number to 80 for TestFlight`)
 - Treat this repo as the only active source of truth.
 - Legacy folders such as `/Volumes/0RICON_APP/Developer/MyFiles/RepVeloCoach` and `/Volumes/0RICON_APP/Developer/MyFiles/ovr-vbt-coach-local` are reference/archive only unless explicitly proven newer.
 
@@ -11,31 +11,45 @@
 - App name: RepVelo VBT Coach
 - iOS bundle id: `com.autecouture.repvelocoach.hh`
 - Marketing version: `2.3.5`
-- Native iOS build number in `ios/RepVeloCoach/Info.plist`: `76`
-- Expo config build number in `app.config.ts`: `76`
-- Latest known successful TestFlight upload: build `76` (uploaded from this repo; processing delay on App Store Connect is normal)\n- Latest attempted TestFlight upload: build `77` failed at archive/signing because HealthKit capability is not yet present in the effective provisioning setup on this Mac.
+- Native iOS build number in `ios/RepVeloCoach/Info.plist`: `80`
+- Expo config build number in `app.config.ts`: `80`
+- Latest successful TestFlight upload: build `80` (uploaded 2026-04-22 13:01:04 JST)
 
-## Important Mismatch
-- `app.config.ts`, `ios/RepVeloCoach/Info.plist`, and `ios/RepVeloCoach.xcodeproj/project.pbxproj` are now aligned at build `76`.
-- Before the next release, bump to a value higher than `76` and keep all three sources synchronized.
+## Build Number Status
+- `app.config.ts`, `ios/RepVeloCoach/Info.plist`, and `ios/RepVeloCoach.xcodeproj/project.pbxproj` are aligned at build `80`.
+- For the next release, bump to a value higher than `80` and keep all three sources synchronized.
 
 ## Current Working Tree
 - Working tree was clean immediately before the successful build `76` upload.
 
-## What Was Implemented Recently
-- Added direct GLM mode using locally stored API key and API URL.
-- Added verification path for GLM connectivity in AI Coach screen.
-- Added fallback between Anthropic-compatible and OpenAI-compatible Z.AI endpoints.
-- Added richer AI Coach error reporting instead of a generic failure only.
-- Added immediate post-set refresh logic so set detail becomes visible sooner after finishing a set.
-- Added per-set 1RM update logic in session flow.
-- Added recording-state visual frame in session mode.
-- Reduced exercise category chip height and improved exercise selection behavior.
-- Adjusted audio session behavior to reduce music interruption side effects.
-- Added persisted settings toggles for warmup recommendations, rep count readout, velocity readout, and the "もっと速く" cue.
-- Added per-exercise setup-rep handling with `ignore_first_rep_as_setup` and session-side setup exclusion.
-- Expanded session history with exercise labels, power, and mini velocity charts.
-- Added post-hoc set weight editing and tied set-history updates to `lift + set_index`.
+## What Was Implemented Recently (Build 80)
+- **Phase 1 & 2 Improvements** (build 78):
+  - VL warning toggle in settings
+  - Volume control UI (25/50/75/100%)
+  - Memory leak fix (array slicing)
+  - HR recovery signal display (blue/yellow/red)
+  - 1eRM prediction improvement
+  - Dynamic velocity zones
+  - Manual rep entry modal
+- **Build 79 Fixes**:
+  - Performance issue: Fixed setHistory memory leak (limited to 50 sets)
+  - First session recording twice: Investigated auto-start functionality
+- **Build 80 Improvements**:
+  - VL settings UI added to session screen (toggle + threshold buttons)
+  - Audio ducking implemented for iOS/Android (music lowers during voice announcements)
+  - TrainingStore optimized with array size limits
+- Previous implementations:
+  - Direct GLM mode with local API key
+  - AI Coach error reporting improvements
+  - Post-set refresh logic
+  - Per-set 1RM update
+  - Recording-state visual frame
+  - Exercise selection improvements
+  - Audio session behavior adjustments
+  - Persisted settings toggles
+  - Per-exercise setup-rep handling
+  - Session history expansion with power display
+  - Post-hoc set weight editing
 
 ## Known Problems To Continue From
 - AI Coach direct mode now classifies Z.AI `401` responses more clearly; the latest device screenshot indicates the stored API key is invalid or expired, not that the endpoint is unreachable.
@@ -54,9 +68,9 @@
 - Session heart-rate UI now accepts HealthKit live updates through `currentHeartRate` and shows them in the session telemetry area and rest timer.
 
 ## Validation Status
-- TypeScript check passed after the latest GLM history normalization change: `pnpm -s tsc --noEmit`
-- TestFlight upload succeeded for version `2.3.5` build `76`.
-- Build numbers are now aligned across all three sources (app.config.ts, Info.plist, project.pbxproj).
+- TypeScript check passed: `pnpm -s tsc --noEmit`
+- TestFlight upload succeeded for version `2.3.5` build `80`.
+- Build numbers are aligned across all three sources (app.config.ts, Info.plist, project.pbxproj) at `80`.
 - Real-device verification is still required for:
   - AI Coach live send success
   - Session detail appearing immediately after set completion
@@ -87,12 +101,12 @@ These are already enforced in `AGENTS.md`:
 - Record TestFlight build numbers and upload results.
 
 ## Recommended Next Steps
-1. Fix HealthKit signing: enable HealthKit on the App ID / regenerate the App Store provisioning profile, or add the correct Apple Developer account in Xcode so automatic signing can update the capability.
-2. Re-run TestFlight upload for build `77` after signing is fixed.\n3. Device-test the next HealthKit-enabled build, focusing on:
-   - Recent exercise history card behavior
-   - Auto-finish on background feature
-   - AI Coach send path
-   - Session detail appearing immediately after set completion
-   - Category/exercise picker usability
-   - Audio interruption and resume behavior
-3. Only after device verification, decide the next build bump and next TestFlight upload.
+1. Device-test build 80 focusing on:
+   - VL settings UI functionality (toggle and threshold buttons)
+   - Audio ducking effectiveness during voice announcements
+   - Performance improvements in long sessions (50+ sets)
+   - Session history power display accuracy
+   - Auto-start functionality
+   - First session recording behavior
+2. Monitor TestFlight processing (usually 15-30 minutes) and verify build appears in TestFlight
+3. After device verification, decide next improvements based on user feedback
