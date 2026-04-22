@@ -693,27 +693,101 @@ export default function SessionScreen() {
     <View
       style={[styles.screenFrame, isMeasuring && styles.screenFrameRecording]}
     >
-      <ScrollView style={styles.container}>
-        <View style={[styles.header, { paddingTop: (insets.top || 0) + 12 }]}>
-          <TouchableOpacity
-            onPress={() =>
-              navigationState.canGoBack()
-                ? router.back()
-                : router.replace("/(tabs)")
-            }
-            style={styles.backButton}
-          >
-            <Text style={styles.backButtonText}>← 戻る</Text>
-          </TouchableOpacity>
-          <Text style={styles.title}>セッション</Text>
-          {/* AIコーチボタン */}
-          <TouchableOpacity
-            style={styles.coachNavButton}
-            onPress={() => router.push('/ai-coach')}
-          >
-            <Text style={styles.coachNavButtonText}>AIコーチ</Text>
-          </TouchableOpacity>
+      {isMeasuring ? (
+        // フォーカスモード：セット記録中のシンプルUI
+        <View style={styles.focusModeContainer}>
+          <View style={[styles.focusModeHeader, { paddingTop: (insets.top || 0) + 12 }]}>
+            <TouchableOpacity
+              onPress={() => setPaused(true, "manual")}
+              style={styles.focusModeBackButton}
+            >
+              <Text style={styles.focusModeBackButtonText}>⏸</Text>
+            </TouchableOpacity>
+            <Text style={styles.focusModeTitle}>SET {currentSetIndex}</Text>
+            <TouchableOpacity
+              onPress={handleFinishSet}
+              style={styles.focusModeCompleteButton}
+            >
+              <Text style={styles.focusModeCompleteButtonText}>完了</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* 速度表示メインエリア */}
+          <View style={styles.focusModeVelocityArea}>
+            {liveData?.mean_velocity ? (
+              <>
+                <Text style={styles.focusModeVelocityValue}>
+                  {liveData.mean_velocity.toFixed(2)}
+                </Text>
+                <Text style={styles.focusModeVelocityUnit}>m/s</Text>
+              </>
+            ) : (
+              <Text style={styles.focusModeWaitingText}>レップ待機中...</Text>
+            )}
+          </View>
+
+          {/* レップカウンター */}
+          <View style={styles.focusModeRepCounter}>
+            <Text style={styles.focusModeRepCount}>{repHistory.length}</Text>
+            <Text style={styles.focusModeRepLabel}>REPS</Text>
+          </View>
+
+          {/* ゾーンインジケーター */}
+          {liveData?.mean_velocity && (
+            <View style={styles.focusModeZoneIndicator}>
+              {(() => {
+                const zone = AICoachService.getZone(liveData.mean_velocity);
+                return (
+                  <View style={[styles.focusModeZoneBadge, { borderColor: zone.color }]}>
+                    <Text style={[styles.focusModeZoneEmoji, { color: zone.color }]}>
+                      {zone.emoji}
+                    </Text>
+                    <Text style={[styles.focusModeZoneName, { color: zone.color }]}>
+                      {zone.name}
+                    </Text>
+                  </View>
+                );
+              })()}
+            </View>
+          )}
+
+          {/* 心拍数表示 */}
+          {currentHeartRate != null && (
+            <View style={styles.focusModeHrDisplay}>
+              <Text style={styles.focusModeHrIcon}>❤️</Text>
+              <Text style={styles.focusModeHrValue}>{Math.round(currentHeartRate)}</Text>
+            </View>
+          )}
+
+          {/* 重量表示 */}
+          <View style={styles.focusModeLoadDisplay}>
+            <Text style={styles.focusModeLoadValue}>{formatLoadKg(currentLoad)}</Text>
+            <Text style={styles.focusModeLoadUnit}>kg</Text>
+          </View>
         </View>
+      ) : (
+        // 通常モード
+        <ScrollView style={styles.container}>
+          <View style={[styles.header, { paddingTop: (insets.top || 0) + 12 }]}>
+            <TouchableOpacity
+              onPress={() =>
+                navigationState.canGoBack()
+                  ? router.back()
+                  : router.replace("/(tabs)")
+              }
+              style={styles.backButton}
+            >
+              <Text style={styles.backButtonText}>← 戻る</Text>
+            </TouchableOpacity>
+            <Text style={styles.title}>セッション</Text>
+            {/* AIコーチボタン */}
+            <TouchableOpacity
+              style={styles.coachNavButton}
+              onPress={() => router.push('/ai-coach')}
+            >
+              <Text style={styles.coachNavButtonText}>AIコーチ</Text>
+            </TouchableOpacity>
+          </View>
 
         {/* Connection Status */}
         <View style={styles.statusCard}>
@@ -1810,6 +1884,76 @@ export default function SessionScreen() {
           />
         )}
       </ScrollView>
+      )}
+
+      {/* モーダル - フォーカスモード時も表示 */}
+      <ExerciseSelectModal
+        visible={showExerciseModal}
+        onClose={() => setShowExerciseModal(false)}
+        onSelect={handleExerciseSelect}
+        currentExerciseId={currentExercise?.id}
+      />
+
+      <PRNotification
+        visible={showPRModal}
+        prRecord={prRecord}
+        onClose={() => setShowPRModal(false)}
+      />
+
+      <RepDetailModal
+        visible={repDetailVisible}
+        reps={historicalSessionReps?.reps ?? sessionAllReps}
+        setIndex={selectedSetIndex}
+        lift={selectedSetLift}
+        loadKg={selectedSet?.load_kg}
+        onClose={() => setRepDetailVisible(false)}
+        onEditSetLoad={
+          selectedSet && !historicalSessionReps
+            ? () => handleEditSetLoad(selectedSet)
+            : undefined
+        }
+        onExcludeRep={!historicalSessionReps ? handleExclude : undefined}
+        onMarkFailedRep={
+          !historicalSessionReps ? handleMarkFailedRep : undefined
+        }
+        onMarkSetupRep={
+          !historicalSessionReps ? handleMarkSetupRep : undefined
+        }
+        onAddMissedRep={
+          !historicalSessionReps ? handleAddMissedRep : undefined
+        }
+      />
+
+      <SetEditModal
+        visible={Boolean(editingSet)}
+        setItem={editingSet}
+        onClose={() => setEditingSet(null)}
+        onSave={handleSaveSetEdits}
+      />
+
+      <ManualRepModal
+        visible={showManualRepModal}
+        onClose={() => setShowManualRepModal(false)}
+        onAdd={(rep) => {
+          handleAddMissedRep(rep);
+          setShowManualRepModal(false);
+        }}
+        currentLoad={currentLoad}
+        currentSetIndex={currentSetIndex}
+        currentLift={currentLift || "Unknown"}
+      />
+
+      {!isMeasuring && tooltipData && (
+        <VelocityTooltip
+          visible={tooltipVisible}
+          onClose={() => setTooltipVisible(false)}
+          term={tooltipData.term}
+          definition={tooltipData.definition}
+          targetRange={tooltipData.targetRange}
+          currentStatus={tooltipData.currentStatus}
+          currentValue={tooltipData.currentValue}
+        />
+      )}
     </View>
   );
 }
@@ -3111,5 +3255,143 @@ const styles = StyleSheet.create({
   },
   vlThresholdButtonTextSelected: {
     color: GarageTheme.accent,
+  },
+  // フォーカスモードスタイル
+  focusModeContainer: {
+    flex: 1,
+    backgroundColor: GarageTheme.background,
+  },
+  focusModeHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: GarageTheme.borderStrong,
+  },
+  focusModeBackButton: {
+    padding: 12,
+  },
+  focusModeBackButtonText: {
+    fontSize: 28,
+    color: GarageTheme.textStrong,
+  },
+  focusModeTitle: {
+    fontSize: 24,
+    fontWeight: "800",
+    color: GarageTheme.textStrong,
+    letterSpacing: 2,
+  },
+  focusModeCompleteButton: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    backgroundColor: GarageTheme.success,
+    borderRadius: 24,
+  },
+  focusModeCompleteButtonText: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: GarageTheme.textStrong,
+    letterSpacing: 0.5,
+  },
+  focusModeVelocityArea: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 8,
+  },
+  focusModeVelocityValue: {
+    fontSize: 120,
+    fontWeight: "900",
+    color: GarageTheme.success,
+    letterSpacing: 4,
+    fontVariant: ["tabular-nums"],
+  },
+  focusModeVelocityUnit: {
+    fontSize: 32,
+    fontWeight: "700",
+    color: GarageTheme.textMuted,
+    letterSpacing: 2,
+  },
+  focusModeWaitingText: {
+    fontSize: 24,
+    fontWeight: "700",
+    color: GarageTheme.textMuted,
+    letterSpacing: 1,
+  },
+  focusModeRepCounter: {
+    position: "absolute",
+    top: 100,
+    right: 30,
+    alignItems: "center",
+  },
+  focusModeRepCount: {
+    fontSize: 72,
+    fontWeight: "900",
+    color: GarageTheme.accent,
+    fontVariant: ["tabular-nums"],
+  },
+  focusModeRepLabel: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: GarageTheme.textMuted,
+    letterSpacing: 2,
+  },
+  focusModeZoneIndicator: {
+    position: "absolute",
+    bottom: 180,
+    alignSelf: "center",
+  },
+  focusModeZoneBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 24,
+    backgroundColor: GarageTheme.surface,
+    borderWidth: 3,
+  },
+  focusModeZoneEmoji: {
+    fontSize: 28,
+  },
+  focusModeZoneName: {
+    fontSize: 18,
+    fontWeight: "800",
+  },
+  focusModeHrDisplay: {
+    position: "absolute",
+    bottom: 120,
+    left: 30,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  focusModeHrIcon: {
+    fontSize: 24,
+  },
+  focusModeHrValue: {
+    fontSize: 32,
+    fontWeight: "800",
+    color: GarageTheme.danger,
+    fontVariant: ["tabular-nums"],
+  },
+  focusModeLoadDisplay: {
+    position: "absolute",
+    bottom: 120,
+    right: 30,
+    alignItems: "flex-end",
+  },
+  focusModeLoadValue: {
+    fontSize: 48,
+    fontWeight: "900",
+    color: GarageTheme.textStrong,
+    fontVariant: ["tabular-nums"],
+  },
+  focusModeLoadUnit: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: GarageTheme.textMuted,
   },
 });
