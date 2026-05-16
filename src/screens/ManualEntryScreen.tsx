@@ -16,38 +16,80 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import DatabaseService from "../services/DatabaseService";
 import ExerciseService from "../services/ExerciseService";
+import { loadAppSettings } from "../services/AppSettingsService";
 import VBTCalculations from "../utils/VBTCalculations";
+import DeterministicVBTCoach from "../services/DeterministicVBTCoach";
 import { ExerciseSelectModal } from "../components/ExerciseSelectModal";
 import { getExerciseCategoryLabel } from "../constants/exerciseCatalog";
 import { GarageTheme } from "../constants/garageTheme";
 import { SetData, RepData, SetType, Exercise } from "../types/index";
 import { createSessionId, formatSessionLabel } from "../utils/session";
+import {
+  getBlockWeekPlan,
+  getPhaseForBlockWeek,
+  getPowerliftingProtocol,
+  getTopSingleTargetText,
+} from "../utils/PowerliftingVBTProtocol";
 
 interface ManualEntryScreenProps {
   navigation: any;
 }
+
+type SupersetSlot = "active" | "A" | "B";
+
+const formatRelativeTime = (timestamp?: string | null): string => {
+  if (!timestamp) return "前回日時なし";
+
+  const diffMs = Date.now() - new Date(timestamp).getTime();
+  if (!Number.isFinite(diffMs) || diffMs < 0) return "前回日時なし";
+
+  const minutes = Math.floor(diffMs / 60000);
+  if (minutes < 60) return `${Math.max(minutes, 1)}分前`;
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}時間前`;
+
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}日前`;
+
+  const months = Math.floor(days / 30);
+  return `${months}ヶ月前`;
+};
 
 const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({
   navigation,
 }) => {
   const insets = useSafeAreaInsets();
   const [sessionId] = useState(() => createSessionId());
-  const [lift, setLift] = useState("ベンチプレス");
+  const [lift, setLift] = useState("Bench Press");
   const [setIndex, setSetIndex] = useState(1);
   const [loadKg, setLoadKg] = useState("");
   const [reps, setReps] = useState("");
   const [rpe, setRpe] = useState("");
+  const [avgVelocity, setAvgVelocity] = useState("");
+  const [velocityLoss, setVelocityLoss] = useState("");
+  const [romCm, setRomCm] = useState("");
   const [setType, setSetType] = useState<SetType>("normal");
   const [notes, setNotes] = useState("");
   const [savedSets, setSavedSets] = useState<SetData[]>([]);
   const [recentLiftSets, setRecentLiftSets] = useState<SetData[]>([]);
+  const [saveStatus, setSaveStatus] = useState<string | null>(null);
   const [selectedExercise, setSelectedExercise] = useState<Exercise | null>(
     null,
   );
+  const [supersetExerciseA, setSupersetExerciseA] =
+    useState<Exercise | null>(null);
+  const [supersetExerciseB, setSupersetExerciseB] =
+    useState<Exercise | null>(null);
+  const [exerciseSelectSlot, setExerciseSelectSlot] =
+    useState<SupersetSlot>("active");
   const [showExerciseModal, setShowExerciseModal] = useState(false);
+  const [blockWeek, setBlockWeek] = useState(5);
 
   const setTypes: { value: SetType; label: string }[] = [
     { value: "normal", label: "通常" },
+    { value: "top_single", label: "トップS" },
+    { value: "backoff", label: "バックオフ" },
     { value: "amrap", label: "AMRAP" },
     { value: "drop", label: "ドロップ" },
     { value: "superset_A", label: "スーパーA" },
@@ -56,20 +98,131 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({
 
   const parsedLoadKg = loadKg ? parseFloat(loadKg) : null;
   const parsedReps = reps ? parseInt(reps, 10) : null;
+  const parsedAvgVelocity = avgVelocity ? parseFloat(avgVelocity) : null;
+  const parsedVelocityLoss = velocityLoss ? parseFloat(velocityLoss) : null;
+  const parsedRomCm = romCm ? parseFloat(romCm) : null;
+  const hasValidManualVbtMetrics =
+    (parsedAvgVelocity == null ||
+      (!isNaN(parsedAvgVelocity) &&
+        parsedAvgVelocity > 0 &&
+        parsedAvgVelocity <= 3)) &&
+    (parsedVelocityLoss == null ||
+      (!isNaN(parsedVelocityLoss) &&
+        parsedVelocityLoss >= 0 &&
+        parsedVelocityLoss <= 80)) &&
+    (parsedRomCm == null ||
+      (!isNaN(parsedRomCm) && parsedRomCm > 0 && parsedRomCm <= 200));
+  const isSuperset = setType === "superset_A" || setType === "superset_B";
+  const manualPhase = useMemo(() => getPhaseForBlockWeek(blockWeek), [blockWeek]);
+  const manualProtocol = useMemo(
+    () => getPowerliftingProtocol(selectedExercise?.category, manualPhase),
+    [manualPhase, selectedExercise?.category],
+  );
+  const blockWeekPlan = useMemo(
+    () => getBlockWeekPlan(blockWeek, selectedExercise?.category),
+    [blockWeek, selectedExercise?.category],
+  );
+  const topSingleTargetText = useMemo(
+    () => getTopSingleTargetText(selectedExercise?.mvt, manualProtocol),
+    [manualProtocol, selectedExercise?.mvt],
+  );
+  const setTypeGuidance = useMemo(() => {
+    if (setType === "top_single") {
+      return {
+        title: "トップシングル",
+        body: `当日の状態確認用の1回。目安は ${topSingleTargetText}。失敗試技は作らず、フォーム優先で止めます。`,
+      };
+    }
+
+    if (setType === "backoff") {
+      return {
+        title: "バックオフ",
+        body: `この種目の目安はVL ${manualProtocol.backoffVelocityLoss.min}〜${manualProtocol.backoffVelocityLoss.max}%まで。手動日はRPEとメモで失速感を残します。`,
+      };
+    }
+
+    if (isSuperset) {
+      return {
+        title: "スーパーセット",
+        body: "A/Bを交互に保存します。セット番号はB保存後に進むので、同じラウンドとして追えます。",
+      };
+    }
+
+    return {
+      title: manualProtocol.phaseLabel,
+      body: manualProtocol.guidance,
+    };
+  }, [isSuperset, manualProtocol, setType, topSingleTargetText]);
+  const draftSet = useMemo<SetData | null>(() => {
+    if (!parsedLoadKg || !parsedReps) return null;
+    const rpeValue = rpe ? parseFloat(rpe) : undefined;
+
+    return {
+      session_id: sessionId,
+      lift,
+      set_index: setIndex,
+      load_kg: parsedLoadKg,
+      reps: parsedReps,
+      device_type: "manual",
+      set_type: setType,
+      avg_velocity: parsedAvgVelocity,
+      velocity_loss: parsedVelocityLoss,
+      avg_rom_cm: parsedRomCm,
+      rpe: rpeValue,
+      e1rm: VBTCalculations.estimate1RMFromReps(
+        parsedLoadKg,
+        parsedReps,
+        rpeValue,
+      ),
+      timestamp: new Date().toISOString(),
+      notes: notes || undefined,
+    };
+  }, [
+    lift,
+    notes,
+    parsedAvgVelocity,
+    parsedLoadKg,
+    parsedReps,
+    parsedRomCm,
+    parsedVelocityLoss,
+    rpe,
+    sessionId,
+    setIndex,
+    setType,
+  ]);
+  const manualCoachDecision = useMemo(() => {
+    if (!draftSet || parsedAvgVelocity == null || !hasValidManualVbtMetrics) {
+      return null;
+    }
+
+    return DeterministicVBTCoach.evaluate({
+      setHistory: [...savedSets.filter((set) => set.lift === lift), draftSet],
+      exercise: selectedExercise,
+      phase: manualPhase,
+    });
+  }, [
+    draftSet,
+    hasValidManualVbtMetrics,
+    lift,
+    manualPhase,
+    parsedAvgVelocity,
+    savedSets,
+    selectedExercise,
+  ]);
 
   // 種目別プリセット重量
   const exercisePresets: Record<string, number[]> = {
-    ベンチプレス: [40, 60, 80, 100, 120, 140],
-    スクワット: [60, 80, 100, 120, 140, 160, 180, 200],
-    デッドリフト: [60, 80, 100, 120, 140, 160, 180, 200, 220],
-    ショルダープレス: [20, 30, 40, 50, 60, 70, 80],
-    バーベルロウ: [40, 50, 60, 70, 80, 90, 100],
-    チンニング: [0, 10, 20, 30, 40],
-    ディップス: [0, 10, 20, 30, 40],
+    "Bench Press": [40, 60, 80, 100, 120, 140],
+    Squat: [60, 80, 100, 120, 140, 160, 180, 200],
+    Deadlift: [60, 80, 100, 120, 140, 160, 180, 200, 220],
+    "Shoulder Press": [20, 30, 40, 50, 60, 70, 80],
+    "Barbell Row": [40, 50, 60, 70, 80, 90, 100],
+    Chinning: [0, 10, 20, 30, 40],
+    Dips: [0, 10, 20, 30, 40],
   };
 
   const currentPresets =
-    exercisePresets[lift] || exercisePresets["ベンチプレス"];
+    exercisePresets[lift] || exercisePresets["Bench Press"];
 
   // 重量調整関数
   const adjustLoad = (amount: number) => {
@@ -88,14 +241,73 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({
     setLoadKg(weight.toString());
   };
 
+  const applyActiveExercise = (exercise: Exercise) => {
+    setLift(exercise.name);
+    setSelectedExercise(exercise);
+  };
+
+  const openExerciseSelector = (slot: SupersetSlot) => {
+    setExerciseSelectSlot(slot);
+    setShowExerciseModal(true);
+  };
+
+  const handleSetTypeChange = (nextType: SetType) => {
+    setSetType(nextType);
+
+    if (nextType === "superset_A") {
+      const nextExercise = supersetExerciseA ?? selectedExercise;
+      if (nextExercise) {
+        setSupersetExerciseA(nextExercise);
+        applyActiveExercise(nextExercise);
+      }
+      return;
+    }
+
+    if (nextType === "superset_B") {
+      const nextExercise = supersetExerciseB ?? selectedExercise;
+      if (nextExercise) {
+        setSupersetExerciseB(nextExercise);
+        applyActiveExercise(nextExercise);
+      }
+      if (!supersetExerciseB) {
+        openExerciseSelector("B");
+      }
+      return;
+    }
+
+    if (selectedExercise) {
+      applyActiveExercise(selectedExercise);
+    }
+  };
+
+  const handleExerciseSelected = (exercise: Exercise) => {
+    if (exerciseSelectSlot === "A") {
+      setSupersetExerciseA(exercise);
+      if (setType === "superset_A") applyActiveExercise(exercise);
+    } else if (exerciseSelectSlot === "B") {
+      setSupersetExerciseB(exercise);
+      if (setType === "superset_B") applyActiveExercise(exercise);
+    } else {
+      applyActiveExercise(exercise);
+      if (!supersetExerciseA) setSupersetExerciseA(exercise);
+    }
+
+    setShowExerciseModal(false);
+  };
+
+  const getSetTypeLabel = (type: SetType) =>
+    setTypes.find((item) => item.value === type)?.label ?? type;
+
   const sessionSummary = useMemo(() => {
     const totalVolume = savedSets.reduce(
       (sum, set) => sum + set.load_kg * set.reps,
       0,
     );
+    const totalReps = savedSets.reduce((sum, set) => sum + set.reps, 0);
     return {
       savedSetCount: savedSets.length,
       totalVolume,
+      totalReps,
       liftNames: Array.from(new Set(savedSets.map((set) => set.lift))),
     };
   }, [savedSets]);
@@ -143,7 +355,32 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({
 
   useEffect(() => {
     void loadRecentLiftSets();
+    // Recent-set lookup should refresh only for the current lift/session keys.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lift, sessionId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadSettings = async () => {
+      const settings = await loadAppSettings();
+      if (cancelled) return;
+      setBlockWeek(settings.powerlifting_block_week);
+    };
+
+    void loadSettings();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!saveStatus) return;
+
+    const timeout = setTimeout(() => setSaveStatus(null), 2500);
+    return () => clearTimeout(timeout);
+  }, [saveStatus]);
 
   useEffect(() => {
     let cancelled = false;
@@ -157,6 +394,7 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({
       if (!cancelled && match) {
         setLift(match.name);
         setSelectedExercise(match);
+        setSupersetExerciseA(match);
       }
     };
 
@@ -165,6 +403,8 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({
     return () => {
       cancelled = true;
     };
+    // Default exercise bootstrap is intentionally run once on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleAskCoach = () => {
@@ -179,6 +419,9 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({
       currentSet: setIndex,
       loadKg: parsedLoadKg ?? loadKg,
       reps: parsedReps ?? reps,
+      avgVelocity: parsedAvgVelocity ?? avgVelocity,
+      velocityLoss: parsedVelocityLoss ?? velocityLoss,
+      romCm: parsedRomCm ?? romCm,
       totalSets: sessionSummary.savedSetCount,
       totalVolume: Math.round(sessionSummary.totalVolume),
       notes,
@@ -200,10 +443,21 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({
     });
   };
 
+  const handleApplyRecentSet = (set: SetData) => {
+    setLoadKg(set.load_kg % 1 === 0 ? set.load_kg.toString() : set.load_kg.toFixed(1));
+    setReps(set.reps.toString());
+    if (set.rpe != null) setRpe(set.rpe.toString());
+    if (set.avg_velocity != null) setAvgVelocity(set.avg_velocity.toFixed(2));
+    if (set.velocity_loss != null) setVelocityLoss(set.velocity_loss.toFixed(1));
+    if (set.avg_rom_cm != null) setRomCm(set.avg_rom_cm.toFixed(1));
+    setSaveStatus(`${formatRelativeTime(set.timestamp)} の ${set.load_kg}kg × ${set.reps} を反映`);
+  };
+
   const handleSaveSet = async () => {
     const loadValue = parsedLoadKg ?? NaN;
     const repsValue = parsedReps ?? NaN;
     const rpeValue = rpe ? parseFloat(rpe) : undefined;
+    setSaveStatus(null);
 
     if (!loadKg || !reps) {
       Alert.alert("エラー", "負荷とレップ数を入力してください");
@@ -220,8 +474,46 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({
       return;
     }
 
+    if (setType === "top_single" && repsValue !== 1) {
+      Alert.alert(
+        "トップシングルの確認",
+        "トップシングルは当日の状態を見る1回として保存してください。",
+      );
+      return;
+    }
+
     if (rpeValue && (rpeValue < 1 || rpeValue > 10)) {
       Alert.alert("エラー", "RPEは1-10の範囲で入力してください");
+      return;
+    }
+
+    if (
+      parsedAvgVelocity != null &&
+      (isNaN(parsedAvgVelocity) || parsedAvgVelocity <= 0 || parsedAvgVelocity > 3)
+    ) {
+      Alert.alert("エラー", "Average Velocityは0〜3.0 m/sの範囲で入力してください");
+      return;
+    }
+
+    if (
+      parsedVelocityLoss != null &&
+      (isNaN(parsedVelocityLoss) || parsedVelocityLoss < 0 || parsedVelocityLoss > 80)
+    ) {
+      Alert.alert("エラー", "Velocity Lossは0〜80%の範囲で入力してください");
+      return;
+    }
+
+    if (parsedRomCm != null && (isNaN(parsedRomCm) || parsedRomCm <= 0 || parsedRomCm > 200)) {
+      Alert.alert("エラー", "ROMは0〜200cmの範囲で入力してください");
+      return;
+    }
+
+    if (isSuperset && (!supersetExerciseA || !supersetExerciseB)) {
+      Alert.alert(
+        "スーパーセット種目を選択",
+        "スーパーセットはA/B両方の種目を選んでから保存してください。",
+      );
+      openExerciseSelector(!supersetExerciseA ? "A" : "B");
       return;
     }
 
@@ -242,8 +534,9 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({
         reps: repsValue,
         device_type: "manual",
         set_type: setType,
-        avg_velocity: null,
-        velocity_loss: null,
+        avg_velocity: parsedAvgVelocity,
+        velocity_loss: parsedVelocityLoss,
+        avg_rom_cm: parsedRomCm,
         rpe: rpeValue,
         e1rm,
         timestamp: new Date().toISOString(),
@@ -260,9 +553,9 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({
           rep_index: i,
           load_kg: loadValue,
           device_type: "manual",
-          mean_velocity: null,
-          peak_velocity: null,
-          rom_cm: null,
+          mean_velocity: parsedAvgVelocity,
+          peak_velocity: parsedAvgVelocity,
+          rom_cm: parsedRomCm,
           mean_power_w: null,
           rep_duration_ms: null,
           is_valid_rep: true,
@@ -281,10 +574,32 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({
       setLoadKg("");
       setReps("");
       setRpe("");
+      setAvgVelocity("");
+      setVelocityLoss("");
+      setRomCm("");
       setNotes("");
-      setSetIndex((prev) => prev + 1);
 
-      Alert.alert("成功", `セット ${setIndex} を保存しました`);
+      if (
+        setType === "superset_A" &&
+        supersetExerciseB &&
+        supersetExerciseB.id !== selectedExercise?.id
+      ) {
+        setSetType("superset_B");
+        applyActiveExercise(supersetExerciseB);
+        setSaveStatus(
+          `スーパーAを保存。続けて ${supersetExerciseB.name} を入力します`,
+        );
+      } else if (setType === "superset_B" && supersetExerciseA) {
+        setSetType("superset_A");
+        applyActiveExercise(supersetExerciseA);
+        setSetIndex((prev) => prev + 1);
+        setSaveStatus(`スーパーセット ${setIndex} を保存しました`);
+      } else {
+        setSetIndex((prev) => prev + 1);
+        setSaveStatus(
+          `${getSetTypeLabel(setType)} セット ${setIndex} を保存しました`,
+        );
+      }
     } catch (error) {
       console.error("Failed to save set:", error);
       Alert.alert("エラー", "セットの保存に失敗しました");
@@ -323,10 +638,47 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({
       </View>
 
       <View style={styles.form}>
+        <View style={styles.todaySummaryCard}>
+          <View style={styles.todaySummaryHeader}>
+            <Text style={styles.todaySummaryEyebrow}>TODAY / MANUAL LOG</Text>
+            <Text style={styles.todaySummaryLift} numberOfLines={1}>
+              {lift}
+            </Text>
+          </View>
+          <View style={styles.todaySummaryGrid}>
+            <View style={styles.todaySummaryMetric}>
+              <Text style={styles.todaySummaryValue}>
+                {sessionSummary.savedSetCount}
+              </Text>
+              <Text style={styles.todaySummaryLabel}>セット</Text>
+            </View>
+            <View style={styles.todaySummaryMetric}>
+              <Text style={styles.todaySummaryValue}>
+                {sessionSummary.totalReps}
+              </Text>
+              <Text style={styles.todaySummaryLabel}>レップ</Text>
+            </View>
+            <View style={styles.todaySummaryMetric}>
+              <Text style={styles.todaySummaryValue}>
+                {Math.round(sessionSummary.totalVolume).toLocaleString()}
+              </Text>
+              <Text style={styles.todaySummaryLabel}>kg</Text>
+            </View>
+            <View style={styles.todaySummaryMetric}>
+              <Text style={styles.todaySummaryValue}>{setIndex}</Text>
+              <Text style={styles.todaySummaryLabel}>次セット</Text>
+            </View>
+          </View>
+        </View>
+
         <Text style={styles.label}>種目</Text>
         <TouchableOpacity
           style={styles.exerciseSelectorCard}
-          onPress={() => setShowExerciseModal(true)}
+          onPress={() =>
+            openExerciseSelector(
+              isSuperset ? (setType === "superset_A" ? "A" : "B") : "active",
+            )
+          }
         >
           <View>
             <Text style={styles.exerciseSelectorName}>{lift}</Text>
@@ -339,6 +691,53 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({
           <Text style={styles.exerciseSelectorAction}>変更</Text>
         </TouchableOpacity>
 
+        {isSuperset ? (
+          <View style={styles.supersetCard}>
+            <View style={styles.supersetHeader}>
+              <Text style={styles.supersetTitle}>スーパーセット種目</Text>
+              <Text style={styles.supersetMeta}>
+                A/Bを交互に保存します
+              </Text>
+            </View>
+            <View style={styles.supersetPairRow}>
+              <TouchableOpacity
+                style={[
+                  styles.supersetExerciseCard,
+                  setType === "superset_A" && styles.supersetExerciseActive,
+                ]}
+                onPress={() => openExerciseSelector("A")}
+              >
+                <Text style={styles.supersetSlotLabel}>A</Text>
+                <Text style={styles.supersetExerciseName}>
+                  {supersetExerciseA?.name ?? "種目を選択"}
+                </Text>
+                <Text style={styles.supersetExerciseMeta}>
+                  {supersetExerciseA
+                    ? getExerciseCategoryLabel(supersetExerciseA.category)
+                    : "未設定"}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.supersetExerciseCard,
+                  setType === "superset_B" && styles.supersetExerciseActive,
+                ]}
+                onPress={() => openExerciseSelector("B")}
+              >
+                <Text style={styles.supersetSlotLabel}>B</Text>
+                <Text style={styles.supersetExerciseName}>
+                  {supersetExerciseB?.name ?? "種目を選択"}
+                </Text>
+                <Text style={styles.supersetExerciseMeta}>
+                  {supersetExerciseB
+                    ? getExerciseCategoryLabel(supersetExerciseB.category)
+                    : "未設定"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : null}
+
         <TouchableOpacity style={styles.coachButton} onPress={handleAskCoach}>
           <Text style={styles.coachButtonText}>AIコーチに確認</Text>
           <Text style={styles.coachButtonSubtext}>
@@ -349,35 +748,86 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({
         </TouchableOpacity>
 
         <View style={styles.recentCard}>
-          <Text style={styles.recentTitle}>直近の同種目</Text>
+          <View style={styles.recentHeader}>
+            <View>
+              <Text style={styles.recentTitle}>最近使った設定</Text>
+              <Text style={styles.recentSubtitle}>
+                前回時刻つき。タップで負荷/レップを反映します
+              </Text>
+            </View>
+            <Text style={styles.recentBadge}>{lift}</Text>
+          </View>
           {recentSetsForDisplay.length === 0 ? (
             <Text style={styles.recentEmpty}>
               まだ比較できる過去セットがありません
             </Text>
           ) : (
             recentSetsForDisplay.map((set) => (
-              <TouchableOpacity
+              <View
                 key={`${set.session_id}_${set.set_index}_${set.lift}`}
                 style={styles.recentItem}
-                onPress={() => handleRecentSetCoach(set)}
               >
-                <View style={styles.recentItemCopy}>
+                <TouchableOpacity
+                  style={styles.recentItemCopy}
+                  onPress={() => handleApplyRecentSet(set)}
+                >
                   <Text style={styles.recentItemDate}>
-                    {formatSessionLabel(set.session_id)}
+                    {formatRelativeTime(set.timestamp)} / {formatSessionLabel(set.session_id)}
                   </Text>
                   <Text style={styles.recentItemMain}>
                     {set.load_kg} kg x {set.reps} reps
                   </Text>
-                </View>
+                  <Text style={styles.recentItemSub}>
+                    {getSetTypeLabel(set.set_type)}
+                    {set.avg_velocity != null
+                      ? ` / AV ${set.avg_velocity.toFixed(2)}m/s`
+                      : ""}
+                    {set.avg_rom_cm != null
+                      ? ` / ROM ${set.avg_rom_cm.toFixed(0)}cm`
+                      : ""}
+                  </Text>
+                </TouchableOpacity>
                 <View style={styles.recentItemAction}>
                   <Text style={styles.recentItemMeta}>
                     {set.e1rm ? `e1RM ${set.e1rm.toFixed(1)}` : set.set_type}
                   </Text>
-                  <Text style={styles.recentItemHint}>AI相談</Text>
+                  <TouchableOpacity
+                    style={styles.recentCoachMiniButton}
+                    onPress={() => handleRecentSetCoach(set)}
+                  >
+                    <Text style={styles.recentItemHint}>AI相談</Text>
+                  </TouchableOpacity>
                 </View>
-              </TouchableOpacity>
+              </View>
             ))
           )}
+        </View>
+
+        <View style={styles.vbtGuideCard}>
+          <View style={styles.vbtGuideHeader}>
+            <View>
+              <Text style={styles.vbtGuideEyebrow}>PL VBT GUIDE</Text>
+              <Text style={styles.vbtGuideTitle}>{setTypeGuidance.title}</Text>
+            </View>
+            <Text style={styles.vbtGuidePhase}>W{blockWeek}</Text>
+          </View>
+          <Text style={styles.vbtGuideBody}>{setTypeGuidance.body}</Text>
+          <View style={styles.vbtGuideGrid}>
+            <View style={styles.vbtGuideMetric}>
+              <Text style={styles.vbtGuideLabel}>Top Single</Text>
+              <Text style={styles.vbtGuideValue}>{topSingleTargetText}</Text>
+            </View>
+            <View style={styles.vbtGuideMetric}>
+              <Text style={styles.vbtGuideLabel}>Backoff VL</Text>
+              <Text style={styles.vbtGuideValue}>
+                {manualProtocol.backoffVelocityLoss.min}〜
+                {manualProtocol.backoffVelocityLoss.max}%
+              </Text>
+            </View>
+          </View>
+          <Text style={styles.vbtGuideNote}>
+            {blockWeekPlan.phaseLabel}: {blockWeekPlan.focus}
+          </Text>
         </View>
 
         <Text style={styles.label}>セットタイプ</Text>
@@ -389,7 +839,7 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({
                 styles.setTypeButton,
                 setType === type.value && styles.setTypeButtonActive,
               ]}
-              onPress={() => setSetType(type.value)}
+              onPress={() => handleSetTypeChange(type.value)}
             >
               <Text
                 style={[
@@ -418,7 +868,9 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({
             value={loadKg}
             onChangeText={setLoadKg}
             keyboardType="decimal-pad"
-            placeholder="80.0"
+            returnKeyType="next"
+            selectTextOnFocus
+            placeholder="例: 80.0"
             placeholderTextColor="#666"
           />
 
@@ -501,7 +953,9 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({
           value={reps}
           onChangeText={setReps}
           keyboardType="number-pad"
-          placeholder="10"
+          returnKeyType="next"
+          selectTextOnFocus
+          placeholder="例: 10"
           placeholderTextColor="#666"
         />
 
@@ -511,9 +965,77 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({
           value={rpe}
           onChangeText={setRpe}
           keyboardType="decimal-pad"
-          placeholder="8.5"
+          returnKeyType="done"
+          selectTextOnFocus
+          placeholder="任意: 8.5"
           placeholderTextColor="#666"
         />
+
+        <View style={styles.manualVbtCard}>
+          <View style={styles.manualVbtHeader}>
+            <Text style={styles.manualVbtTitle}>VBT手動メトリクス</Text>
+            <Text style={styles.manualVbtMeta}>任意</Text>
+          </View>
+          <Text style={styles.manualVbtBody}>
+            OVRを使わない日でも、平均速度・VL・ROMを入れるとAPIなしコーチ判定に使えます。
+          </Text>
+          <View style={styles.manualVbtGrid}>
+            <View style={styles.manualVbtInputWrap}>
+              <Text style={styles.manualVbtLabel}>Average Velocity</Text>
+              <TextInput
+                style={styles.manualVbtInput}
+                value={avgVelocity}
+                onChangeText={setAvgVelocity}
+                keyboardType="decimal-pad"
+                returnKeyType="next"
+                selectTextOnFocus
+                placeholder="0.32"
+                placeholderTextColor="#666"
+              />
+            </View>
+            <View style={styles.manualVbtInputWrap}>
+              <Text style={styles.manualVbtLabel}>Velocity Loss %</Text>
+              <TextInput
+                style={styles.manualVbtInput}
+                value={velocityLoss}
+                onChangeText={setVelocityLoss}
+                keyboardType="decimal-pad"
+                returnKeyType="next"
+                selectTextOnFocus
+                placeholder="12"
+                placeholderTextColor="#666"
+              />
+            </View>
+            <View style={styles.manualVbtInputWrap}>
+              <Text style={styles.manualVbtLabel}>ROM cm</Text>
+              <TextInput
+                style={styles.manualVbtInput}
+                value={romCm}
+                onChangeText={setRomCm}
+                keyboardType="decimal-pad"
+                returnKeyType="done"
+                selectTextOnFocus
+                placeholder="45"
+                placeholderTextColor="#666"
+              />
+            </View>
+          </View>
+          {manualCoachDecision ? (
+            <View style={styles.manualCoachPreview}>
+              <Text style={styles.manualCoachKicker}>
+                {manualCoachDecision.action.toUpperCase()}
+              </Text>
+              <Text style={styles.manualCoachMessage}>
+                {manualCoachDecision.message}
+              </Text>
+              {manualCoachDecision.suggestedAction ? (
+                <Text style={styles.manualCoachAction}>
+                  {manualCoachDecision.suggestedAction}
+                </Text>
+              ) : null}
+            </View>
+          ) : null}
+        </View>
 
         <Text style={styles.label}>メモ (オプション)</Text>
         <TextInput
@@ -528,6 +1050,11 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({
         <TouchableOpacity style={styles.saveButton} onPress={handleSaveSet}>
           <Text style={styles.saveButtonText}>セットを保存</Text>
         </TouchableOpacity>
+        {saveStatus ? (
+          <Text accessibilityLiveRegion="polite" style={styles.saveStatusText}>
+            {saveStatus}
+          </Text>
+        ) : null}
 
         <TouchableOpacity
           style={[
@@ -567,8 +1094,24 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({
                     {set.lift} / セット {set.set_index}
                   </Text>
                   <Text style={styles.summaryMeta}>
-                    {set.load_kg} kg × {set.reps} reps
+                    {getSetTypeLabel(set.set_type)} / {set.load_kg} kg ×{" "}
+                    {set.reps} reps
                   </Text>
+                  {set.avg_velocity != null ||
+                  set.velocity_loss != null ||
+                  set.avg_rom_cm != null ? (
+                    <Text style={styles.summaryVbtMeta}>
+                      {set.avg_velocity != null
+                        ? `AV ${set.avg_velocity.toFixed(2)}m/s`
+                        : ""}
+                      {set.velocity_loss != null
+                        ? ` / VL ${set.velocity_loss.toFixed(1)}%`
+                        : ""}
+                      {set.avg_rom_cm != null
+                        ? ` / ROM ${set.avg_rom_cm.toFixed(1)}cm`
+                        : ""}
+                    </Text>
+                  ) : null}
                 </View>
                 {set.e1rm ? (
                   <Text style={styles.summaryE1rm}>
@@ -584,12 +1127,14 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({
       <ExerciseSelectModal
         visible={showExerciseModal}
         onClose={() => setShowExerciseModal(false)}
-        onSelect={(exercise) => {
-          setLift(exercise.name);
-          setSelectedExercise(exercise);
-          setShowExerciseModal(false);
-        }}
-        currentExerciseId={selectedExercise?.id}
+        onSelect={handleExerciseSelected}
+        currentExerciseId={
+          exerciseSelectSlot === "A"
+            ? supersetExerciseA?.id
+            : exerciseSelectSlot === "B"
+              ? supersetExerciseB?.id
+              : selectedExercise?.id
+        }
       />
     </ScrollView>
   );
@@ -645,6 +1190,59 @@ const styles = StyleSheet.create({
     color: "#d4a58f",
     fontSize: 12,
   },
+  todaySummaryCard: {
+    padding: 14,
+    borderRadius: 16,
+    backgroundColor: "#151515",
+    borderWidth: 1,
+    borderColor: GarageTheme.borderStrong,
+    marginBottom: 14,
+  },
+  todaySummaryHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 12,
+  },
+  todaySummaryEyebrow: {
+    color: GarageTheme.accentSoft,
+    fontSize: 11,
+    fontWeight: "900",
+    letterSpacing: 1,
+  },
+  todaySummaryLift: {
+    flex: 1,
+    color: GarageTheme.textStrong,
+    fontSize: 13,
+    fontWeight: "800",
+    textAlign: "right",
+  },
+  todaySummaryGrid: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  todaySummaryMetric: {
+    flex: 1,
+    minHeight: 64,
+    padding: 10,
+    borderRadius: 12,
+    backgroundColor: "#202020",
+    borderWidth: 1,
+    borderColor: "#303030",
+    justifyContent: "center",
+  },
+  todaySummaryValue: {
+    color: "#ffffff",
+    fontSize: 18,
+    fontWeight: "900",
+    marginBottom: 3,
+  },
+  todaySummaryLabel: {
+    color: GarageTheme.textMuted,
+    fontSize: 10,
+    fontWeight: "800",
+  },
   recentCard: {
     marginTop: 16,
     padding: 14,
@@ -653,11 +1251,35 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#2f2f2f",
   },
+  recentHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 12,
+    marginBottom: 10,
+  },
   recentTitle: {
     color: "#f1f1f1",
     fontSize: 15,
     fontWeight: "700",
-    marginBottom: 10,
+    marginBottom: 3,
+  },
+  recentSubtitle: {
+    color: GarageTheme.textMuted,
+    fontSize: 11,
+    lineHeight: 15,
+  },
+  recentBadge: {
+    maxWidth: 112,
+    color: "#111111",
+    backgroundColor: GarageTheme.accentSoft,
+    overflow: "hidden",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    fontSize: 10,
+    fontWeight: "900",
+    textAlign: "center",
   },
   recentEmpty: {
     color: "#8a8a8a",
@@ -685,6 +1307,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
   },
+  recentItemSub: {
+    color: "#8f8f8f",
+    fontSize: 11,
+    marginTop: 3,
+    lineHeight: 15,
+  },
   recentItemAction: {
     alignItems: "flex-end",
     gap: 4,
@@ -698,6 +1326,14 @@ const styles = StyleSheet.create({
     color: "#ffb347",
     fontSize: 11,
     fontWeight: "700",
+  },
+  recentCoachMiniButton: {
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: "#2c2117",
+    borderWidth: 1,
+    borderColor: "#5a3b1b",
   },
   label: {
     fontSize: 16,
@@ -733,6 +1369,222 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "800",
     letterSpacing: 1,
+  },
+  supersetCard: {
+    marginTop: 8,
+    marginBottom: 8,
+    padding: 12,
+    borderRadius: 14,
+    backgroundColor: GarageTheme.surface,
+    borderWidth: 1,
+    borderColor: GarageTheme.borderStrong,
+  },
+  supersetHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 10,
+  },
+  supersetTitle: {
+    color: GarageTheme.textStrong,
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  supersetMeta: {
+    color: GarageTheme.textMuted,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  supersetPairRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  supersetExerciseCard: {
+    flex: 1,
+    minHeight: 92,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: GarageTheme.chip,
+    borderWidth: 1,
+    borderColor: GarageTheme.borderStrong,
+  },
+  supersetExerciseActive: {
+    borderColor: GarageTheme.accent,
+    backgroundColor: "#4b2416",
+  },
+  supersetSlotLabel: {
+    color: GarageTheme.accent,
+    fontSize: 12,
+    fontWeight: "900",
+    marginBottom: 6,
+  },
+  supersetExerciseName: {
+    color: GarageTheme.textStrong,
+    fontSize: 14,
+    fontWeight: "800",
+    lineHeight: 18,
+  },
+  supersetExerciseMeta: {
+    color: GarageTheme.textMuted,
+    fontSize: 11,
+    fontWeight: "700",
+    marginTop: 6,
+  },
+  vbtGuideCard: {
+    marginTop: 14,
+    marginBottom: 2,
+    padding: 14,
+    borderRadius: 12,
+    backgroundColor: "#111b18",
+    borderWidth: 1,
+    borderColor: "#245c4a",
+  },
+  vbtGuideHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 10,
+    marginBottom: 8,
+  },
+  vbtGuideEyebrow: {
+    color: "#58d89d",
+    fontSize: 11,
+    fontWeight: "900",
+    letterSpacing: 1,
+    marginBottom: 3,
+  },
+  vbtGuideTitle: {
+    color: "#f4fff8",
+    fontSize: 17,
+    fontWeight: "800",
+  },
+  vbtGuidePhase: {
+    color: "#111b18",
+    backgroundColor: "#58d89d",
+    overflow: "hidden",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  vbtGuideBody: {
+    color: "#c9dfd4",
+    fontSize: 13,
+    lineHeight: 19,
+    marginBottom: 12,
+  },
+  vbtGuideGrid: {
+    flexDirection: "row",
+    gap: 10,
+    marginBottom: 10,
+  },
+  vbtGuideMetric: {
+    flex: 1,
+    minHeight: 68,
+    padding: 10,
+    borderRadius: 10,
+    backgroundColor: "#172620",
+  },
+  vbtGuideLabel: {
+    color: "#8fb9a7",
+    fontSize: 11,
+    fontWeight: "800",
+    marginBottom: 5,
+  },
+  vbtGuideValue: {
+    color: "#ffffff",
+    fontSize: 13,
+    fontWeight: "800",
+    lineHeight: 18,
+  },
+  vbtGuideNote: {
+    color: "#9fbbae",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  manualVbtCard: {
+    marginTop: 16,
+    padding: 14,
+    borderRadius: 12,
+    backgroundColor: "#171717",
+    borderWidth: 1,
+    borderColor: "#3d3d3d",
+  },
+  manualVbtHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 6,
+  },
+  manualVbtTitle: {
+    color: GarageTheme.textStrong,
+    fontSize: 15,
+    fontWeight: "800",
+  },
+  manualVbtMeta: {
+    color: GarageTheme.textMuted,
+    fontSize: 11,
+    fontWeight: "800",
+  },
+  manualVbtBody: {
+    color: GarageTheme.textMuted,
+    fontSize: 12,
+    lineHeight: 18,
+    marginBottom: 12,
+  },
+  manualVbtGrid: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  manualVbtInputWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
+  manualVbtLabel: {
+    color: "#9fbbae",
+    fontSize: 10,
+    fontWeight: "800",
+    marginBottom: 5,
+  },
+  manualVbtInput: {
+    backgroundColor: "#242424",
+    color: "#fff",
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    borderRadius: 8,
+    fontSize: 14,
+    borderWidth: 1,
+    borderColor: "#444",
+  },
+  manualCoachPreview: {
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 10,
+    backgroundColor: "#111b18",
+    borderWidth: 1,
+    borderColor: "#245c4a",
+  },
+  manualCoachKicker: {
+    color: "#58d89d",
+    fontSize: 10,
+    fontWeight: "900",
+    letterSpacing: 1,
+    marginBottom: 5,
+  },
+  manualCoachMessage: {
+    color: "#f4fff8",
+    fontSize: 13,
+    fontWeight: "800",
+    lineHeight: 18,
+  },
+  manualCoachAction: {
+    color: "#c9dfd4",
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 5,
   },
   exerciseGrid: {
     flexDirection: "row",
@@ -807,6 +1659,13 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "600",
   },
+  saveStatusText: {
+    color: GarageTheme.success,
+    fontSize: 13,
+    fontWeight: "700",
+    marginTop: 8,
+    textAlign: "center",
+  },
   finishButton: {
     backgroundColor: "#2196F3",
     padding: 16,
@@ -868,6 +1727,12 @@ const styles = StyleSheet.create({
   summaryMeta: {
     fontSize: 12,
     color: "#999",
+  },
+  summaryVbtMeta: {
+    fontSize: 11,
+    color: "#9fbbae",
+    marginTop: 3,
+    fontWeight: "700",
   },
   summaryE1rm: {
     fontSize: 14,

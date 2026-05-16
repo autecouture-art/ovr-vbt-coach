@@ -19,6 +19,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import DatabaseService from "@/src/services/DatabaseService";
 import { GarageTheme } from "@/src/constants/garageTheme";
 import AICoachService from "@/src/services/AICoachService";
+import VBTCalculations, { getVelocityAt1RM } from "@/src/utils/VBTCalculations";
 import {
   EXERCISE_SELECTION_GROUPS,
   matchesExerciseSelectionGroup,
@@ -165,6 +166,27 @@ const buildDailyE1rmTrend = (sets: SetData[]): DailyE1rmPoint[] => {
     }));
 };
 
+const getPersonalVelocityAt1RM = (
+  lvp: LVPData,
+  exercise?: Exercise,
+): number => {
+  if (typeof lvp.mvt === "number" && lvp.mvt > 0) return lvp.mvt;
+  if (typeof exercise?.mvt === "number" && exercise.mvt > 0) {
+    return exercise.mvt;
+  }
+  return getVelocityAt1RM(lvp);
+};
+
+const estimateOneRmFromProfile = (
+  lvp: LVPData,
+  exercise?: Exercise,
+): number | null => {
+  if (lvp.slope >= 0) return null;
+  const estimate =
+    (getPersonalVelocityAt1RM(lvp, exercise) - lvp.intercept) / lvp.slope;
+  return Number.isFinite(estimate) && estimate > 0 ? estimate : null;
+};
+
 const filterByDateRange = (
   points: DailyE1rmPoint[],
   range: DateRange,
@@ -204,7 +226,7 @@ export default function GraphScreen() {
   const isFocused = useIsFocused();
   const { width: screenWidth } = useWindowDimensions();
   const [activeTab, setActiveTab] = useState<TabType>("lvp");
-  const [selectedExercise, setSelectedExercise] = useState("ベンチプレス");
+  const [selectedExercise, setSelectedExercise] = useState("");
   const [selectedGroup, setSelectedGroup] =
     useState<ExerciseSelectionGroupId>("all");
   const [lvpData, setLvpData] = useState<LVPData | null>(null);
@@ -223,16 +245,15 @@ export default function GraphScreen() {
     if (isFocused) {
       void loadExercises();
     }
+    // Focus refresh should not re-run just because the loader identity changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isFocused]);
 
   const loadExercises = async () => {
     try {
       const exs = await DatabaseService.getExercises();
       setExercisesList(exs);
-      if (
-        exs.length > 0 &&
-        (!selectedExercise || selectedExercise === "ベンチプレス")
-      ) {
+      if (exs.length > 0 && !selectedExercise) {
         setSelectedExercise(exs[0].name);
       }
     } catch (e) {
@@ -244,6 +265,8 @@ export default function GraphScreen() {
     if (isFocused && selectedExercise) {
       void loadData();
     }
+    // Data is intentionally refreshed on focus/exercise changes only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isFocused, selectedExercise]);
 
   const filteredExercises = useMemo(
@@ -252,6 +275,19 @@ export default function GraphScreen() {
         matchesExerciseSelectionGroup(exercise, selectedGroup),
       ),
     [exercisesList, selectedGroup],
+  );
+
+  const selectedExerciseRecord = useMemo(
+    () => exercisesList.find((exercise) => exercise.name === selectedExercise),
+    [exercisesList, selectedExercise],
+  );
+
+  const personalVelocityAt1RM = useMemo(
+    () =>
+      lvpData
+        ? getPersonalVelocityAt1RM(lvpData, selectedExerciseRecord)
+        : null,
+    [lvpData, selectedExerciseRecord],
   );
 
   useEffect(() => {
@@ -286,27 +322,6 @@ export default function GraphScreen() {
   const loadData = async () => {
     setLoading(true);
     try {
-      // DBからLVPプロファイルを取得（なければデモデータ）
-      const lvp = await DatabaseService.getLVPProfile(selectedExercise);
-      if (lvp) {
-        setLvpData(lvp);
-        const est1rm = Math.abs(lvp.intercept / lvp.slope);
-        setE1rmEstimate(est1rm);
-      } else {
-        // デモ用フォールバック
-        const demo: LVPData = {
-          lift: selectedExercise,
-          vmax: 1.5,
-          v1rm: 0.15,
-          slope: -0.0135,
-          intercept: 1.65,
-          r_squared: 0.95,
-          last_updated: new Date().toISOString(),
-        };
-        setLvpData(demo);
-        setE1rmEstimate(Math.abs(demo.intercept / demo.slope));
-      }
-
       // 最近のセッションをDBから取得
       const allSessions = await DatabaseService.getSessions();
       setSessions(allSessions.slice(0, 10));
@@ -314,7 +329,7 @@ export default function GraphScreen() {
       const selectedExerciseSets: SetData[] = [];
       const comparisonSource = new Map<string, SetData[]>();
 
-      for (const session of allSessions.slice(0, 30)) {
+      for (const session of allSessions.slice(0, 120)) {
         const sets = await DatabaseService.getSetsForSession(
           session.session_id,
         );
@@ -355,8 +370,48 @@ export default function GraphScreen() {
       setExerciseComparisons(comparisons);
       setExerciseTrendSets(selectedExerciseSets);
       setRecentSets(selectedExerciseSets.slice(0, 20));
+
+      const savedLvp = await DatabaseService.getLVPProfile(selectedExercise);
+      const velocityPoints = selectedExerciseSets
+        .filter(
+          (set) =>
+            !set.is_warmup &&
+            typeof set.avg_velocity === "number" &&
+            set.avg_velocity > 0 &&
+            set.load_kg > 0,
+        )
+        .map((set) => ({
+          load: set.load_kg,
+          velocity: set.avg_velocity!,
+        }));
+      const calculatedLvp =
+        !savedLvp && velocityPoints.length >= 2
+          ? VBTCalculations.calculateLVP(
+              velocityPoints,
+              selectedExerciseRecord?.mvt,
+            )
+          : null;
+      const resolvedLvp = savedLvp
+        ? savedLvp
+        : calculatedLvp
+          ? {
+              ...calculatedLvp,
+              lift: selectedExercise,
+              last_updated: new Date().toISOString(),
+              sample_count: velocityPoints.length,
+            }
+          : null;
+
+      setLvpData(resolvedLvp);
+      setE1rmEstimate(
+        resolvedLvp
+          ? estimateOneRmFromProfile(resolvedLvp, selectedExerciseRecord)
+          : null,
+      );
     } catch (error) {
       console.error("LVPデータ読み込み失敗:", error);
+      setLvpData(null);
+      setE1rmEstimate(null);
     } finally {
       setLoading(false);
     }
@@ -372,15 +427,37 @@ export default function GraphScreen() {
   // LVPラインをシンプルなバー表示で描画（react-native-chart-kitが不要）
   const renderLVPBars = () => {
     if (!lvpData) return null;
-    const loads = [20, 40, 60, 80, 100, 120, 140];
-    const maxVel = lvpData.vmax;
+    const historyLoads = Array.from(
+      new Set(
+        recentSets
+          .map((set) => set.load_kg)
+          .filter((load) => Number.isFinite(load) && load > 0),
+      ),
+    ).sort((a, b) => a - b);
+    const estimatedOneRm = estimateOneRmFromProfile(
+      lvpData,
+      selectedExerciseRecord,
+    );
+    const loads =
+      historyLoads.length > 0
+        ? historyLoads.slice(-8)
+        : estimatedOneRm
+          ? [0.4, 0.55, 0.7, 0.8, 0.9, 1].map((ratio) =>
+              Math.round(estimatedOneRm * ratio),
+            )
+          : [];
+    const maxVel = Math.max(
+      lvpData.vmax,
+      ...loads.map((load) => lvpData.intercept + lvpData.slope * load),
+      0.1,
+    );
 
     return (
       <View style={styles.barsContainer}>
         <Text style={styles.subLabel}>負荷 → 速度プロファイル</Text>
         {loads.map((load) => {
           const vel = Math.max(0, lvpData.intercept + lvpData.slope * load);
-          const pct = (vel / maxVel) * 100;
+          const pct = Math.min(100, Math.max(0, (vel / maxVel) * 100));
           const zone = AICoachService.getZone(vel);
           return (
             <View key={load} style={styles.barRow}>
@@ -840,9 +917,9 @@ export default function GraphScreen() {
                   <Text style={styles.statUnit}>m/s</Text>
                 </View>
                 <View style={styles.statCard}>
-                  <Text style={styles.statLabel}>V@1RM</Text>
+                  <Text style={styles.statLabel}>MY V@1RM</Text>
                   <Text style={styles.statValue}>
-                    {lvpData.v1rm.toFixed(2)}
+                    {personalVelocityAt1RM?.toFixed(2)}
                   </Text>
                   <Text style={styles.statUnit}>m/s</Text>
                 </View>
@@ -876,7 +953,7 @@ export default function GraphScreen() {
                       { color: GarageTheme.accentSoft },
                     ]}
                   >
-                    {e1rmEstimate?.toFixed(1)}
+                    {e1rmEstimate?.toFixed(1) ?? "--"}
                   </Text>
                   <Text style={styles.statUnit}>kg</Text>
                 </View>
@@ -885,6 +962,17 @@ export default function GraphScreen() {
               {/* バーグラフでLVP表示 */}
               <View style={styles.section}>{renderLVPBars()}</View>
             </>
+          )}
+
+          {activeTab === "lvp" && !lvpData && (
+            <View style={styles.noDataContainer}>
+              <Text style={styles.noDataText}>
+                {selectedExercise} のLVPデータがありません
+              </Text>
+              <Text style={styles.noDataSubText}>
+                AV付きのセットが2点以上あると個人MVT基準で表示します
+              </Text>
+            </View>
           )}
 
           {/* 進捗タブ */}

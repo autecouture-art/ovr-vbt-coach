@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import type { RepData } from '../types/index';
 import AICoachService from '../services/AICoachService';
@@ -13,7 +13,18 @@ export function RepVelocityChart({ reps, setIndex, lift }: Props) {
   const [dynamicZones, setDynamicZones] = useState<Record<number, any>>({});
   const [loading, setLoading] = useState(true);
 
-  const setReps = reps.filter((rep) => rep.set_index === setIndex && !rep.is_excluded);
+  const setReps = useMemo(
+    () => reps.filter((rep) => rep.set_index === setIndex && !rep.is_excluded),
+    [reps, setIndex],
+  );
+  const setRepsSignature = useMemo(
+    () =>
+      `${setIndex}:` +
+      setReps
+        .map((rep) => `${rep.id ?? rep.rep_index}:${rep.mean_velocity ?? 'null'}`)
+        .join('|'),
+    [setIndex, setReps],
+  );
 
   // 動的ゾーンを非同期で取得
   useEffect(() => {
@@ -50,7 +61,7 @@ export function RepVelocityChart({ reps, setIndex, lift }: Props) {
     return () => {
       isMounted = false;
     };
-  }, [lift, setReps]);
+  }, [lift, setReps, setRepsSignature]);
 
   if (setReps.length === 0) {
     return (

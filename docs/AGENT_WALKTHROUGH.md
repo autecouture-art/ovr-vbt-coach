@@ -1,5 +1,63 @@
 # Agent Walkthrough Log
 
+## 2026-05-12 (Codex / GPT-5)
+Scope: Manual-entry support for deterministic VBT coach metrics.
+Actions:
+- Created backup at `.ai-backups/pre-manual-vbt-metrics-20260512-052606`.
+- Added optional manual fields for Average Velocity, Velocity Loss, and ROM in `src/screens/ManualEntryScreen.tsx`.
+- Added live deterministic coach preview for manual entries when Average Velocity is provided.
+- Saved manual Average Velocity / Velocity Loss onto `SetData` and manual ROM onto generated `RepData`.
+- Added optional `avg_rom_cm` to `SetData`, populated it from sensor reps in `useSessionLogic`, and added a ROM quality gate to `DeterministicVBTCoach`.
+- Updated `docs/IMPROVEMENT_TRACKER.md` for `2026-05-11-03`.
+Results:
+- `pnpm -s vitest run src/services/__tests__/DeterministicVBTCoach.test.ts` passed.
+- `pnpm -s check` passed.
+- `pnpm -s test` passed: 18 tests passed, 1 skipped.
+Remaining:
+- Device/simulator UI verification for the new manual metrics card and text fit.
+- Consider deriving set-level average ROM from persisted reps when reading old DB-backed histories.
+
+## 2026-05-12 (Codex / GPT-5)
+Scope: Implement deterministic VBT coach engine for API-free coaching.
+Actions:
+- Created backup at `.ai-backups/pre-deterministic-vbt-coach-20260512-051350`.
+- Added `src/services/DeterministicVBTCoach.ts` as a pure decision service for Average Velocity, Velocity Loss, MVT-based top singles, and backoff stop/watch/continue decisions.
+- Connected `AICoachService.getCoachingAdvice()` to prefer deterministic VBT decisions before the older trend-only advice.
+- Added focused unit tests in `src/services/__tests__/DeterministicVBTCoach.test.ts`.
+- Updated `docs/IMPROVEMENT_TRACKER.md` for `2026-05-11-02`.
+Results:
+- `pnpm -s vitest run src/services/__tests__/DeterministicVBTCoach.test.ts` passed.
+- `pnpm -s check` passed.
+- `pnpm -s test` passed: 17 tests passed, 1 skipped.
+Remaining:
+- Implement `2026-05-11-03` so manual entry can provide velocity/VL/ROM data to the deterministic coach.
+- Add ROM quality/confidence gates to the deterministic coach when ROM is available on set-level or derived from reps.
+
+## 2026-05-11 (Codex / GPT-5)
+Scope: GLM解約後のCodexサブスク運用化とCodex App Server Phase 1導入。
+Actions:
+- Confirmed the local `codex` CLI exposes `codex app-server` and schema generation commands.
+- Added `docs/CODEX_APP_SERVER_INTEGRATION.md` to define the safe integration direction: app runtime coaching remains deterministic/VBT-first, while Codex App Server is used for developer/admin automation.
+- Added `scripts/codex-app-server-check.mjs` and `pnpm codex:app-server:check` as a repo-local readiness check.
+- Added `scripts/codex-app-server-admin.mjs` and `pnpm codex:app-server:admin` as a local-only stdio admin client scaffold.
+- Added canned admin presets: `review`, `testflight`, `vbt-plan`, `performance`, and `release-notes`.
+- Tightened the admin client so presets default to `readOnly` sandbox with network access disabled; write access now requires explicit `--write`.
+- Fixed the client protocol wiring so `thread/start` also receives repo `cwd`, `approvalPolicy`, and `sandbox: "read-only"` / `"workspace-write"` overrides.
+- Set the admin client default model to `gpt-5.4` after a real App Server turn reported that `gpt-5.5` requires a newer Codex CLI than the verified `codex-cli 0.101.0`.
+- Updated `docs/IMPROVEMENT_TRACKER.md` with the GLM-to-Codex migration item.
+Results:
+- Backup created at `.ai-backups/pre-codex-app-server-20260511-194122`.
+- Follow-up preset backup created at `.ai-backups/pre-codex-app-server-presets-20260511-203609`.
+- `pnpm codex:app-server:check` passed with `codex-cli 0.101.0`.
+- `pnpm codex:app-server:admin -- --help`, `--list-presets`, and preset `--dry-run` passed.
+- First real App Server run with default `gpt-5.5` failed because the current CLI requires an upgrade for that model.
+- After defaulting the admin client to `gpt-5.4`, `pnpm codex:app-server:admin -- --preset vbt-plan --note "Read-only. Do not modify files. Keep the answer concise."` completed and produced a deterministic VBT plan.
+- Recorded the run output in `docs/CODEX_APP_SERVER_RUNS.md`.
+- `pnpm -s check` passed.
+Remaining:
+- Next implementation candidate: `2026-05-11-02` deterministic VBT coach engine, then `2026-05-11-03` manual-entry data support.
+- Keep app-facing AI optional; prioritize deterministic VBT guidance so normal use does not require API billing.
+
 ## 2026-03-26 (Codex)
 Scope: Repo stabilization, TestFlight workflow documentation, exercise selection fix.
 Actions:
@@ -611,3 +669,135 @@ Remaining:
   - VL settings UI functionality in session screen
   - Audio ducking effectiveness during voice announcements
   - Performance improvements in long sessions
+
+## 2026-05-13 (Codex)
+Scope: User field-test follow-up for session freeze, VBT simulator testing path, and graph/MY V@1RM behavior.
+Safety:
+- Considered workspace AGENTS rule before acting. Work stayed inside repo-local files and normal build/test commands; no scans or broad network probing.
+Actions:
+- Backed up touched files under `.ai-backups/20260513-vbt-freeze-simulator-graph/`.
+- Updated `docs/IMPROVEMENT_TRACKER.md` with 2026-05-13 user feedback and implemented items.
+- Changed `src/hooks/useSessionLogic.ts` so set completion moves UI to rest immediately, then persists DB rows, PR checks, four-point 1RM estimation, LVP save, and ROM inference asynchronously.
+- Reduced session all-rep refresh triggers in `app/(tabs)/session.tsx` so set completion no longer performs duplicate full-session reloads on both set index and set-history changes.
+- Added VBT simulator support:
+  - `src/utils/VBTSimulator.ts` pure dummy payload generator
+  - `src/services/BLEService.ts` simulator connect/disconnect, single rep emission, and velocity-loss shaped simulated set
+  - `app/(tabs)/session.tsx` compact VBT SIM controls
+  - `src/utils/__tests__/VBTSimulator.test.ts` unit coverage
+- Updated `app/(tabs)/graph.tsx`:
+  - Removed fixed demo LVP fallback
+  - Uses saved LVP or derives an in-memory LVP from real AV history
+  - Bars prefer actual recorded loads instead of fixed 20-140kg loads
+  - Displays `MY V@1RM` using lvp.mvt, exercise.mvt, then v1rm fallback
+  - e1RM estimate now uses personal MVT where available
+Results:
+- `pnpm -s check` passed.
+- `pnpm -s test` passed: 20 passed, 1 skipped.
+- iOS Debug simulator build passed with `xcodebuild ... CODE_SIGNING_ALLOWED=NO build`.
+- Computer Use + iOS Simulator:
+  - Debug app first showed `No script URL provided`; 8081 Metro was stuck, so used localhost 8082 and set `RCT_jsLocation` for the simulator.
+  - Verified app launch, Session tab open, VBT SIM controls visible before session.
+  - Found and fixed simulator CONNECT not updating `trainingStore.isConnected`.
+  - Found and fixed active-session screen hiding VBT SIM controls.
+  - Ran SIM SET in active session; it advanced to SET 2 without freezing.
+  - Found and fixed `AICoachService.suggestNextLoad` crash when `target_training_phase` is a PL phase such as `peaking`.
+Notes:
+- Simulator warning `Missing com.apple.developer.healthkit entitlement` is expected for the simulator/debug entitlement context and did not block session testing.
+- Physical iPhone training DB is not directly readable from Mac in normal TestFlight use unless exported/synced or the app container is accessible via development tooling.
+
+## 2026-05-14 (Codex)
+Scope: Add a safe iPhone-to-Codex training-data handoff.
+Safety:
+- Considered the workspace AGENTS security rule before acting.
+- Confirmed the Mac is not associated with AirPort Wi-Fi before starting.
+- Avoided network scanning, LAN discovery, device probing, and background servers. The handoff is user-initiated file sharing only.
+Actions:
+- Backed up touched files under `.ai-backups/20260514-codex-training-export/`.
+- Added `src/services/CodexDataExportService.ts`.
+  - Builds schema `repvelocoach.codex-training-export.v1`.
+  - Exports sessions, sets, reps, exercises, and LVP profiles from the existing SQLite service.
+  - Writes a JSON file under the app document directory and opens the native share sheet.
+- Updated `app/(tabs)/import.tsx`.
+  - Added `CODEX EXPORT` card and button to the Data tab.
+  - Shows exported file name and size after a successful export.
+- Added `scripts/read-codex-training-export.mjs`.
+  - Reads a selected export file or the latest `repvelocoach-codex-export-*.json` in a directory.
+  - Validates the schema and prints counts, latest session, mean rep velocity, top exercises, and MY V@1RM profile values.
+- Added package script `pnpm codex:training-export`.
+- Added direct `expo-file-system` dependency so the export service owns its file-writing dependency.
+Results:
+- `pnpm -s check` passed.
+- `node --check scripts/read-codex-training-export.mjs` passed.
+- Sample JSON parser smoke test passed.
+Remaining:
+- Real iPhone TestFlight/shared-file check is still needed: Data tab -> CODEX EXPORT -> AirDrop/Files/Finder to Mac -> `pnpm codex:training-export ~/Downloads`.
+
+Follow-up:
+- User said this should feel like it can be acquired from this screen.
+- Polished `app/(tabs)/import.tsx` so the Data tab headline is `DATA BAY / CODEX LINK`.
+- Moved Codex export into a prominent top card directly below local DB stats.
+- The card now shows export target, JSON badge, exportable counts, `GET DATA FOR CODEX`, and last exported file metadata.
+
+## 2026-05-14 (Codex)
+Scope: VBT SIM session-mode regression test.
+Safety:
+- Considered the workspace AGENTS security rule. No network probing or scanning was used.
+- Wi-Fi check showed the Mac was not associated with AirPort Wi-Fi.
+Actions:
+- Ran `pnpm -s check`.
+- Ran `pnpm -s vitest run src/utils/__tests__/VBTSimulator.test.ts src/services/__tests__/DeterministicVBTCoach.test.ts`.
+- Used iOS Simulator + Computer Use to test session mode:
+  - Opened Session tab.
+  - Connected VBT SIM.
+  - Selected Squat.
+  - Started a session.
+  - Sent a single simulated REP.
+  - Sent a simulated SET.
+  - Confirmed the UI entered rest/paused state after set completion.
+  - Confirmed `次のセットを開始` advanced to `SET 2`.
+Findings:
+- No freeze was observed during the simulated set-completion flow.
+- A React Native LogBox warning appeared after a 0kg simulator PR: `Text strings must be rendered within a <Text> component.`
+- Root cause was `prRecord.load_kg && (...)` in `src/components/PRNotification.tsx`; numeric `0` could be rendered outside `<Text>` during 0kg simulator tests.
+Fix:
+- Backed up files under `.ai-backups/20260514-session-sim-test-fix/`.
+- Changed the PR notification condition to `prRecord.load_kg != null`.
+Results:
+- `pnpm -s check` passed after the fix.
+- Targeted VBT tests passed after the fix: 9 tests passed.
+- Re-ran the Simulator flow and the `Text strings...` warning did not reappear.
+Remaining:
+- Simulator still shows `Missing com.apple.developer.healthkit entitlement`, which is expected in the debug Simulator environment and not part of the VBT SIM failure path.
+- Real TestFlight/iPhone session-mode confirmation is still needed.
+
+## 2026-05-14 (Codex)
+Scope: Fix 0W power display and add more live session information.
+Safety:
+- Considered the workspace AGENTS security rule. No network probing or scanning was used.
+- Wi-Fi check showed the Mac was not associated with AirPort Wi-Fi.
+Actions:
+- Backed up touched files under `.ai-backups/20260514-session-power-info/`.
+- Updated `src/hooks/useSessionLogic.ts`.
+  - Preserves device/simulator `mean_power_w` and `peak_power_w` when they are positive.
+  - Falls back to calculated power from current load and velocity when the device reports 0 or omits power.
+  - Stores the resolved power on saved rep records.
+- Updated `src/services/BLEService.ts`.
+  - Lets the VBT simulator receive the current load so simulated power matches the active set load.
+- Updated `app/(tabs)/session.tsx`.
+  - Treats reported `0W` as missing for display fallback instead of a final value.
+  - Applies the same fallback to session-history power chips, so existing reps with missing/zero saved power can still show calculated power from load and velocity.
+  - Adds active-session info cards for `EXERCISE`, `LOAD`, and `POWER`.
+  - Adds active-session metric strip for `AVG V`, `ROM`, and `PEAK P`.
+Results:
+- `pnpm -s check` passed.
+- Targeted VBT tests passed: 20 tests passed across `VBTSimulator`, `VBTLogic`, and `DeterministicVBTCoach`.
+- iOS Simulator + Computer Use verification:
+  - Selected Squat.
+  - Set load to 100kg.
+  - Started a session.
+  - Sent a simulated REP.
+  - Confirmed live Power displayed `471 W` and Peak P displayed `556 W`.
+  - Sent a simulated SET.
+  - Confirmed set completion did not freeze and the PR modal appeared.
+Notes:
+- Simulator still shows `Missing com.apple.developer.healthkit entitlement`, which is expected in the debug Simulator environment and did not block this test.

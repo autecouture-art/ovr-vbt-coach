@@ -3,7 +3,7 @@
  * Fetches and manages session start data
  */
 
-import { useState, useEffect } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import SessionStartService from '../services/SessionStartService';
 import type { Exercise } from '../types/index';
 import type { SessionStartData } from '../services/SessionStartService';
@@ -13,7 +13,7 @@ export function useSessionStartData(exercise: Exercise | null, currentLoad: numb
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     if (!exercise) {
       setData(null);
       return;
@@ -34,14 +34,14 @@ export function useSessionStartData(exercise: Exercise | null, currentLoad: numb
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentLoad, exercise]);
 
   useEffect(() => {
-    fetchData();
-  }, [exercise?.name, currentLoad]);
+    void fetchData();
+  }, [fetchData]);
 
   const refetch = () => {
-    fetchData();
+    void fetchData();
   };
 
   return {

@@ -3,7 +3,7 @@
  * 手動でレップを追加するためのモーダル
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -18,7 +18,7 @@ import { GarageTheme } from '@/src/constants/garageTheme';
 interface Props {
   visible: boolean;
   onClose: () => void;
-  onAddRep: (velocity: number, load?: number) => void;
+  onAddRep: (velocity?: number, load?: number) => void;
   currentLoad: number;
 }
 
@@ -26,16 +26,29 @@ export function ManualRepModal({ visible, onClose, onAddRep, currentLoad }: Prop
   const [velocity, setVelocity] = useState('');
   const [load, setLoad] = useState(currentLoad.toString());
 
-  const handleAdd = () => {
-    const velocityNum = parseFloat(velocity);
-    const loadNum = parseFloat(load);
+  useEffect(() => {
+    if (visible) {
+      setLoad(currentLoad.toString());
+    }
+  }, [currentLoad, visible]);
 
-    if (isNaN(velocityNum) || velocityNum <= 0) {
+  const handleAdd = () => {
+    const normalizedVelocity = velocity.trim().replace(',', '.');
+    const normalizedLoad = load.trim().replace(',', '.');
+    const velocityNum = normalizedVelocity
+      ? Number.parseFloat(normalizedVelocity)
+      : undefined;
+    const loadNum = Number.parseFloat(normalizedLoad);
+
+    if (
+      velocityNum !== undefined &&
+      (Number.isNaN(velocityNum) || velocityNum <= 0)
+    ) {
       Alert.alert('入力エラー', '速度を正しく入力してください（0より大きい値）');
       return;
     }
 
-    if (isNaN(loadNum) || loadNum <= 0) {
+    if (Number.isNaN(loadNum) || loadNum <= 0) {
       Alert.alert('入力エラー', '重量を正しく入力してください（0より大きい値）');
       return;
     }
@@ -71,6 +84,8 @@ export function ManualRepModal({ visible, onClose, onAddRep, currentLoad }: Prop
                 placeholder="例: 100"
                 placeholderTextColor={GarageTheme.textSubtle}
                 keyboardType="decimal-pad"
+                returnKeyType="done"
+                selectTextOnFocus
               />
             </View>
 
@@ -83,6 +98,8 @@ export function ManualRepModal({ visible, onClose, onAddRep, currentLoad }: Prop
                 placeholder="例: 0.65"
                 placeholderTextColor={GarageTheme.textSubtle}
                 keyboardType="decimal-pad"
+                returnKeyType="done"
+                selectTextOnFocus
               />
               <Text style={styles.hint}>
                 BLEセンサーで測定できない場合に手動入力してください
@@ -197,7 +214,7 @@ const styles = StyleSheet.create({
     color: GarageTheme.textStrong,
   },
   addButton: {
-    backgroundColor: GarageTheme.primary,
+    backgroundColor: GarageTheme.accent,
   },
   addButtonText: {
     fontSize: 16,

@@ -41,6 +41,11 @@ export default function HistoryTabRoute() {
           routeParams[key] = String(value);
         }
         router.push({ pathname: '/coach-chat', params: routeParams });
+        return;
+      }
+
+      if (name === 'ExerciseHistory') {
+        router.push({ pathname: '/exercise-history' });
       }
     },
   };

@@ -85,7 +85,7 @@ export function ReadinessCard({
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: GarageTheme.colors.card,
+    backgroundColor: GarageTheme.panel,
     borderRadius: 16,
     padding: 20,
     margin: 16,
@@ -104,7 +104,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: GarageTheme.colors.text,
+    color: GarageTheme.text,
   },
   trendBadge: {
     width: 40,
@@ -126,35 +126,35 @@ const styles = StyleSheet.create({
   },
   predictedLabel: {
     fontSize: 14,
-    color: GarageTheme.colors.textSecondary,
+    color: GarageTheme.textMuted,
     marginBottom: 8,
   },
   predictedValue: {
     fontSize: 32,
     fontWeight: 'bold',
-    color: GarageTheme.colors.primary,
+    color: GarageTheme.accent,
   },
   confidenceContainer: {
     alignItems: 'center',
   },
   confidenceLabel: {
     fontSize: 14,
-    color: GarageTheme.colors.textSecondary,
+    color: GarageTheme.textMuted,
     marginBottom: 8,
   },
   confidenceValue: {
     fontSize: 24,
     fontWeight: '600',
-    color: GarageTheme.colors.text,
+    color: GarageTheme.text,
   },
   footer: {
     borderTopWidth: 1,
-    borderTopColor: GarageTheme.colors.border,
+    borderTopColor: GarageTheme.border,
     paddingTop: 12,
   },
   footerText: {
     fontSize: 14,
-    color: GarageTheme.colors.textSecondary,
+    color: GarageTheme.textMuted,
     textAlign: 'center',
   },
 });

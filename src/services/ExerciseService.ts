@@ -7,6 +7,7 @@ import DatabaseService from "@/src/services/DatabaseService";
 import type { Exercise } from "@/src/types/index";
 import {
   DEFAULT_EXERCISES,
+  getCanonicalExerciseSeed,
   inferExercisePreset,
   mergeExerciseWithPreset,
   roundToHalfKg,
@@ -209,8 +210,59 @@ class ExerciseService {
           }
         : merged;
 
+      if (existing && existing.name !== defaultExercise.name) {
+        await this.migrateLvpProfile(existing.name, defaultExercise.name);
+      }
+
       await DatabaseService.saveExercise(nextExercise);
       await this.applyRomInference(nextExercise, false);
+    }
+
+    await this.mergeDuplicateAliasExercises();
+  }
+
+  private async mergeDuplicateAliasExercises(): Promise<void> {
+    const current = await DatabaseService.getExercises();
+    const byId = new Map(current.map((exercise) => [exercise.id, exercise]));
+
+    for (const exercise of current) {
+      const canonical = getCanonicalExerciseSeed(exercise.name);
+      if (!canonical || canonical.id === exercise.id) continue;
+
+      const existingCanonical = byId.get(canonical.id);
+      const source = existingCanonical ?? exercise;
+      const merged = mergeExerciseWithPreset({
+        ...canonical,
+        ...source,
+        id: canonical.id,
+        name: canonical.name,
+        category: canonical.category,
+        subcategory: canonical.subcategory,
+        description: canonical.description ?? source.description,
+      });
+
+      await DatabaseService.saveExercise(merged);
+
+      await this.migrateLvpProfile(exercise.name, canonical.name);
+
+      await DatabaseService.deleteExercise(exercise.id);
+    }
+  }
+
+  private async migrateLvpProfile(
+    fromLift: string,
+    toLift: string,
+  ): Promise<void> {
+    if (fromLift === toLift) return;
+
+    const aliasLvp = await DatabaseService.getLVPProfile(fromLift);
+    const canonicalLvp = await DatabaseService.getLVPProfile(toLift);
+    if (aliasLvp && !canonicalLvp) {
+      await DatabaseService.saveLVPProfile({
+        ...aliasLvp,
+        lift: toLift,
+        last_updated: new Date().toISOString(),
+      });
     }
   }
 

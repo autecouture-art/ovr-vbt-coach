@@ -62,7 +62,7 @@ export function E1RMCard({ currentE1RM, mvt }: E1RMCardProps) {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: GarageTheme.colors.card,
+    backgroundColor: GarageTheme.panel,
     borderRadius: 16,
     padding: 20,
     margin: 16,
@@ -81,10 +81,10 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: GarageTheme.colors.text,
+    color: GarageTheme.text,
   },
   badge: {
-    backgroundColor: GarageTheme.colors.primary,
+    backgroundColor: GarageTheme.accent,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
@@ -101,49 +101,49 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 20,
     paddingVertical: 16,
-    backgroundColor: GarageTheme.colors.background,
+    backgroundColor: GarageTheme.background,
     borderRadius: 12,
   },
   e1rmLabel: {
     fontSize: 14,
-    color: GarageTheme.colors.textSecondary,
+    color: GarageTheme.textMuted,
     marginBottom: 8,
   },
   e1rmValue: {
     fontSize: 36,
     fontWeight: 'bold',
-    color: GarageTheme.colors.primary,
+    color: GarageTheme.accent,
   },
   mvtContainer: {
     alignItems: 'center',
     paddingVertical: 16,
-    backgroundColor: GarageTheme.colors.background,
+    backgroundColor: GarageTheme.background,
     borderRadius: 12,
   },
   mvtLabel: {
     fontSize: 14,
-    color: GarageTheme.colors.textSecondary,
+    color: GarageTheme.textMuted,
     marginBottom: 8,
   },
   mvtValue: {
     fontSize: 32,
     fontWeight: 'bold',
-    color: GarageTheme.colors.accent,
+    color: GarageTheme.accent,
     marginBottom: 8,
   },
   mvtDescription: {
     fontSize: 14,
-    color: GarageTheme.colors.textSecondary,
+    color: GarageTheme.textMuted,
     textAlign: 'center',
   },
   footer: {
     borderTopWidth: 1,
-    borderTopColor: GarageTheme.colors.border,
+    borderTopColor: GarageTheme.border,
     paddingTop: 12,
   },
   footerText: {
     fontSize: 14,
-    color: GarageTheme.colors.textSecondary,
+    color: GarageTheme.textMuted,
     textAlign: 'center',
   },
 });

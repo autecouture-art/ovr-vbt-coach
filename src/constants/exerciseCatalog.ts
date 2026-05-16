@@ -3,13 +3,15 @@ import type { Exercise } from "@/src/types/index";
 export type ExerciseSelectionGroupId =
   | "all"
   | "big3"
-  | "bench_family"
-  | "squat_family"
-  | "hinge_family"
-  | "upper_push"
-  | "upper_pull"
-  | "lower_body"
-  | "arms_core";
+  | "chest"
+  | "shoulders"
+  | "back"
+  | "quads"
+  | "posterior_chain"
+  | "adductors"
+  | "arms"
+  | "core"
+  | "other";
 
 type ExerciseSeed = Exercise & {
   aliases?: string[];
@@ -36,25 +38,27 @@ export const EXERCISE_CATEGORY_LABELS: Record<Exercise["category"], string> = {
   accessory: "補助種目",
 };
 
-export const EXERCISE_SELECTION_GROUPS: Array<{
+export const EXERCISE_SELECTION_GROUPS: {
   id: ExerciseSelectionGroupId;
   label: string;
-}> = [
+}[] = [
   { id: "all", label: "すべて" },
   { id: "big3", label: "BIG3" },
-  { id: "bench_family", label: "ベンチ系" },
-  { id: "squat_family", label: "スクワット系" },
-  { id: "hinge_family", label: "デッド・ヒンジ" },
-  { id: "upper_push", label: "上半身プッシュ" },
-  { id: "upper_pull", label: "上半身プル" },
-  { id: "lower_body", label: "下半身補助" },
-  { id: "arms_core", label: "腕・体幹" },
+  { id: "chest", label: "胸" },
+  { id: "shoulders", label: "肩" },
+  { id: "back", label: "背中" },
+  { id: "quads", label: "脚前" },
+  { id: "posterior_chain", label: "ハム・臀部" },
+  { id: "adductors", label: "内転筋" },
+  { id: "arms", label: "腕" },
+  { id: "core", label: "体幹" },
+  { id: "other", label: "その他" },
 ];
 
 const DEFAULT_EXERCISE_SEEDS: ExerciseSeed[] = [
   {
     id: "squat",
-    name: "スクワット",
+    name: "Squat",
     category: "squat",
     subcategory: "competition_squat",
     has_lvp: true,
@@ -66,11 +70,11 @@ const DEFAULT_EXERCISE_SEEDS: ExerciseSeed[] = [
     rom_range_max_cm: 60,
     description: "標準的なバックスクワット。ROM推定の基準種目。",
     mvt: 0.3,
-    aliases: ["squat", "back squat"],
+    aliases: ["スクワット", "バックスクワット", "back squat"],
   },
   {
     id: "front_squat",
-    name: "フロントスクワット",
+    name: "Front Squat",
     category: "squat",
     subcategory: "front_squat",
     has_lvp: true,
@@ -81,11 +85,11 @@ const DEFAULT_EXERCISE_SEEDS: ExerciseSeed[] = [
     rom_range_max_cm: 58,
     description: "上体が立ちやすい前担ぎスクワット。",
     mvt: 0.32,
-    aliases: ["front squat"],
+    aliases: ["フロントスクワット"],
   },
   {
     id: "ssb_support_squat",
-    name: "SSBサポートスクワット",
+    name: "SSB Support Squat",
     category: "squat",
     subcategory: "ssb_support_squat",
     has_lvp: true,
@@ -95,11 +99,11 @@ const DEFAULT_EXERCISE_SEEDS: ExerciseSeed[] = [
     rom_range_min_cm: 28,
     rom_range_max_cm: 52,
     description: "サポート付きSSBスクワット。短めROMにも対応。",
-    aliases: ["sbb support squat", "support squat"],
+    aliases: ["SSBサポートスクワット", "sbb support squat", "support squat"],
   },
   {
     id: "ssb_adductor_squat",
-    name: "SSBアダクタースクワット",
+    name: "SSB Adductor Squat",
     category: "squat",
     subcategory: "ssb_adductor_squat",
     has_lvp: true,
@@ -109,11 +113,11 @@ const DEFAULT_EXERCISE_SEEDS: ExerciseSeed[] = [
     rom_range_min_cm: 24,
     rom_range_max_cm: 46,
     description: "内転筋寄りのスタンスを取るSSBスクワット。",
-    aliases: ["ssb adductor squat", "ssb adductor  squat"],
+    aliases: ["SSBアダクタースクワット", "ssb adductor  squat"],
   },
   {
     id: "bench_press",
-    name: "ベンチプレス",
+    name: "Bench Press",
     category: "bench",
     subcategory: "competition_bench",
     has_lvp: true,
@@ -124,11 +128,11 @@ const DEFAULT_EXERCISE_SEEDS: ExerciseSeed[] = [
     rom_range_max_cm: 34,
     description: "標準的なベンチプレス。GLM相談・1RM推定の中心。",
     mvt: 0.15,
-    aliases: ["bench press", "bench"],
+    aliases: ["ベンチプレス", "bench"],
   },
   {
     id: "larsen_bench_press",
-    name: "ラーセンベンチプレス",
+    name: "Larsen Bench Press",
     category: "bench",
     subcategory: "larsen_bench",
     has_lvp: true,
@@ -139,11 +143,11 @@ const DEFAULT_EXERCISE_SEEDS: ExerciseSeed[] = [
     rom_range_max_cm: 32,
     description: "脚の反力を使わないベンチバリエーション。",
     mvt: 0.15,
-    aliases: ["larsen bench press", "larsen bench"],
+    aliases: ["ラーセンベンチプレス", "larsen bench"],
   },
   {
     id: "larsen_bottom_pulse_bench_press",
-    name: "ラーセンボトムパルスベンチプレス",
+    name: "Larsen Bottom Pulse Bench Press",
     category: "bench",
     subcategory: "pulse_bench",
     has_lvp: true,
@@ -155,11 +159,11 @@ const DEFAULT_EXERCISE_SEEDS: ExerciseSeed[] = [
     rom_range_max_cm: 30,
     description:
       "ボトムでパルスを入れるベンチ。誤検知防止のため pause モード。",
-    aliases: ["larsen bottom pulse bench", "bottom pulse bench"],
+    aliases: ["ラーセンボトムパルスベンチプレス", "larsen bottom pulse bench", "bottom pulse bench"],
   },
   {
     id: "larsen_tempo_bench_press",
-    name: "ラーセン4-2-0テンポベンチプレス",
+    name: "Larsen 4-2-0 Tempo Bench Press",
     category: "bench",
     subcategory: "tempo_bench",
     has_lvp: true,
@@ -170,11 +174,16 @@ const DEFAULT_EXERCISE_SEEDS: ExerciseSeed[] = [
     rom_range_min_cm: 14,
     rom_range_max_cm: 30,
     description: "4-2-0 テンポのラーセンベンチ。",
-    aliases: ["larsen 4/2/0 tempo bench", "tempo bench", "4/2/0 tempo bench"],
+    aliases: [
+      "ラーセン4-2-0テンポベンチプレス",
+      "larsen 4/2/0 tempo bench",
+      "tempo bench",
+      "4/2/0 tempo bench",
+    ],
   },
   {
     id: "incline_bench_press",
-    name: "インクラインベンチプレス",
+    name: "Incline Bench Press",
     category: "bench",
     subcategory: "incline_bench",
     has_lvp: true,
@@ -184,11 +193,11 @@ const DEFAULT_EXERCISE_SEEDS: ExerciseSeed[] = [
     rom_range_min_cm: 14,
     rom_range_max_cm: 30,
     description: "上胸寄りのベンチプレス。",
-    aliases: ["incline bench", "incline bench press"],
+    aliases: ["インクラインベンチプレス", "incline bench"],
   },
   {
     id: "deadlift",
-    name: "デッドリフト",
+    name: "Deadlift",
     category: "deadlift",
     subcategory: "conventional_deadlift",
     has_lvp: true,
@@ -199,11 +208,11 @@ const DEFAULT_EXERCISE_SEEDS: ExerciseSeed[] = [
     rom_range_max_cm: 48,
     description: "標準的なコンベンショナルデッドリフト。",
     mvt: 0.3,
-    aliases: ["deadlift", "conventional deadlift"],
+    aliases: ["デッドリフト", "conventional deadlift"],
   },
   {
     id: "sumo_deadlift",
-    name: "相撲デッドリフト",
+    name: "Sumo Deadlift",
     category: "deadlift",
     subcategory: "sumo_deadlift",
     has_lvp: true,
@@ -214,11 +223,11 @@ const DEFAULT_EXERCISE_SEEDS: ExerciseSeed[] = [
     rom_range_max_cm: 42,
     description: "スタンスが広い相撲デッド。",
     mvt: 0.28,
-    aliases: ["sumo deadlift", "sumo"],
+    aliases: ["相撲デッドリフト", "sumo"],
   },
   {
     id: "adductor_focused_wide_deadlift",
-    name: "アダクターフォーカスワイドデッドリフト",
+    name: "Adductor-Focused Wide Deadlift",
     category: "deadlift",
     subcategory: "wide_deadlift",
     has_lvp: true,
@@ -228,11 +237,11 @@ const DEFAULT_EXERCISE_SEEDS: ExerciseSeed[] = [
     rom_range_min_cm: 22,
     rom_range_max_cm: 40,
     description: "内転筋寄りのワイドスタンスデッド。",
-    aliases: ["adductor-focused wide dea", "wide deadlift"],
+    aliases: ["アダクターフォーカスワイドデッドリフト", "adductor-focused wide dea", "wide deadlift"],
   },
   {
     id: "romanian_deadlift",
-    name: "ルーマニアンデッドリフト",
+    name: "Romanian Deadlift",
     category: "deadlift",
     subcategory: "romanian_deadlift",
     has_lvp: true,
@@ -242,11 +251,11 @@ const DEFAULT_EXERCISE_SEEDS: ExerciseSeed[] = [
     rom_range_min_cm: 20,
     rom_range_max_cm: 38,
     description: "ヒップヒンジを強く使うRDL。",
-    aliases: ["rdl", "romanian deadlift"],
+    aliases: ["ルーマニアンデッドリフト", "rdl"],
   },
   {
     id: "shoulder_press",
-    name: "ショルダープレス",
+    name: "Shoulder Press",
     category: "press",
     subcategory: "shoulder_press",
     has_lvp: true,
@@ -257,11 +266,11 @@ const DEFAULT_EXERCISE_SEEDS: ExerciseSeed[] = [
     rom_range_max_cm: 36,
     description: "立位または座位のショルダープレス。",
     mvt: 0.2,
-    aliases: ["shoulder press", "overhead press", "ohp"],
+    aliases: ["ショルダープレス", "overhead press", "ohp"],
   },
   {
     id: "landmine_shoulder_press",
-    name: "ランドマインショルダープレス",
+    name: "Landmine Shoulder Press",
     category: "press",
     subcategory: "landmine_press",
     has_lvp: true,
@@ -271,11 +280,11 @@ const DEFAULT_EXERCISE_SEEDS: ExerciseSeed[] = [
     rom_range_min_cm: 16,
     rom_range_max_cm: 32,
     description: "斜め軌道のプレス。",
-    aliases: ["landmune shoulder press", "landmine shoulder press"],
+    aliases: ["ランドマインショルダープレス", "landmune shoulder press"],
   },
   {
     id: "seal_row",
-    name: "シールロウ",
+    name: "Seal Row",
     category: "row",
     subcategory: "seal_row",
     has_lvp: true,
@@ -285,11 +294,11 @@ const DEFAULT_EXERCISE_SEEDS: ExerciseSeed[] = [
     rom_range_min_cm: 14,
     rom_range_max_cm: 28,
     description: "胸支持の水平ロウ。",
-    aliases: ["seal row"],
+    aliases: ["シールロウ"],
   },
   {
     id: "barbell_row",
-    name: "バーベルロウ",
+    name: "Barbell Row",
     category: "row",
     subcategory: "barbell_row",
     has_lvp: true,
@@ -299,11 +308,11 @@ const DEFAULT_EXERCISE_SEEDS: ExerciseSeed[] = [
     rom_range_min_cm: 18,
     rom_range_max_cm: 34,
     description: "フリーウェイトの水平プル。",
-    aliases: ["barbell row", "row"],
+    aliases: ["バーベルロウ", "row"],
   },
   {
     id: "chinning",
-    name: "チンニング",
+    name: "Chinning",
     category: "vertical_pull",
     subcategory: "chin_up",
     has_lvp: true,
@@ -312,11 +321,11 @@ const DEFAULT_EXERCISE_SEEDS: ExerciseSeed[] = [
     rom_range_min_cm: 18,
     rom_range_max_cm: 38,
     description: "自重または加重の懸垂。",
-    aliases: ["chinning", "chin up", "pull-up", "pull up"],
+    aliases: ["チンニング", "懸垂", "chin up", "pull-up", "pull up"],
   },
   {
     id: "lat_pulldown",
-    name: "ラットプルダウン",
+    name: "Lat Pulldown",
     category: "vertical_pull",
     subcategory: "lat_pulldown",
     has_lvp: true,
@@ -325,11 +334,11 @@ const DEFAULT_EXERCISE_SEEDS: ExerciseSeed[] = [
     rom_range_min_cm: 18,
     rom_range_max_cm: 36,
     description: "縦引きマシン種目。",
-    aliases: ["lat pulldown", "lat pull down"],
+    aliases: ["ラットプルダウン", "lat pull down"],
   },
   {
     id: "dips",
-    name: "ディップス",
+    name: "Dips",
     category: "triceps",
     subcategory: "dips",
     has_lvp: true,
@@ -338,11 +347,11 @@ const DEFAULT_EXERCISE_SEEDS: ExerciseSeed[] = [
     rom_range_min_cm: 14,
     rom_range_max_cm: 30,
     description: "胸・三頭狙いの自重プレス。",
-    aliases: ["dips", "dip"],
+    aliases: ["ディップス", "dip"],
   },
   {
     id: "cable_press_down",
-    name: "ケーブルプレスダウン",
+    name: "Cable Pressdown",
     category: "triceps",
     subcategory: "press_down",
     has_lvp: false,
@@ -351,11 +360,11 @@ const DEFAULT_EXERCISE_SEEDS: ExerciseSeed[] = [
     rom_range_min_cm: 10,
     rom_range_max_cm: 24,
     description: "三頭狙いのケーブル種目。",
-    aliases: ["cable press down", "press down", "pressdown"],
+    aliases: ["ケーブルプレスダウン", "cable press down", "press down"],
   },
   {
     id: "arm_curl",
-    name: "アームカール",
+    name: "Arm Curl",
     category: "biceps",
     subcategory: "curl",
     has_lvp: false,
@@ -364,11 +373,11 @@ const DEFAULT_EXERCISE_SEEDS: ExerciseSeed[] = [
     rom_range_min_cm: 10,
     rom_range_max_cm: 22,
     description: "二頭筋の補助種目。",
-    aliases: ["bicep curl", "curl", "arm curl"],
+    aliases: ["アームカール", "bicep curl", "curl"],
   },
   {
     id: "leg_extension_delta",
-    name: "レッグエクステンション DELTA",
+    name: "Leg Extension DELTA",
     category: "quad",
     subcategory: "leg_extension",
     has_lvp: false,
@@ -377,11 +386,11 @@ const DEFAULT_EXERCISE_SEEDS: ExerciseSeed[] = [
     rom_range_min_cm: 12,
     rom_range_max_cm: 26,
     description: "四頭筋メインのマシン種目。",
-    aliases: ["leg extension delta", "leg extension"],
+    aliases: ["レッグエクステンション DELTA", "leg extension"],
   },
   {
     id: "leg_curl_delta",
-    name: "レッグカール DELTA",
+    name: "Leg Curl DELTA",
     category: "hamstring",
     subcategory: "leg_curl",
     has_lvp: false,
@@ -390,11 +399,11 @@ const DEFAULT_EXERCISE_SEEDS: ExerciseSeed[] = [
     rom_range_min_cm: 12,
     rom_range_max_cm: 24,
     description: "ハムストリングのマシン種目。",
-    aliases: ["leg curl delta", "leg curl"],
+    aliases: ["レッグカール DELTA", "leg curl"],
   },
   {
     id: "adductor_delta",
-    name: "アダクター DELTA",
+    name: "Adductor DELTA",
     category: "adductor",
     subcategory: "adductor_machine",
     has_lvp: false,
@@ -403,11 +412,11 @@ const DEFAULT_EXERCISE_SEEDS: ExerciseSeed[] = [
     rom_range_min_cm: 10,
     rom_range_max_cm: 22,
     description: "内転筋のマシン種目。",
-    aliases: ["adductor delta new", "adductor delta", "adductor"],
+    aliases: ["アダクター DELTA", "adductor delta new", "adductor"],
   },
   {
     id: "hip_thrust",
-    name: "ヒップスラスト",
+    name: "Hip Thrust",
     category: "glute",
     subcategory: "hip_thrust",
     has_lvp: true,
@@ -417,11 +426,11 @@ const DEFAULT_EXERCISE_SEEDS: ExerciseSeed[] = [
     rom_range_min_cm: 14,
     rom_range_max_cm: 28,
     description: "臀部主導のヒップエクステンション。",
-    aliases: ["hip thrust"],
+    aliases: ["ヒップスラスト"],
   },
   {
     id: "bulgarian_split_squat",
-    name: "ブルガリアンスクワット",
+    name: "Bulgarian Split Squat",
     category: "single_leg",
     subcategory: "bulgarian_split_squat",
     has_lvp: true,
@@ -431,7 +440,7 @@ const DEFAULT_EXERCISE_SEEDS: ExerciseSeed[] = [
     rom_range_min_cm: 22,
     rom_range_max_cm: 40,
     description: "片脚の安定性と脚力強化に。",
-    aliases: ["bulgarian squat", "bulgarian split squat"],
+    aliases: ["ブルガリアンスクワット", "bulgarian squat"],
   },
 ];
 
@@ -593,34 +602,62 @@ export function getExerciseCategoryLabel(
   );
 }
 
+export function getCanonicalExerciseSeed(name: string): Exercise | null {
+  const seed = seedByAlias.get(normalizeKey(name));
+  if (!seed) return null;
+  const { aliases: _aliases, ...exercise } = seed;
+  return exercise;
+}
+
+export function getCanonicalExerciseName(name: string): string {
+  return getCanonicalExerciseSeed(name)?.name ?? name;
+}
+
+export function isBig3Exercise(
+  exercise: Pick<Exercise, "id" | "category" | "subcategory">,
+): boolean {
+  return (
+    exercise.id === "squat" ||
+    exercise.id === "bench_press" ||
+    exercise.id === "deadlift" ||
+    exercise.subcategory === "competition_squat" ||
+    exercise.subcategory === "competition_bench" ||
+    exercise.subcategory === "conventional_deadlift"
+  );
+}
+
 export function getExerciseSelectionGroup(
   exercise: Exercise,
 ): ExerciseSelectionGroupId {
-  if (["squat", "bench", "deadlift"].includes(exercise.category)) {
-    if (exercise.category === "bench") return "bench_family";
-    if (exercise.category === "squat") return "squat_family";
-    return "hinge_family";
-  }
+  if (isBig3Exercise(exercise)) return "big3";
 
   switch (exercise.category) {
+    case "bench":
+      return "chest";
     case "press":
-      return "upper_push";
+      return "shoulders";
     case "pull":
     case "row":
     case "vertical_pull":
-      return "upper_pull";
+      return "back";
+    case "squat":
     case "single_leg":
     case "quad":
-    case "hamstring":
+      return "quads";
     case "adductor":
+      return "adductors";
+    case "deadlift":
+    case "hamstring":
     case "glute":
-      return "lower_body";
+      return "posterior_chain";
     case "triceps":
     case "biceps":
+      return "arms";
     case "core":
+      return "core";
     case "accessory":
     default:
-      return "arms_core";
+      return "other";
   }
 }
 
@@ -629,8 +666,6 @@ export function matchesExerciseSelectionGroup(
   groupId: ExerciseSelectionGroupId,
 ): boolean {
   if (groupId === "all") return true;
-  if (groupId === "big3")
-    return ["squat", "bench", "deadlift"].includes(exercise.category);
   return getExerciseSelectionGroup(exercise) === groupId;
 }
 

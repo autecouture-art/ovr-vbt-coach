@@ -6,6 +6,7 @@
 import Constants from "expo-constants";
 import { VBTLogic } from "./VBTLogic";
 import VBTCalculations from "../utils/VBTCalculations";
+import { getSessionDate } from "../utils/session";
 import type {
   SessionData,
   SetData,
@@ -136,6 +137,7 @@ class DatabaseService {
         set_type TEXT NOT NULL,
         avg_velocity REAL,
         velocity_loss REAL,
+        avg_rom_cm REAL,
         rpe REAL,
         e1rm REAL,
         timestamp TEXT NOT NULL,
@@ -255,6 +257,7 @@ class DatabaseService {
       { table: "sets", column: "avg_hr", type: "REAL" },
       { table: "sets", column: "peak_hr", type: "REAL" },
       { table: "sets", column: "avg_power_w", type: "REAL" },
+      { table: "sets", column: "avg_rom_cm", type: "REAL" },
       { table: "sets", column: "is_warmup", type: "INTEGER DEFAULT 0" },
       // Reps 追加カラム
       { table: "reps", column: "is_excluded", type: "INTEGER DEFAULT 0" },
@@ -304,7 +307,7 @@ class DatabaseService {
           `ALTER TABLE ${m.table} ADD COLUMN ${m.column} ${m.type};`,
         );
         console.log(`Added column ${m.column} to ${m.table}`);
-      } catch (e) {
+      } catch {
         // すでにカラムが存在する場合はエラーになるが、無視して続行
       }
     }
@@ -368,8 +371,8 @@ class DatabaseService {
 
     await this.db.runAsync(
       `INSERT INTO sets (session_id, lift, set_index, load_kg, reps, device_type, set_type,
-        avg_velocity, velocity_loss, rpe, e1rm, timestamp, start_timestamp, end_timestamp, rest_duration_s, avg_hr, peak_hr, avg_power_w, is_warmup, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        avg_velocity, velocity_loss, avg_rom_cm, rpe, e1rm, timestamp, start_timestamp, end_timestamp, rest_duration_s, avg_hr, peak_hr, avg_power_w, is_warmup, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         setData.session_id,
         setData.lift,
@@ -380,6 +383,7 @@ class DatabaseService {
         setData.set_type,
         setData.avg_velocity,
         setData.velocity_loss,
+        setData.avg_rom_cm ?? null,
         setData.rpe || null,
         setData.e1rm || null,
         setData.timestamp,
@@ -724,7 +728,7 @@ class DatabaseService {
     if (!(await this.ensureReady())) {
       return {
         session_id: sessionId,
-        date: new Date().toISOString().split("T")[0],
+        date: getSessionDate(sessionId),
         total_volume: 0,
         total_sets: 0,
         lifts: [],
@@ -737,7 +741,7 @@ class DatabaseService {
 
     const session: SessionData = {
       session_id: sessionId,
-      date: new Date().toISOString().split("T")[0],
+      date: getSessionDate(sessionId),
       total_volume: 0,
       total_sets: 0,
       lifts: [],
@@ -809,7 +813,7 @@ class DatabaseService {
       [lift, loadKg - 0.5, loadKg + 0.5]
     ) as { avg_velocity: number; timestamp: string; reps: number } | null;
 
-    return result || null;
+    return result ? { avg_velocity: result.avg_velocity, date: result.timestamp, reps: result.reps } : null;
   }
 
   async getSetsForSession(sessionId: string): Promise<SetData[]> {
@@ -845,7 +849,7 @@ class DatabaseService {
          AND is_failed = 0
        ORDER BY rom_cm ASC`,
       [lift],
-    )) as Array<{ rom_cm: number | null }>;
+    )) as { rom_cm: number | null }[];
 
     const values = rows
       .map((row) => row.rom_cm)
@@ -925,6 +929,151 @@ class DatabaseService {
       is_excluded: row.is_excluded === 1,
       is_failed: row.is_failed === 1,
     }));
+  }
+
+  /**
+   * Get exercise history - all sessions containing a specific lift
+   */
+  async getExerciseHistory(lift: string): Promise<
+    {
+      session_id: string;
+      date: string;
+      sets: SetData[];
+      total_volume: number;
+      max_load: number;
+      max_reps_at_max_load: number;
+      estimated_1rm: number | null;
+      total_sets: number;
+    }[]
+  > {
+    if (!(await this.ensureReady())) return [];
+
+    const sessionsWithLift = (await this.db.getAllAsync(
+      `SELECT DISTINCT s.session_id, s.date
+       FROM sessions s
+       INNER JOIN sets st ON s.session_id = st.session_id
+       WHERE st.lift = ?
+       ORDER BY s.date DESC`,
+      [lift],
+    )) as { session_id: string; date: string }[];
+
+    const history = [];
+    for (const session of sessionsWithLift) {
+      const sets = await this.getSetsForSession(session.session_id);
+      const liftSets = sets.filter((s) => s.lift === lift && !s.is_warmup);
+
+      if (liftSets.length === 0) continue;
+
+      const totalVolume = liftSets.reduce((sum, s) => sum + s.load_kg * s.reps, 0);
+      const maxLoadSet = liftSets.reduce((max, s) =>
+        s.load_kg > max.load_kg ? s : max,
+      );
+      const estimated1rm = liftSets
+        .map((s) => s.e1rm)
+        .filter((e): e is number => e !== null)
+        .sort((a, b) => b - a)[0] || null;
+
+      history.push({
+        session_id: session.session_id,
+        date: session.date,
+        sets: liftSets,
+        total_volume: totalVolume,
+        max_load: maxLoadSet.load_kg,
+        max_reps_at_max_load: maxLoadSet.reps,
+        estimated_1rm: estimated1rm,
+        total_sets: liftSets.length,
+      });
+    }
+
+    return history;
+  }
+
+  /**
+   * Get exercise statistics - aggregated stats for a specific lift
+   */
+  async getExerciseStats(lift: string): Promise<{
+    lift: string;
+    session_count: number;
+    avg_max_load: number;
+    best_1rm: number;
+    avg_volume: number;
+    avg_sets: number;
+    avg_velocity: number;
+    recent_sessions: {
+      session_id: string;
+      date: string;
+      sets: SetData[];
+      total_volume: number;
+      max_load: number;
+      max_reps_at_max_load: number;
+      estimated_1rm: number | null;
+      total_sets: number;
+    }[];
+  } | null> {
+    if (!(await this.ensureReady())) return null;
+
+    const history = await this.getExerciseHistory(lift);
+    if (history.length === 0) return null;
+
+    const allMaxLoads = history.map((h) => h.max_load);
+    const avgMaxLoad =
+      allMaxLoads.reduce((sum, load) => sum + load, 0) / allMaxLoads.length;
+
+    const all1rms = history
+      .map((h) => h.estimated_1rm)
+      .filter((e): e is number => e !== null);
+    const best1rm = all1rms.length > 0 ? Math.max(...all1rms) : 0;
+
+    const allVolumes = history.map((h) => h.total_volume);
+    const avgVolume =
+      allVolumes.reduce((sum, vol) => sum + vol, 0) / allVolumes.length;
+
+    const allSetCounts = history.map((h) => h.total_sets);
+    const avgSets =
+      allSetCounts.reduce((sum, count) => sum + count, 0) / allSetCounts.length;
+
+    // Calculate average velocity across all sets for this lift
+    const allVelocities = (
+      await this.db.getAllAsync(
+        `SELECT avg_velocity FROM sets WHERE lift = ? AND avg_velocity IS NOT NULL AND is_warmup = 0`,
+        [lift],
+      )
+    ).map((row: any) => row.avg_velocity);
+    const avgVelocity =
+      allVelocities.length > 0
+        ? allVelocities.reduce((sum: number, v: number) => sum + v, 0) /
+          allVelocities.length
+        : 0;
+
+    return {
+      lift,
+      session_count: history.length,
+      avg_max_load: avgMaxLoad,
+      best_1rm: best1rm,
+      avg_volume: avgVolume,
+      avg_sets: avgSets,
+      avg_velocity: avgVelocity,
+      recent_sessions: history.slice(0, 10),
+    };
+  }
+
+  /**
+   * Get list of all exercises that have been trained (have sets recorded)
+   */
+  async getTrainedExercises(): Promise<{ lift: string; session_count: number; last_trained: string }[]> {
+    if (!(await this.ensureReady())) return [];
+
+    const results = (await this.db.getAllAsync(
+      `SELECT
+        lift,
+        COUNT(DISTINCT session_id) as session_count,
+        MAX(timestamp) as last_trained
+       FROM sets
+       GROUP BY lift
+       ORDER BY session_count DESC, last_trained DESC`,
+    )) as { lift: string; session_count: number; last_trained: string }[];
+
+    return results;
   }
 
   /**
@@ -1356,7 +1505,7 @@ class DatabaseService {
   async getHistoricalVelocityData(
     lift: string,
     limit: number = 20
-  ): Promise<Array<{ load: number; velocity: number }>> {
+  ): Promise<{ load: number; velocity: number }[]> {
     if (!(await this.ensureReady())) return [];
 
     const rows = (await this.db.getAllAsync(
@@ -1368,7 +1517,7 @@ class DatabaseService {
        ORDER BY s.timestamp DESC
        LIMIT ?`,
       [lift, limit * 2] // Get more to allow for filtering
-    )) as Array<{ load_kg: number; avg_velocity: number }>;
+    )) as { load_kg: number; avg_velocity: number }[];
 
     // Group by load and average velocities
     const loadMap = new Map<number, number[]>();

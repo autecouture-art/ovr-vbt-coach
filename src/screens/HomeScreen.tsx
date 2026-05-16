@@ -40,7 +40,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
           Alert.alert('エラー', error);
         },
       });
-    } catch (error) {
+    } catch {
       Alert.alert('初期化エラー', 'アプリの初期化に失敗しました');
     }
   };
@@ -57,7 +57,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
   const handleConnectBLE = async () => {
     try {
       await BLEService.scanForDevices();
-    } catch (error) {
+    } catch {
       Alert.alert('BLE接続エラー', 'デバイスのスキャンに失敗しました');
     }
   };

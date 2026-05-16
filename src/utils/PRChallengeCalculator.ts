@@ -50,9 +50,9 @@ export function calculatePRChallenge(request: PRChallengeRequest): PRChallengeRe
 
   // 信頼度の判定
   let confidence: 'high' | 'medium' | 'low';
-  if (lvp.r_squared >= 0.95 && lvp.sample_count >= 10) {
+  if (lvp.r_squared >= 0.95 && (lvp.sample_count ?? 0) >= 10) {
     confidence = 'high';
-  } else if (lvp.r_squared >= 0.85 && lvp.sample_count >= 5) {
+  } else if (lvp.r_squared >= 0.85 && (lvp.sample_count ?? 0) >= 5) {
     confidence = 'medium';
   } else {
     confidence = 'low';
@@ -60,12 +60,6 @@ export function calculatePRChallenge(request: PRChallengeRequest): PRChallengeRe
 
   // 現在の重量と速度が指定されている場合の分析
   if (currentWeight && currentVelocity) {
-    // 現在重量での予想速度をLVPから計算
-    const expectedVelocityAtCurrent = lvp.slope * currentWeight + lvp.intercept;
-
-    // 現在の速度が期待より速いか遅いか（調子の判定）
-    const velocityDiff = currentVelocity - expectedVelocityAtCurrent;
-
     // 目標達成に必要な現在重量での速度を逆算
     // targetWeightでの速度 = mvt + margin (0.02 m/s)
     const targetVelocityAtWeight = mvt + 0.02;

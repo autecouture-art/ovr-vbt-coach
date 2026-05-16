@@ -6,12 +6,9 @@
 import { create } from "zustand";
 import type {
   TrainingSession,
-  SessionData,
   SetData,
   RepData,
   Exercise,
-  LVPData,
-  PRRecord,
   AppSettings,
   RepVeloData,
 } from "../types/index";

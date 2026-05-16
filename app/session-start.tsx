@@ -13,7 +13,7 @@ import {
   ActivityIndicator,
   SafeAreaView,
 } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTrainingStore } from '@/src/store/trainingStore';
 import { useSessionStartData } from '@/src/hooks/useSessionStartData';
@@ -25,7 +25,6 @@ import { GarageTheme } from '@/src/constants/garageTheme';
 export default function SessionStartScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams();
 
   const currentExercise = useTrainingStore((state) => state.currentExercise);
   const currentLoad = useTrainingStore((state) => state.currentLoad);
@@ -43,7 +42,7 @@ export default function SessionStartScreen() {
   if (loading) {
     return (
       <View style={[styles.container, styles.centering]}>
-        <ActivityIndicator size="large" color={GarageTheme.colors.primary} />
+        <ActivityIndicator size="large" color={GarageTheme.accent} />
         <Text style={styles.loadingText}>データを読み込んでいます...</Text>
       </View>
     );
@@ -114,10 +113,10 @@ export default function SessionStartScreen() {
         />
 
         {/* Historical Trend */}
-        {data.historicalVelocity.length > 0 && (
+        {data.historicalVelocityAtLoad.length > 0 && (
           <View style={styles.historyCard}>
             <Text style={styles.historyTitle}>最近のパフォーマンス</Text>
-            {data.historicalVelocity.map((record, index) => (
+            {data.historicalVelocityAtLoad.map((record, index) => (
               <View key={index} style={styles.historyRow}>
                 <Text style={styles.historyLoad}>{record.load}kg</Text>
                 <Text style={styles.historyVelocity}>
@@ -152,11 +151,11 @@ export default function SessionStartScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: GarageTheme.colors.background,
+    backgroundColor: GarageTheme.background,
   },
   container: {
     flex: 1,
-    backgroundColor: GarageTheme.colors.background,
+    backgroundColor: GarageTheme.background,
   },
   centering: {
     justifyContent: 'center',
@@ -168,9 +167,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: GarageTheme.colors.card,
+    backgroundColor: GarageTheme.panel,
     borderBottomWidth: 1,
-    borderBottomColor: GarageTheme.colors.border,
+    borderBottomColor: GarageTheme.border,
   },
   headerButton: {
     width: 40,
@@ -180,7 +179,7 @@ const styles = StyleSheet.create({
   },
   headerButtonText: {
     fontSize: 24,
-    color: GarageTheme.colors.text,
+    color: GarageTheme.text,
     fontWeight: 'bold',
   },
   aiCoachButton: {
@@ -193,11 +192,11 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: GarageTheme.colors.text,
+    color: GarageTheme.text,
   },
   headerSubtitle: {
     fontSize: 14,
-    color: GarageTheme.colors.textSecondary,
+    color: GarageTheme.textMuted,
     marginTop: 2,
   },
   scrollView: {
@@ -207,7 +206,7 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
   },
   historyCard: {
-    backgroundColor: GarageTheme.colors.card,
+    backgroundColor: GarageTheme.panel,
     borderRadius: 16,
     padding: 20,
     margin: 16,
@@ -220,7 +219,7 @@ const styles = StyleSheet.create({
   historyTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: GarageTheme.colors.text,
+    color: GarageTheme.text,
     marginBottom: 12,
   },
   historyRow: {
@@ -228,35 +227,35 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 8,
     borderBottomWidth: 1,
-    borderBottomColor: GarageTheme.colors.border,
+    borderBottomColor: GarageTheme.border,
   },
   historyLoad: {
     fontSize: 16,
     fontWeight: '600',
-    color: GarageTheme.colors.text,
+    color: GarageTheme.text,
     flex: 1,
   },
   historyVelocity: {
     fontSize: 16,
-    color: GarageTheme.colors.primary,
+    color: GarageTheme.accent,
     flex: 1,
     textAlign: 'center',
   },
   historyDate: {
     fontSize: 14,
-    color: GarageTheme.colors.textSecondary,
+    color: GarageTheme.textMuted,
     flex: 1,
     textAlign: 'right',
   },
   footer: {
-    backgroundColor: GarageTheme.colors.card,
+    backgroundColor: GarageTheme.panel,
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderTopWidth: 1,
-    borderTopColor: GarageTheme.colors.border,
+    borderTopColor: GarageTheme.border,
   },
   startButton: {
-    backgroundColor: GarageTheme.colors.primary,
+    backgroundColor: GarageTheme.accent,
     borderRadius: 12,
     paddingVertical: 16,
     alignItems: 'center',
@@ -269,16 +268,16 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 16,
     fontSize: 16,
-    color: GarageTheme.colors.textSecondary,
+    color: GarageTheme.textMuted,
   },
   errorText: {
     fontSize: 16,
-    color: GarageTheme.colors.accent,
+    color: GarageTheme.accent,
     textAlign: 'center',
     marginBottom: 20,
   },
   backButton: {
-    backgroundColor: GarageTheme.colors.primary,
+    backgroundColor: GarageTheme.accent,
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 8,

@@ -85,7 +85,7 @@ export function AICoachForm({ onSubmit, loading }: AICoachFormProps) {
               value={formData.targetWeight}
               onChangeText={(text) => setFormData({ ...formData, targetWeight: text })}
               placeholder="110"
-              placeholderTextColor={GarageTheme.colors.textSecondary}
+              placeholderTextColor={GarageTheme.textMuted}
               keyboardType="decimal-pad"
               autoFocus
             />
@@ -111,13 +111,13 @@ export function AICoachForm({ onSubmit, loading }: AICoachFormProps) {
                 value={formData.currentWeight}
                 onChangeText={(text) => setFormData({ ...formData, currentWeight: text })}
                 placeholder="100"
-                placeholderTextColor={GarageTheme.colors.textSecondary}
+                placeholderTextColor={GarageTheme.textMuted}
                 keyboardType="decimal-pad"
               />
               <Text style={styles.unit}>kg</Text>
             </View>
 
-            <Text style={styles.sectionTitle} style={{ marginTop: 16 }}>
+            <Text style={[styles.sectionTitle, { marginTop: 16 }]}>
               その重量での速度
             </Text>
             <View style={styles.inputContainer}>
@@ -126,7 +126,7 @@ export function AICoachForm({ onSubmit, loading }: AICoachFormProps) {
                 value={formData.currentVelocity}
                 onChangeText={(text) => setFormData({ ...formData, currentVelocity: text })}
                 placeholder="0.35"
-                placeholderTextColor={GarageTheme.colors.textSecondary}
+                placeholderTextColor={GarageTheme.textMuted}
                 keyboardType="decimal-pad"
               />
               <Text style={styles.unit}>m/s</Text>
@@ -181,7 +181,7 @@ export function AICoachForm({ onSubmit, loading }: AICoachFormProps) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: GarageTheme.colors.background,
+    backgroundColor: GarageTheme.background,
   },
   scrollView: {
     flex: 1,
@@ -195,41 +195,41 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: GarageTheme.colors.text,
+    color: GarageTheme.text,
     marginBottom: 12,
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: GarageTheme.colors.card,
+    backgroundColor: GarageTheme.panel,
     borderRadius: 12,
     paddingHorizontal: 16,
     borderWidth: 1,
-    borderColor: GarageTheme.colors.border,
+    borderColor: GarageTheme.border,
   },
   input: {
     flex: 1,
     fontSize: 18,
-    color: GarageTheme.colors.text,
+    color: GarageTheme.text,
     paddingVertical: 14,
   },
   unit: {
     fontSize: 16,
-    color: GarageTheme.colors.textSecondary,
+    color: GarageTheme.textMuted,
     marginLeft: 8,
   },
   optionalToggle: {
     paddingVertical: 12,
     paddingHorizontal: 16,
-    backgroundColor: GarageTheme.colors.card,
+    backgroundColor: GarageTheme.panel,
     borderRadius: 8,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: GarageTheme.colors.border,
+    borderColor: GarageTheme.border,
   },
   optionalToggleText: {
     fontSize: 14,
-    color: GarageTheme.colors.textSecondary,
+    color: GarageTheme.textMuted,
   },
   presetsContainer: {
     flexDirection: 'row',
@@ -237,7 +237,7 @@ const styles = StyleSheet.create({
     marginHorizontal: -8,
   },
   presetButton: {
-    backgroundColor: GarageTheme.colors.primary,
+    backgroundColor: GarageTheme.accent,
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 20,
@@ -251,11 +251,11 @@ const styles = StyleSheet.create({
   },
   infoBox: {
     flexDirection: 'row',
-    backgroundColor: GarageTheme.colors.card,
+    backgroundColor: GarageTheme.panel,
     borderRadius: 12,
     padding: 16,
     borderWidth: 1,
-    borderColor: GarageTheme.colors.border,
+    borderColor: GarageTheme.border,
   },
   infoIcon: {
     fontSize: 20,
@@ -264,23 +264,23 @@ const styles = StyleSheet.create({
   infoText: {
     flex: 1,
     fontSize: 13,
-    color: GarageTheme.colors.textSecondary,
+    color: GarageTheme.textMuted,
     lineHeight: 20,
   },
   footer: {
     padding: 16,
     borderTopWidth: 1,
-    borderTopColor: GarageTheme.colors.border,
-    backgroundColor: GarageTheme.colors.card,
+    borderTopColor: GarageTheme.border,
+    backgroundColor: GarageTheme.panel,
   },
   submitButton: {
-    backgroundColor: GarageTheme.colors.primary,
+    backgroundColor: GarageTheme.accent,
     borderRadius: 12,
     paddingVertical: 16,
     alignItems: 'center',
   },
   submitButtonDisabled: {
-    backgroundColor: GarageTheme.colors.border,
+    backgroundColor: GarageTheme.border,
   },
   submitButtonText: {
     color: '#FFF',

@@ -11,7 +11,7 @@ export interface FourPointEstimate {
   rSquared: number;
   sampleCount: number;
   method: 'four_point' | 'historical_fallback' | 'insufficient_data';
-  dataPoints: Array<{ load: number; velocity: number }>;
+  dataPoints: { load: number; velocity: number }[];
 }
 
 export interface VelocityAtLoad {
@@ -60,7 +60,7 @@ function extractSessionVelocityPoints(
 /**
  * Perform linear regression on load-velocity data
  */
-function linearRegression(dataPoints: Array<{ load: number; velocity: number }>): {
+function linearRegression(dataPoints: { load: number; velocity: number }[]): {
   slope: number;
   intercept: number;
   rSquared: number;
@@ -100,7 +100,7 @@ export async function estimate1RMFourPoint(
   currentSets: SetData[],
   currentReps: RepData[],
   mvt: number = 0.15,
-  historicalFallback?: () => Promise<Array<{ load: number; velocity: number }>>
+  historicalFallback?: () => Promise<{ load: number; velocity: number }[]>
 ): Promise<FourPointEstimate> {
   // Extract current session data points
   const sessionPoints = extractSessionVelocityPoints(currentSets, currentReps);

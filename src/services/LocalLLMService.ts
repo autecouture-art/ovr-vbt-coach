@@ -10,10 +10,10 @@ export type LocalLLMConfig = {
   apiUrl: string;
 };
 
-type CoachHistory = Array<{
+type CoachHistory = {
   role: "user" | "coach";
   text: string;
-}>;
+}[];
 
 type CoachContext = Record<string, unknown>;
 
@@ -74,7 +74,7 @@ const shouldFallbackFromAnthropic = (status: number, errorText: string) => {
 };
 
 const parseAnthropicText = (data: {
-  content?: Array<{ type: string; text?: string }>;
+  content?: { type: string; text?: string }[];
 }) => {
   return (data.content ?? [])
     .filter((part) => part.type === "text" && typeof part.text === "string")
@@ -84,11 +84,11 @@ const parseAnthropicText = (data: {
 };
 
 const parseOpenAIText = (data: {
-  choices?: Array<{
+  choices?: {
     message?: {
-      content?: string | Array<{ type: string; text?: string }>;
+      content?: string | { type: string; text?: string }[];
     };
-  }>;
+  }[];
 }) => {
   const content = data.choices?.[0]?.message?.content;
   if (typeof content === "string") {
@@ -187,7 +187,7 @@ const buildSystemPrompt = (context: CoachContext) => {
 };
 
 const normalizeHistoryMessages = (history: CoachHistory | undefined) => {
-  const mapped: Array<{ role: "user" | "assistant"; content: string }> = (
+  const mapped: { role: "user" | "assistant"; content: string }[] = (
     history ?? []
   )
     .map((item): { role: "user" | "assistant"; content: string } => ({
@@ -196,7 +196,7 @@ const normalizeHistoryMessages = (history: CoachHistory | undefined) => {
     }))
     .filter((item) => item.content.length > 0);
 
-  const merged: Array<{ role: "user" | "assistant"; content: string }> = [];
+  const merged: { role: "user" | "assistant"; content: string }[] = [];
   for (const item of mapped) {
     const last = merged[merged.length - 1];
     if (last && last.role === item.role) {
@@ -261,7 +261,7 @@ async function invokeAnthropic(params: {
   }
 
   const data = (await response.json()) as {
-    content?: Array<{ type: string; text?: string }>;
+    content?: { type: string; text?: string }[];
   };
   return parseAnthropicText(data);
 }
@@ -299,11 +299,11 @@ async function invokeOpenAICompat(params: {
   }
 
   const data = (await response.json()) as {
-    choices?: Array<{
+    choices?: {
       message?: {
-        content?: string | Array<{ type: string; text?: string }>;
+        content?: string | { type: string; text?: string }[];
       };
-    }>;
+    }[];
   };
 
   const text = parseOpenAIText(data);

@@ -82,7 +82,7 @@ export function PRCard({ currentLoad, bestVelocity }: PRCardProps) {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: GarageTheme.colors.card,
+    backgroundColor: GarageTheme.panel,
     borderRadius: 16,
     padding: 20,
     margin: 16,
@@ -101,10 +101,10 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: GarageTheme.colors.text,
+    color: GarageTheme.text,
   },
   prBadge: {
-    backgroundColor: GarageTheme.colors.accent,
+    backgroundColor: GarageTheme.accent,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
@@ -126,11 +126,11 @@ const styles = StyleSheet.create({
   velocityValue: {
     fontSize: 48,
     fontWeight: 'bold',
-    color: GarageTheme.colors.primary,
+    color: GarageTheme.accent,
   },
   velocityUnit: {
     fontSize: 20,
-    color: GarageTheme.colors.textSecondary,
+    color: GarageTheme.textMuted,
     marginLeft: 8,
   },
   details: {
@@ -142,16 +142,16 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 8,
     borderBottomWidth: 1,
-    borderBottomColor: GarageTheme.colors.border,
+    borderBottomColor: GarageTheme.border,
   },
   detailLabel: {
     fontSize: 16,
-    color: GarageTheme.colors.textSecondary,
+    color: GarageTheme.textMuted,
   },
   detailValue: {
     fontSize: 16,
     fontWeight: '600',
-    color: GarageTheme.colors.text,
+    color: GarageTheme.text,
   },
   noDataContainer: {
     alignItems: 'center',
@@ -159,22 +159,22 @@ const styles = StyleSheet.create({
   },
   noDataText: {
     fontSize: 16,
-    color: GarageTheme.colors.textSecondary,
+    color: GarageTheme.textMuted,
     marginBottom: 8,
   },
   noDataSubtext: {
     fontSize: 14,
-    color: GarageTheme.colors.textSecondary,
+    color: GarageTheme.textMuted,
     opacity: 0.7,
   },
   footer: {
     borderTopWidth: 1,
-    borderTopColor: GarageTheme.colors.border,
+    borderTopColor: GarageTheme.border,
     paddingTop: 12,
   },
   footerText: {
     fontSize: 14,
-    color: GarageTheme.colors.textSecondary,
+    color: GarageTheme.textMuted,
     textAlign: 'center',
   },
 });

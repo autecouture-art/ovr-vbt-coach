@@ -28,6 +28,7 @@ import { useSessionLogic } from "@/src/hooks/useSessionLogic";
 import { ExerciseSelectModal } from "@/src/components/ExerciseSelectModal";
 import PRNotification from "@/src/components/PRNotification";
 import DatabaseService from "@/src/services/DatabaseService";
+import BLEService from "@/src/services/BLEService";
 import ExerciseService from "@/src/services/ExerciseService";
 import AICoachService from "@/src/services/AICoachService";
 import { VBTLogic } from "@/src/services/VBTLogic";
@@ -48,7 +49,36 @@ import {
   VelocityTooltip,
   VELOCITY_GLOSSARY,
 } from "@/src/components/VelocityTooltip";
-import type { Exercise, PRRecord, RepData, SetData } from "@/src/types/index";
+import {
+  LVP_CHECKPOINTS,
+  getAttemptPlan,
+  getBlockWeekPlan,
+  getLiveVelocityLossDecision,
+  getPowerliftingProtocol,
+  getReadinessDecision,
+  getTopSingleTargetText,
+} from "@/src/utils/PowerliftingVBTProtocol";
+import type {
+  Exercise,
+  LVPData,
+  PRRecord,
+  RepData,
+  SetData,
+} from "@/src/types/index";
+
+const getDisplayPower = (
+  reportedPower: number | null | undefined,
+  velocity: number | null | undefined,
+  loadKg: number,
+): number | null => {
+  if (reportedPower != null && reportedPower > 0) {
+    return reportedPower;
+  }
+  if (velocity != null && velocity > 0 && loadKg > 0) {
+    return VBTLogic.calculatePower(loadKg, velocity);
+  }
+  return null;
+};
 
 export default function SessionScreen() {
   const router = useRouter();
@@ -117,6 +147,7 @@ export default function SessionScreen() {
     updateLoad,
     targetWeight,
     setTargetWeight,
+    setConnectionStatus,
     currentHeartRate,
     restStartTime,
     sessionHRPoints,
@@ -137,10 +168,24 @@ export default function SessionScreen() {
     setProposedMVT,
     updateSetHistory,
     settings,
+    updateSettings,
   } = useTrainingStore();
 
   const [showExerciseModal, setShowExerciseModal] = useState(false);
   const [isWarmupMode, setIsWarmupMode] = useState(false);
+  const [isSimulatingSet, setIsSimulatingSet] = useState(false);
+  const vbtProtocol = useMemo(
+    () =>
+      getPowerliftingProtocol(
+        currentExercise?.category,
+        settings.target_training_phase,
+      ),
+    [currentExercise?.category, settings.target_training_phase],
+  );
+  const topSingleTargetText = useMemo(
+    () => getTopSingleTargetText(currentExercise?.mvt, vbtProtocol),
+    [currentExercise?.mvt, vbtProtocol],
+  );
 
   // レップ詳細モーダルの状態
   const [repDetailVisible, setRepDetailVisible] = useState(false);
@@ -169,6 +214,7 @@ export default function SessionScreen() {
   const [recentExerciseHistory, setRecentExerciseHistory] = useState<SetData[]>(
     [],
   );
+  const [lvpProfile, setLvpProfile] = useState<LVPData | null>(null);
   // Historical session reps for detail modal
   const [historicalSessionReps, setHistoricalSessionReps] = useState<{
     sessionId: string;
@@ -206,6 +252,21 @@ export default function SessionScreen() {
     }
   }, [currentLift, currentSession?.session_id]);
 
+  const refreshLvpProfile = useCallback(async () => {
+    if (!currentLift) {
+      setLvpProfile(null);
+      return;
+    }
+
+    try {
+      const profile = await DatabaseService.getLVPProfile(currentLift);
+      setLvpProfile(profile);
+    } catch (error) {
+      console.error("Failed to fetch LVP profile:", error);
+      setLvpProfile(null);
+    }
+  }, [currentLift]);
+
   useEffect(() => {
     void refreshSessionAllReps();
 
@@ -215,12 +276,16 @@ export default function SessionScreen() {
     }, 450);
 
     return () => clearTimeout(timerId);
-  }, [refreshSessionAllReps, setHistory.length, currentSetIndex]);
+  }, [refreshSessionAllReps, setHistory.length]);
 
   // Refresh recent exercise history when lift changes
   useEffect(() => {
     void refreshRecentExerciseHistory();
   }, [refreshRecentExerciseHistory]);
+
+  useEffect(() => {
+    void refreshLvpProfile();
+  }, [refreshLvpProfile, proposedMVT]);
 
   const sameLoadRecentHistory = useMemo(
     () =>
@@ -229,6 +294,115 @@ export default function SessionScreen() {
       ),
     [currentLoad, recentExerciseHistory],
   );
+  const similarLoadRecentHistory = useMemo(
+    () =>
+      recentExerciseHistory.filter(
+        (set) =>
+          set.avg_velocity != null && Math.abs(set.load_kg - currentLoad) <= 5,
+      ),
+    [currentLoad, recentExerciseHistory],
+  );
+  const blockWeekPlan = useMemo(
+    () =>
+      getBlockWeekPlan(
+        settings.powerlifting_block_week,
+        currentExercise?.category,
+      ),
+    [currentExercise?.category, settings.powerlifting_block_week],
+  );
+  const liveVelocityLossDecision = useMemo(() => {
+    const validVelocities = repHistory
+      .map((rep) => rep.mean_velocity)
+      .filter((velocity): velocity is number => velocity != null && velocity > 0);
+    if (validVelocities.length < 2) return null;
+
+    const fastestVelocity = Math.max(...validVelocities);
+    const currentVelocity = validVelocities[validVelocities.length - 1];
+    const threshold =
+      currentExercise?.velocity_loss_threshold ??
+      vbtProtocol.backoffVelocityLoss.max;
+    return getLiveVelocityLossDecision(
+      fastestVelocity,
+      currentVelocity,
+      threshold,
+    );
+  }, [
+    currentExercise?.velocity_loss_threshold,
+    repHistory,
+    vbtProtocol.backoffVelocityLoss.max,
+  ]);
+  const readinessDecision = useMemo(() => {
+    if (!liveData?.mean_velocity || similarLoadRecentHistory.length < 2) {
+      return null;
+    }
+
+    const baselineVelocities = similarLoadRecentHistory
+      .map((set) => set.avg_velocity)
+      .filter((velocity): velocity is number => velocity != null && velocity > 0)
+      .sort((a, b) => a - b);
+    if (baselineVelocities.length < 2) return null;
+
+    const midpoint = Math.floor(baselineVelocities.length / 2);
+    const medianVelocity =
+      baselineVelocities.length % 2 === 0
+        ? (baselineVelocities[midpoint - 1] + baselineVelocities[midpoint]) / 2
+        : baselineVelocities[midpoint];
+    return {
+      baselineVelocity: medianVelocity,
+      sampleCount: baselineVelocities.length,
+      decision: getReadinessDecision(liveData.mean_velocity - medianVelocity),
+    };
+  }, [liveData?.mean_velocity, similarLoadRecentHistory]);
+  const attemptPlan = useMemo(
+    () => getAttemptPlan(estimated1RM ?? 0),
+    [estimated1RM],
+  );
+  const lvpStatusText = useMemo(() => {
+    if (!lvpProfile) {
+      return "まだLVP未作成。4週間、同じフォームでAVとROMを集めます。";
+    }
+
+    const samples = lvpProfile.sample_count ?? 0;
+    if (samples >= 8 && lvpProfile.r_squared >= 0.9) {
+      return `LVP良好: ${samples}点 / R² ${lvpProfile.r_squared.toFixed(2)}`;
+    }
+
+    return `LVP作成中: ${samples || "少数"}点 / R² ${lvpProfile.r_squared.toFixed(2)}。80%以上の重い単発を足すと精度が上がります。`;
+  }, [lvpProfile]);
+  const romConsistencyMessage = useMemo(() => {
+    if (!liveData?.rom_cm || !currentExercise) return null;
+    const minRom =
+      currentExercise.rom_range_min_cm ?? currentExercise.min_rom_threshold;
+    const maxRom = currentExercise.rom_range_max_cm;
+
+    if (minRom != null && liveData.rom_cm < minRom) {
+      return `ROMが基準より短いです。目安 ${minRom}cm 以上にそろえます。`;
+    }
+
+    if (maxRom != null && liveData.rom_cm > maxRom) {
+      return `ROMが普段より大きいです。深さやタッチ位置が変わっていないか確認します。`;
+    }
+
+    if (minRom != null || maxRom != null) {
+      return "ROMは基準範囲です。同じ可動域のデータとして扱えます。";
+    }
+
+    return "ROMも一緒に見ます。速度が速くても深さやポーズが変わったデータは別扱いです。";
+  }, [currentExercise, liveData?.rom_cm]);
+  const liveMeanPower = useMemo(
+    () => getDisplayPower(liveData?.mean_power_w, liveData?.mean_velocity, currentLoad),
+    [currentLoad, liveData?.mean_power_w, liveData?.mean_velocity],
+  );
+  const livePeakPower = useMemo(
+    () => getDisplayPower(liveData?.peak_power_w, liveData?.peak_velocity, currentLoad),
+    [currentLoad, liveData?.peak_power_w, liveData?.peak_velocity],
+  );
+  const focusRomText =
+    liveData?.rom_cm != null ? `${Math.round(liveData.rom_cm)} cm` : "-";
+  const focusVelocityText =
+    liveData?.mean_velocity != null ? `${liveData.mean_velocity.toFixed(2)} m/s` : "-";
+  const focusPowerText =
+    liveMeanPower != null ? `${Math.round(liveMeanPower)} W` : "-";
 
   // Initialize session note from current session
   useEffect(() => {
@@ -426,13 +600,21 @@ export default function SessionScreen() {
     await handleExclude(repId, "setup_reaction");
   };
 
-  const handleAddMissedRep = async () => {
+  const handleAddMissedRep = async (velocity?: number, load?: number) => {
     if (!currentSession?.session_id || !selectedSet) return;
 
     try {
       const targetSetReps =
         repsBySetKey.get(getSetKey(selectedSet.lift, selectedSet.set_index)) ??
         [];
+      const manualVelocity =
+        typeof velocity === "number" && Number.isFinite(velocity)
+          ? velocity
+          : null;
+      const manualLoad =
+        typeof load === "number" && Number.isFinite(load) && load > 0
+          ? load
+          : selectedSet.load_kg;
 
       const newRep: RepData = {
         id: `manual_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -440,17 +622,17 @@ export default function SessionScreen() {
         lift: selectedSet.lift,
         set_index: selectedSet.set_index,
         rep_index: targetSetReps.length + 1,
-        load_kg: selectedSet.load_kg,
+        load_kg: manualLoad,
         device_type: "manual",
-        mean_velocity: null,
+        mean_velocity: manualVelocity,
         peak_velocity: null,
         rom_cm: null,
         rep_duration_ms: null,
         mean_power_w: null,
         timestamp: new Date().toISOString(),
-        is_valid_rep: false,
+        is_valid_rep: manualVelocity !== null,
         set_type: selectedSet.set_type,
-        notes: "手動追加",
+        notes: manualVelocity !== null ? "手動追加（速度入力）" : "手動追加",
       };
 
       await DatabaseService.insertRep(newRep);
@@ -551,6 +733,58 @@ export default function SessionScreen() {
       });
     } catch (e) {
       console.error("セッション作成失敗:", e);
+    }
+  };
+
+  const handleConnectSimulator = async () => {
+    const connected = await BLEService.connectSimulator();
+    setConnectionStatus(connected);
+  };
+
+  const handleSimulatedRep = () => {
+    setConnectionStatus(true);
+    BLEService.emitSimulatedRep({
+      mean_velocity: 0.48,
+      peak_velocity: 0.57,
+      rom_cm: currentExercise?.category === "bench" ? 34 : 55,
+      rep_duration_ms: 840,
+    });
+  };
+
+  const handleRunSimulatedSet = async () => {
+    if (!isSessionActive) {
+      Alert.alert("セッション未開始", "先にセッションを開始してください。");
+      return;
+    }
+
+    if (isPaused) {
+      Alert.alert("一時停止中", "次のセットを開始してからSIM SETを実行してください。");
+      return;
+    }
+
+    setIsSimulatingSet(true);
+    try {
+      setConnectionStatus(true);
+      const baseVelocity =
+        currentExercise?.category === "bench"
+          ? 0.42
+          : currentExercise?.category === "deadlift"
+            ? 0.36
+            : 0.48;
+      await BLEService.runSimulatedSet({
+        reps: Math.max(1, currentReps || 3),
+        baseVelocity,
+        velocityDropPerRep: 0.035,
+        romCm: currentExercise?.category === "bench" ? 34 : 55,
+        loadKg: currentLoad > 0 ? currentLoad : undefined,
+      });
+
+      setTimeout(() => {
+        void finishSet();
+        void refreshSessionAllReps();
+      }, 1200);
+    } finally {
+      setIsSimulatingSet(false);
     }
   };
 
@@ -712,6 +946,56 @@ export default function SessionScreen() {
             </TouchableOpacity>
           </View>
 
+          <View style={styles.focusModeSimulatorPanel}>
+            <View>
+              <Text style={styles.focusModeSimulatorTitle}>VBT SIM</Text>
+              <Text style={styles.focusModeSimulatorMeta}>
+                {isSimulatingSet ? "RUNNING" : "READY"}
+              </Text>
+            </View>
+            <View style={styles.focusModeSimulatorActions}>
+              <TouchableOpacity
+                style={styles.focusModeSimulatorButton}
+                onPress={() => void handleConnectSimulator()}
+              >
+                <Text style={styles.focusModeSimulatorButtonText}>CONNECT</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.focusModeSimulatorButton}
+                onPress={handleSimulatedRep}
+              >
+                <Text style={styles.focusModeSimulatorButtonText}>REP</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.focusModeSimulatorButton,
+                  isSimulatingSet && styles.focusModeSimulatorButtonDisabled,
+                ]}
+                onPress={() => void handleRunSimulatedSet()}
+                disabled={isSimulatingSet}
+              >
+                <Text style={styles.focusModeSimulatorButtonText}>SET</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <View style={styles.focusModeInfoGrid}>
+            <View style={styles.focusModeInfoCellWide}>
+              <Text style={styles.focusModeInfoLabel}>EXERCISE</Text>
+              <Text style={styles.focusModeInfoValue} numberOfLines={1}>
+                {currentLift || currentExercise?.name || "未選択"}
+              </Text>
+            </View>
+            <View style={styles.focusModeInfoCell}>
+              <Text style={styles.focusModeInfoLabel}>LOAD</Text>
+              <Text style={styles.focusModeInfoValue}>{formatLoadKg(currentLoad)} kg</Text>
+            </View>
+            <View style={styles.focusModeInfoCell}>
+              <Text style={styles.focusModeInfoLabel}>POWER</Text>
+              <Text style={styles.focusModeInfoValue}>{focusPowerText}</Text>
+            </View>
+          </View>
+
           {/* 速度表示メインエリア */}
           <View style={styles.focusModeVelocityArea}>
             {liveData?.mean_velocity ? (
@@ -724,6 +1008,23 @@ export default function SessionScreen() {
             ) : (
               <Text style={styles.focusModeWaitingText}>レップ待機中...</Text>
             )}
+          </View>
+
+          <View style={styles.focusModeMetricStrip}>
+            <View style={styles.focusModeMetricItem}>
+              <Text style={styles.focusModeInfoLabel}>AVG V</Text>
+              <Text style={styles.focusModeMetricValue}>{focusVelocityText}</Text>
+            </View>
+            <View style={styles.focusModeMetricItem}>
+              <Text style={styles.focusModeInfoLabel}>ROM</Text>
+              <Text style={styles.focusModeMetricValue}>{focusRomText}</Text>
+            </View>
+            <View style={styles.focusModeMetricItem}>
+              <Text style={styles.focusModeInfoLabel}>PEAK P</Text>
+              <Text style={styles.focusModeMetricValue}>
+                {livePeakPower != null ? `${Math.round(livePeakPower)} W` : "-"}
+              </Text>
+            </View>
           </View>
 
           {/* レップカウンター */}
@@ -748,6 +1049,25 @@ export default function SessionScreen() {
                   </View>
                 );
               })()}
+            </View>
+          )}
+
+          {liveVelocityLossDecision && (
+            <View
+              style={[
+                styles.focusModeVlBox,
+                liveVelocityLossDecision.status === "stop" &&
+                  styles.focusModeVlBoxStop,
+              ]}
+            >
+              <Text style={styles.focusModeVlLabel}>
+                VL {liveVelocityLossDecision.velocityLoss.toFixed(1)}%
+              </Text>
+              <Text style={styles.focusModeVlText}>
+                {liveVelocityLossDecision.status === "stop"
+                  ? "このセット終了"
+                  : `上限 ${liveVelocityLossDecision.threshold}%`}
+              </Text>
             </View>
           )}
 
@@ -830,6 +1150,39 @@ export default function SessionScreen() {
           )}
         </View>
 
+        <View style={styles.simulatorCard}>
+          <View>
+            <Text style={styles.simulatorTitle}>VBT SIM</Text>
+            <Text style={styles.simulatorMeta}>
+              {isSimulatingSet ? "RUNNING" : "READY"}
+            </Text>
+          </View>
+          <View style={styles.simulatorActions}>
+            <TouchableOpacity
+              style={styles.simulatorButton}
+              onPress={() => void handleConnectSimulator()}
+            >
+              <Text style={styles.simulatorButtonText}>CONNECT</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.simulatorButton}
+              onPress={handleSimulatedRep}
+            >
+              <Text style={styles.simulatorButtonText}>REP</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.simulatorButton,
+                isSimulatingSet && styles.simulatorButtonDisabled,
+              ]}
+              onPress={() => void handleRunSimulatedSet()}
+              disabled={isSimulatingSet}
+            >
+              <Text style={styles.simulatorButtonText}>SET</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
         {/* Exercise Selection */}
         <View style={styles.exerciseCard}>
           <Text style={styles.exerciseLabel}>Exercise</Text>
@@ -862,13 +1215,18 @@ export default function SessionScreen() {
         {currentExercise && (
           <View style={styles.vlSettingsCard}>
             <View style={styles.vlSettingsHeader}>
-              <Text style={styles.vlSettingsTitle}>VL閾値</Text>
+              <View>
+                <Text style={styles.vlSettingsTitle}>VL閾値</Text>
+                <Text style={styles.vlSettingsMeta}>
+                  推奨 {vbtProtocol.backoffVelocityLoss.min}〜{vbtProtocol.backoffVelocityLoss.max}% / {vbtProtocol.phaseLabel}
+                </Text>
+              </View>
               <View style={styles.vlToggleRow}>
                 <Text style={styles.vlToggleLabel}>オン</Text>
                 <TouchableOpacity
                   style={[
                     styles.vlToggleButton,
-                    settings.enable_vl_warning ? styles.vlToggleOn : styles.vlToggleOff,
+                    settings.enable_vl_warning ? styles.vlToggleButtonOn : styles.vlToggleOff,
                   ]}
                   onPress={() => updateSettings({ enable_vl_warning: !settings.enable_vl_warning })}
                 >
@@ -894,7 +1252,7 @@ export default function SessionScreen() {
                       onPress={async () => {
                         const updatedExercise = { ...currentExercise, velocity_loss_threshold: threshold };
                         setCurrentExercise(updatedExercise);
-                        await ExerciseService.updateExercise(updatedExercise);
+                        await ExerciseService.updateExercise(currentExercise.id, { velocity_loss_threshold: threshold });
                       }}
                     >
                       <Text style={[
@@ -908,6 +1266,77 @@ export default function SessionScreen() {
                 })}
               </View>
             )}
+          </View>
+        )}
+
+        {currentExercise && (
+          <View style={styles.protocolCard}>
+            <View style={styles.protocolHeader}>
+              <Text style={styles.protocolKicker}>PL VBT PROTOCOL</Text>
+              <Text style={styles.protocolPhase}>{vbtProtocol.phaseLabel}</Text>
+            </View>
+            <Text style={styles.protocolTitle}>
+              トップシングルで当日の状態を見て、バックオフはVLで止める
+            </Text>
+            <View style={styles.protocolGrid}>
+              <View style={styles.protocolMetric}>
+                <Text style={styles.protocolMetricLabel}>トップシングル</Text>
+                <Text style={styles.protocolMetricValue}>
+                  {topSingleTargetText}
+                </Text>
+              </View>
+              <View style={styles.protocolMetric}>
+                <Text style={styles.protocolMetricLabel}>バックオフVL</Text>
+                <Text style={styles.protocolMetricValue}>
+                  {vbtProtocol.backoffVelocityLoss.min}〜{vbtProtocol.backoffVelocityLoss.max}%
+                </Text>
+              </View>
+            </View>
+            <View style={styles.protocolDivider} />
+            <View style={styles.protocolGrid}>
+              <View style={styles.protocolMetric}>
+                <Text style={styles.protocolMetricLabel}>Week {blockWeekPlan.week}</Text>
+                <Text style={styles.protocolMetricValue}>
+                  {blockWeekPlan.phaseLabel}
+                </Text>
+              </View>
+              <View style={styles.protocolMetric}>
+                <Text style={styles.protocolMetricLabel}>今日の狙い</Text>
+                <Text style={styles.protocolMetricValue}>
+                  {blockWeekPlan.focus}
+                </Text>
+              </View>
+            </View>
+            <Text style={styles.protocolBody}>{vbtProtocol.guidance}</Text>
+            <Text style={styles.protocolBody}>{blockWeekPlan.note}</Text>
+          </View>
+        )}
+
+        {currentExercise && isBig3(currentExercise.category) && (
+          <View style={styles.protocolCard}>
+            <View style={styles.protocolHeader}>
+              <Text style={styles.protocolKicker}>LVP BUILD</Text>
+              <Text style={styles.protocolPhase}>{lvpStatusText}</Text>
+            </View>
+            <Text style={styles.protocolTitle}>
+              速度基準はウォームアップ中のAVとROMで作る
+            </Text>
+            <View style={styles.lvpChecklist}>
+              {LVP_CHECKPOINTS.map((checkpoint) => (
+                <View key={checkpoint.percentRange} style={styles.lvpCheckpoint}>
+                  <Text style={styles.lvpCheckpointRange}>
+                    {checkpoint.percentRange}
+                  </Text>
+                  <Text style={styles.lvpCheckpointText}>
+                    {checkpoint.reps} / {checkpoint.label}
+                    {checkpoint.required ? "" : "（任意）"}
+                  </Text>
+                </View>
+              ))}
+            </View>
+            <Text style={styles.protocolBody}>
+              タッチ&ゴーとポーズ、スモウとコンベンショナルなどは別の基準として扱います。
+            </Text>
           </View>
         )}
 
@@ -1075,7 +1504,7 @@ export default function SessionScreen() {
 
             {estimated1RM !== null && (
               <View style={styles.intelligenceBadge}>
-                <Text style={styles.intelligenceLabel}>本日予想 1RM</Text>
+                <Text style={styles.intelligenceLabel}>本日予想1RM（参考）</Text>
                 <View
                   style={{
                     flexDirection: "row",
@@ -1111,6 +1540,34 @@ export default function SessionScreen() {
                 )}
               </View>
             )}
+          </View>
+        )}
+
+        {isSessionActive && attemptPlan && isBig3(currentExercise?.category) && (
+          <View style={styles.vbtDecisionCard}>
+            <View style={styles.vbtDecisionHeader}>
+              <Text style={styles.protocolKicker}>ATTEMPT GUIDE</Text>
+              <Text style={styles.protocolPhase}>e1RM参考</Text>
+            </View>
+            <View style={styles.attemptGrid}>
+              <View style={styles.attemptCell}>
+                <Text style={styles.protocolMetricLabel}>第1</Text>
+                <Text style={styles.attemptValue}>{formatLoadKg(attemptPlan.opener)}kg</Text>
+              </View>
+              <View style={styles.attemptCell}>
+                <Text style={styles.protocolMetricLabel}>第2</Text>
+                <Text style={styles.attemptValue}>{formatLoadKg(attemptPlan.second)}kg</Text>
+              </View>
+              <View style={styles.attemptCell}>
+                <Text style={styles.protocolMetricLabel}>第3</Text>
+                <Text style={styles.attemptValue}>
+                  {formatLoadKg(attemptPlan.thirdLow)}〜{formatLoadKg(attemptPlan.thirdHigh)}kg
+                </Text>
+              </View>
+            </View>
+            <Text style={styles.protocolBody}>
+              第1は確実に成功する重量。{attemptPlan.note}
+            </Text>
           </View>
         )}
 
@@ -1231,7 +1688,9 @@ export default function SessionScreen() {
                 onChangeText={handleTargetWeightChange}
                 placeholder="最高重量を入力"
                 placeholderTextColor="#666"
-                keyboardType="numeric"
+                keyboardType="decimal-pad"
+                returnKeyType="done"
+                selectTextOnFocus
               />
               <Text style={styles.unitText}>kg</Text>
             </View>
@@ -1291,6 +1750,35 @@ export default function SessionScreen() {
               </ScrollView>
             </View>
           )}
+
+        {isSessionActive && readinessDecision && (
+          <View
+            style={[
+              styles.vbtDecisionCard,
+              readinessDecision.decision.label === "excellent" &&
+                styles.vbtDecisionPositive,
+              readinessDecision.decision.label === "down" &&
+                styles.vbtDecisionWarn,
+              readinessDecision.decision.label === "fatigued" &&
+                styles.vbtDecisionDanger,
+            ]}
+          >
+            <View style={styles.vbtDecisionHeader}>
+              <Text style={styles.protocolKicker}>WARMUP READINESS</Text>
+              <Text style={styles.protocolPhase}>
+                基準比 {readinessDecision.decision.deltaVelocity >= 0 ? "+" : ""}
+                {readinessDecision.decision.deltaVelocity.toFixed(2)} m/s
+              </Text>
+            </View>
+            <Text style={styles.protocolTitle}>
+              {readinessDecision.decision.message}
+            </Text>
+            <Text style={styles.protocolBody}>
+              同程度の重量 {readinessDecision.sampleCount}セットの中央値{" "}
+              {readinessDecision.baselineVelocity.toFixed(2)} m/s と比較しています。
+            </Text>
+          </View>
+        )}
 
         {/* Set Configuration */}
         <View style={styles.section}>
@@ -1357,6 +1845,7 @@ export default function SessionScreen() {
                 placeholder="重量を入力"
                 placeholderTextColor={GarageTheme.textSubtle}
                 returnKeyType="done"
+                selectTextOnFocus
               />
               <Text style={styles.unitText}>kg</Text>
             </View>
@@ -1422,38 +1911,13 @@ export default function SessionScreen() {
               <View style={styles.dataRow}>
                 <Text style={styles.dataLabel}>Mean Power</Text>
                 <Text style={styles.dataValue}>
-                  {liveData.mean_power_w != null
-                    ? `${Math.round(liveData.mean_power_w)} W`
-                    : liveData.mean_velocity != null
-                      ? `${Math.round(
-                          VBTLogic.calculatePower(
-                            currentLoad,
-                            liveData.mean_velocity,
-                          ),
-                        )} W`
-                      : liveData.peak_velocity != null
-                        ? `${Math.round(
-                            VBTLogic.calculatePower(
-                              currentLoad,
-                              liveData.peak_velocity,
-                            ),
-                          )} W`
-                        : "-"}
+                  {liveMeanPower != null ? `${Math.round(liveMeanPower)} W` : "-"}
                 </Text>
               </View>
               <View style={styles.dataRow}>
                 <Text style={styles.dataLabel}>Peak Power</Text>
                 <Text style={styles.dataValue}>
-                  {liveData.peak_power_w != null
-                    ? `${Math.round(liveData.peak_power_w)} W`
-                    : liveData.peak_velocity != null
-                      ? `${Math.round(
-                          VBTLogic.calculatePower(
-                            currentLoad,
-                            liveData.peak_velocity,
-                          ),
-                        )} W`
-                      : "-"}
+                  {livePeakPower != null ? `${Math.round(livePeakPower)} W` : "-"}
                 </Text>
               </View>
               <TouchableOpacity
@@ -1466,6 +1930,9 @@ export default function SessionScreen() {
                 </Text>
                 <Text style={styles.helpIcon}>❓</Text>
               </TouchableOpacity>
+              {romConsistencyMessage && (
+                <Text style={styles.liveHintText}>{romConsistencyMessage}</Text>
+              )}
             </>
           ) : (
             <>
@@ -1487,8 +1954,34 @@ export default function SessionScreen() {
           <RepVelocityChart
             reps={repHistory}
             setIndex={currentSetIndex}
-            lift={currentLift}
+            lift={currentLift ?? undefined}
           />
+        )}
+
+        {isSessionActive && liveVelocityLossDecision && (
+          <View
+            style={[
+              styles.vbtDecisionCard,
+              liveVelocityLossDecision.status === "watch" &&
+                styles.vbtDecisionWarn,
+              liveVelocityLossDecision.status === "stop" &&
+                styles.vbtDecisionDanger,
+            ]}
+          >
+            <View style={styles.vbtDecisionHeader}>
+              <Text style={styles.protocolKicker}>VELOCITY LOSS</Text>
+              <Text style={styles.protocolPhase}>
+                {liveVelocityLossDecision.velocityLoss.toFixed(1)} /{" "}
+                {liveVelocityLossDecision.threshold}%
+              </Text>
+            </View>
+            <Text style={styles.protocolTitle}>
+              {liveVelocityLossDecision.message}
+            </Text>
+            <Text style={styles.protocolBody}>
+              {liveVelocityLossDecision.nextSetMessage}
+            </Text>
+          </View>
         )}
 
         {/* Action Buttons */}
@@ -1713,17 +2206,27 @@ export default function SessionScreen() {
               const trackedReps = setReps.filter(
                 (rep) => !rep.is_excluded && !rep.is_failed && rep.is_valid_rep,
               );
+              const repPowerValues = trackedReps
+                .map((rep) =>
+                  getDisplayPower(
+                    rep.mean_power_w,
+                    rep.mean_velocity,
+                    rep.load_kg || set.load_kg,
+                  ),
+                )
+                .filter((power): power is number => power != null && power > 0);
+              const storedSetAvgPower =
+                set.avg_power_w != null && set.avg_power_w > 0
+                  ? set.avg_power_w
+                  : null;
               const avgPower =
-                trackedReps.length > 0
-                  ? trackedReps.reduce(
-                      (sum, rep) => sum + (rep.mean_power_w ?? 0),
-                      0,
-                    ) / trackedReps.length
-                  : set.avg_power_w != null
-                    ? set.avg_power_w
-                    : set.avg_velocity != null
+                repPowerValues.length > 0
+                  ? repPowerValues.reduce((sum, power) => sum + power, 0) /
+                    repPowerValues.length
+                  : storedSetAvgPower ??
+                    (set.avg_velocity != null
                       ? VBTLogic.calculatePower(set.load_kg, set.avg_velocity)
-                      : null;
+                      : null);
               const estimatedRPE =
                 set.velocity_loss != null
                   ? estimateRPEFromVelocityLoss(set.velocity_loss, set.reps)
@@ -1825,64 +2328,6 @@ export default function SessionScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* エクササイズ選択モーダル */}
-        <ExerciseSelectModal
-          visible={showExerciseModal}
-          onClose={() => setShowExerciseModal(false)}
-          onSelect={handleExerciseSelect}
-          currentExerciseId={currentExercise?.id}
-        />
-
-        {/* PR達成通知モーダル */}
-        <PRNotification
-          visible={showPRModal}
-          prRecord={prRecord}
-          onClose={() => setShowPRModal(false)}
-        />
-        {/* レップ詳細モーダル */}
-        <RepDetailModal
-          visible={repDetailVisible}
-          reps={historicalSessionReps?.reps ?? sessionAllReps}
-          setIndex={selectedSetIndex}
-          lift={selectedSetLift}
-          loadKg={selectedSet?.load_kg}
-          onClose={() => setRepDetailVisible(false)}
-          onEditSetLoad={
-            selectedSet && !historicalSessionReps
-              ? () => handleEditSetLoad(selectedSet)
-              : undefined
-          }
-          onExcludeRep={!historicalSessionReps ? handleExclude : undefined}
-          onMarkFailedRep={
-            !historicalSessionReps ? handleMarkFailedRep : undefined
-          }
-          onMarkSetupRep={
-            !historicalSessionReps ? handleMarkSetupRep : undefined
-          }
-          onAddMissedRep={
-            !historicalSessionReps ? handleAddMissedRep : undefined
-          }
-        />
-
-        <SetEditModal
-          visible={Boolean(editingSet)}
-          setItem={editingSet}
-          onClose={() => setEditingSet(null)}
-          onSave={handleSaveSetEdits}
-        />
-
-        {/* 用語ツールチップ */}
-        {tooltipData && (
-          <VelocityTooltip
-            visible={tooltipVisible}
-            onClose={() => setTooltipVisible(false)}
-            term={tooltipData.term}
-            definition={tooltipData.definition}
-            targetRange={tooltipData.targetRange}
-            currentStatus={tooltipData.currentStatus}
-            currentValue={tooltipData.currentValue}
-          />
-        )}
       </ScrollView>
       )}
 
@@ -1934,13 +2379,11 @@ export default function SessionScreen() {
       <ManualRepModal
         visible={showManualRepModal}
         onClose={() => setShowManualRepModal(false)}
-        onAdd={(rep) => {
-          handleAddMissedRep(rep);
+        onAddRep={(velocity, load) => {
+          void handleAddMissedRep(velocity, load);
           setShowManualRepModal(false);
         }}
         currentLoad={currentLoad}
-        currentSetIndex={currentSetIndex}
-        currentLift={currentLift || "Unknown"}
       />
 
       {!isMeasuring && tooltipData && (
@@ -2098,6 +2541,54 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     flex: 1,
+  },
+  simulatorCard: {
+    marginHorizontal: 16,
+    marginTop: -6,
+    marginBottom: 16,
+    padding: 12,
+    backgroundColor: GarageTheme.surfaceAlt,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: GarageTheme.border,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  simulatorTitle: {
+    color: GarageTheme.textStrong,
+    fontSize: 13,
+    fontWeight: "800",
+    letterSpacing: 1,
+  },
+  simulatorMeta: {
+    color: GarageTheme.textSubtle,
+    fontSize: 10,
+    fontWeight: "700",
+    marginTop: 2,
+  },
+  simulatorActions: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  simulatorButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: GarageTheme.borderStrong,
+    backgroundColor: GarageTheme.panel,
+    minWidth: 54,
+    alignItems: "center",
+  },
+  simulatorButtonDisabled: {
+    opacity: 0.5,
+  },
+  simulatorButtonText: {
+    color: GarageTheme.accentSoft,
+    fontSize: 11,
+    fontWeight: "800",
   },
   hrBadge: {
     alignSelf: "flex-end",
@@ -3195,6 +3686,12 @@ const styles = StyleSheet.create({
     color: GarageTheme.textMuted,
     letterSpacing: 0.6,
   },
+  vlSettingsMeta: {
+    marginTop: 4,
+    fontSize: 11,
+    color: GarageTheme.accent,
+    fontWeight: "700",
+  },
   vlToggleRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -3216,6 +3713,9 @@ const styles = StyleSheet.create({
   vlToggleButtonOn: {
     backgroundColor: GarageTheme.accent,
   },
+  vlToggleOff: {
+    backgroundColor: GarageTheme.surface,
+  },
   vlToggleKnob: {
     width: 22,
     height: 22,
@@ -3230,6 +3730,10 @@ const styles = StyleSheet.create({
   vlToggleKnobOn: {
     alignSelf: "flex-end",
     backgroundColor: GarageTheme.background,
+  },
+  vlToggleKnobOff: {
+    alignSelf: "flex-start",
+    backgroundColor: GarageTheme.textMuted,
   },
   vlThresholdButtons: {
     flexDirection: "row",
@@ -3248,6 +3752,10 @@ const styles = StyleSheet.create({
     backgroundColor: GarageTheme.accent + "20",
     borderColor: GarageTheme.accent,
   },
+  vlThresholdButtonUnselected: {
+    backgroundColor: GarageTheme.surface,
+    borderColor: GarageTheme.border,
+  },
   vlThresholdButtonText: {
     fontSize: 12,
     color: GarageTheme.textMuted,
@@ -3255,6 +3763,152 @@ const styles = StyleSheet.create({
   },
   vlThresholdButtonTextSelected: {
     color: GarageTheme.accent,
+  },
+  vlThresholdButtonTextUnselected: {
+    color: GarageTheme.textMuted,
+  },
+  protocolCard: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+    padding: 14,
+    backgroundColor: GarageTheme.surfaceAlt,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: GarageTheme.borderStrong,
+    gap: 10,
+  },
+  protocolHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 8,
+  },
+  protocolKicker: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: GarageTheme.textMuted,
+    letterSpacing: 1.2,
+  },
+  protocolPhase: {
+    flexShrink: 1,
+    fontSize: 12,
+    fontWeight: "800",
+    color: GarageTheme.accent,
+    textAlign: "right",
+  },
+  protocolTitle: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: GarageTheme.textStrong,
+    lineHeight: 22,
+  },
+  protocolGrid: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  protocolDivider: {
+    height: 1,
+    backgroundColor: GarageTheme.border,
+  },
+  protocolMetric: {
+    flex: 1,
+    padding: 10,
+    borderRadius: 10,
+    backgroundColor: GarageTheme.surface,
+    borderWidth: 1,
+    borderColor: GarageTheme.border,
+  },
+  protocolMetricLabel: {
+    fontSize: 11,
+    color: GarageTheme.textMuted,
+    fontWeight: "700",
+    marginBottom: 4,
+  },
+  protocolMetricValue: {
+    fontSize: 14,
+    color: GarageTheme.textStrong,
+    fontWeight: "800",
+  },
+  protocolBody: {
+    fontSize: 12,
+    lineHeight: 18,
+    color: GarageTheme.textMuted,
+    fontWeight: "600",
+  },
+  lvpChecklist: {
+    gap: 8,
+  },
+  lvpCheckpoint: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: GarageTheme.border,
+  },
+  lvpCheckpointRange: {
+    width: 74,
+    fontSize: 13,
+    color: GarageTheme.textStrong,
+    fontWeight: "800",
+  },
+  lvpCheckpointText: {
+    flex: 1,
+    fontSize: 12,
+    color: GarageTheme.textMuted,
+    fontWeight: "600",
+    textAlign: "right",
+  },
+  vbtDecisionCard: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    padding: 14,
+    borderRadius: 12,
+    backgroundColor: GarageTheme.surfaceAlt,
+    borderWidth: 1,
+    borderColor: GarageTheme.borderStrong,
+    gap: 8,
+  },
+  vbtDecisionPositive: {
+    borderColor: GarageTheme.success,
+  },
+  vbtDecisionWarn: {
+    borderColor: GarageTheme.warning,
+  },
+  vbtDecisionDanger: {
+    borderColor: GarageTheme.danger,
+  },
+  vbtDecisionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  attemptGrid: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  attemptCell: {
+    flex: 1,
+    padding: 10,
+    borderRadius: 10,
+    backgroundColor: GarageTheme.surface,
+    borderWidth: 1,
+    borderColor: GarageTheme.border,
+  },
+  attemptValue: {
+    fontSize: 14,
+    lineHeight: 18,
+    color: GarageTheme.textStrong,
+    fontWeight: "800",
+  },
+  liveHintText: {
+    marginTop: 8,
+    fontSize: 12,
+    lineHeight: 18,
+    color: GarageTheme.textMuted,
+    fontWeight: "600",
   },
   // フォーカスモードスタイル
   focusModeContainer: {
@@ -3295,6 +3949,99 @@ const styles = StyleSheet.create({
     color: GarageTheme.textStrong,
     letterSpacing: 0.5,
   },
+  focusModeSimulatorPanel: {
+    marginTop: 12,
+    marginLeft: 16,
+    marginRight: 150,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: GarageTheme.borderStrong,
+    backgroundColor: GarageTheme.surface,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  focusModeSimulatorTitle: {
+    fontSize: 13,
+    fontWeight: "900",
+    letterSpacing: 1.2,
+    color: GarageTheme.textStrong,
+  },
+  focusModeSimulatorMeta: {
+    marginTop: 2,
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 0.8,
+    color: GarageTheme.textMuted,
+  },
+  focusModeSimulatorActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  focusModeSimulatorButton: {
+    minWidth: 54,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: GarageTheme.accent,
+    backgroundColor: GarageTheme.chip,
+  },
+  focusModeSimulatorButtonDisabled: {
+    opacity: 0.45,
+  },
+  focusModeSimulatorButtonText: {
+    color: GarageTheme.accent,
+    fontSize: 12,
+    fontWeight: "900",
+    letterSpacing: 0.6,
+  },
+  focusModeInfoGrid: {
+    marginTop: 10,
+    marginHorizontal: 16,
+    flexDirection: "row",
+    gap: 8,
+  },
+  focusModeInfoCell: {
+    flex: 1,
+    minHeight: 58,
+    justifyContent: "center",
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 12,
+    backgroundColor: GarageTheme.surface,
+    borderWidth: 1,
+    borderColor: GarageTheme.border,
+  },
+  focusModeInfoCellWide: {
+    flex: 1.35,
+    minHeight: 58,
+    justifyContent: "center",
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 12,
+    backgroundColor: GarageTheme.surface,
+    borderWidth: 1,
+    borderColor: GarageTheme.border,
+  },
+  focusModeInfoLabel: {
+    color: GarageTheme.textMuted,
+    fontSize: 9,
+    fontWeight: "900",
+    letterSpacing: 1,
+    marginBottom: 4,
+  },
+  focusModeInfoValue: {
+    color: GarageTheme.textStrong,
+    fontSize: 15,
+    fontWeight: "800",
+    fontVariant: ["tabular-nums"],
+  },
   focusModeVelocityArea: {
     flex: 1,
     justifyContent: "center",
@@ -3319,6 +4066,29 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: GarageTheme.textMuted,
     letterSpacing: 1,
+  },
+  focusModeMetricStrip: {
+    position: "absolute",
+    left: 20,
+    right: 20,
+    bottom: 22,
+    flexDirection: "row",
+    gap: 8,
+  },
+  focusModeMetricItem: {
+    flex: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: GarageTheme.border,
+    backgroundColor: GarageTheme.panel,
+  },
+  focusModeMetricValue: {
+    color: GarageTheme.textStrong,
+    fontSize: 14,
+    fontWeight: "800",
+    fontVariant: ["tabular-nums"],
   },
   focusModeRepCounter: {
     position: "absolute",
@@ -3359,6 +4129,33 @@ const styles = StyleSheet.create({
   focusModeZoneName: {
     fontSize: 18,
     fontWeight: "800",
+  },
+  focusModeVlBox: {
+    position: "absolute",
+    bottom: 92,
+    alignSelf: "center",
+    minWidth: 220,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderRadius: 16,
+    backgroundColor: GarageTheme.surfaceAlt,
+    borderWidth: 1,
+    borderColor: GarageTheme.borderStrong,
+    alignItems: "center",
+    gap: 4,
+  },
+  focusModeVlBoxStop: {
+    borderColor: GarageTheme.danger,
+  },
+  focusModeVlLabel: {
+    fontSize: 26,
+    fontWeight: "900",
+    color: GarageTheme.textStrong,
+  },
+  focusModeVlText: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: GarageTheme.textMuted,
   },
   focusModeHrDisplay: {
     position: "absolute",

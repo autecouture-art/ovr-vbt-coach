@@ -156,7 +156,7 @@ export function estimate1RMFromReps(weight: number, reps: number, rpe?: number):
  * Returns slope and intercept for linear regression
  */
 export function calculateLVP(
-  dataPoints: Array<{ load: number; velocity: number }>,
+  dataPoints: { load: number; velocity: number }[],
   mvt: number = 0.2 // Default MVT if not provided
 ): LVPData | null {
   // Filter outliers using interquartile range (IQR) to make regression more robust
@@ -313,7 +313,7 @@ export function calculateReadiness(
  * Analyzes velocity changes over time to determine if athlete is improving, stable, or declining
  */
 export function calculateReadinessTrend(
-  sessionData: Array<{ avg_velocity: number; date: string; load_kg: number }>
+  sessionData: { avg_velocity: number; date: string; load_kg: number }[]
 ): {
   trend: 'improving' | 'stable' | 'declining';
   delta_percent: number;
@@ -385,7 +385,7 @@ export function calculateDropSetLoad(
  * Volume = load × reps
  */
 export function calculateVolume(
-  sets: Array<{ load_kg: number; reps: number }>
+  sets: { load_kg: number; reps: number }[]
 ): number {
   return sets.reduce((total, set) => total + set.load_kg * set.reps, 0);
 }

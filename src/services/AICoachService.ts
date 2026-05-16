@@ -6,6 +6,8 @@
 
 import type { SetData, AppSettings, VelocityZone } from '../types/index';
 import { getDynamicVelocityZones } from '../utils/VelocityZones';
+import { getProtocolVelocityLossThreshold } from '../utils/PowerliftingVBTProtocol';
+import DeterministicVBTCoach from './DeterministicVBTCoach';
 
 // 速度ゾーンの定義
 const VELOCITY_ZONES = {
@@ -55,12 +57,19 @@ export class AICoachService {
         } catch (error) {
             console.error('Failed to get dynamic zones, falling back to fixed:', error);
             // フォールバック: 固定ゾーンを返す
+            const zone = this.getZone(velocity);
+            const zoneNameMap: Record<string, "power" | "strength_speed" | "hypertrophy" | "strength"> = {
+                'POWER': 'power',
+                'SPEED STRENGTH': 'strength_speed',
+                'HYPERTROPHY': 'hypertrophy',
+                'MAX STRENGTH': 'strength',
+            };
             return {
-                name: this.getZone(velocity).name.toLowerCase(),
+                name: zoneNameMap[zone.name] ?? 'strength',
                 min_velocity: 0,
                 max_velocity: velocity,
                 load_range: '',
-                color: this.getZone(velocity).color,
+                color: zone.color,
             };
         }
     }
@@ -68,7 +77,18 @@ export class AICoachService {
     /**
      * 種目別の最新VL閾値を取得（2024-2025論文に基づく）
      */
-    static getVlThresholdByExercise(category: string): number {
+    static getVlThresholdByExercise(
+        category: string,
+        phase: AppSettings["target_training_phase"] = "strength",
+    ): number {
+        if (
+            category === 'squat' ||
+            category === 'bench' ||
+            category === 'deadlift'
+        ) {
+            return getProtocolVelocityLossThreshold(category, phase);
+        }
+
         switch (category?.toLowerCase()) {
             case 'bench':
                 return 10;
@@ -100,8 +120,28 @@ export class AICoachService {
         settings?: Partial<AppSettings>
     ): CoachingAdvice {
         // 最新論文に基づく種目別閾値を優先、設定があればそちらを使用
-        const paperThreshold = this.getVlThresholdByExercise(exercise?.category);
+        const paperThreshold = this.getVlThresholdByExercise(
+            exercise?.category,
+            settings?.target_training_phase,
+        );
         const vlThreshold = settings?.velocity_loss_threshold ?? paperThreshold;
+
+        if (setHistory.length > 0) {
+            const deterministic = DeterministicVBTCoach.evaluate({
+                setHistory,
+                exercise,
+                phase: settings?.target_training_phase,
+            });
+
+            if (deterministic.action !== 'collect_data') {
+                return {
+                    message: deterministic.message,
+                    emoji: 'VBT',
+                    severity: deterministic.severity,
+                    suggestedAction: deterministic.suggestedAction,
+                };
+            }
+        }
 
         // セットが少ない場合
         if (setHistory.length < 2) {
@@ -184,7 +224,7 @@ export class AICoachService {
         targetZone: keyof typeof VELOCITY_ZONES,
         currentLoad: number,
     ): LoadSuggestion {
-        const target = VELOCITY_ZONES[targetZone];
+        const target = VELOCITY_ZONES[targetZone] ?? VELOCITY_ZONES.strength;
         const targetVel = target.min + 0.1; // ゾーン下限より少し余裕を持つ
 
         if (avgVelocity < target.min) {

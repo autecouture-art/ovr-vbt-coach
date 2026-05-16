@@ -192,7 +192,7 @@ export function AICoachChat({ onAdviceGenerated, lvp }: AICoachChatProps) {
           value={inputText}
           onChangeText={setInputText}
           placeholder="メッセージを入力..."
-          placeholderTextColor={GarageTheme.colors.textSecondary}
+          placeholderTextColor={GarageTheme.textMuted}
           multiline
           maxLength={500}
         />
@@ -211,7 +211,7 @@ export function AICoachChat({ onAdviceGenerated, lvp }: AICoachChatProps) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: GarageTheme.colors.background,
+    backgroundColor: GarageTheme.background,
   },
   messagesContainer: {
     flex: 1,
@@ -236,14 +236,14 @@ const styles = StyleSheet.create({
     borderRadius: 16,
   },
   userBubble: {
-    backgroundColor: GarageTheme.colors.primary,
+    backgroundColor: GarageTheme.accent,
     borderBottomRightRadius: 4,
   },
   coachBubble: {
-    backgroundColor: GarageTheme.colors.card,
+    backgroundColor: GarageTheme.panel,
     borderBottomLeftRadius: 4,
     borderWidth: 1,
-    borderColor: GarageTheme.colors.border,
+    borderColor: GarageTheme.border,
   },
   messageText: {
     fontSize: 15,
@@ -253,31 +253,31 @@ const styles = StyleSheet.create({
     color: '#FFF',
   },
   coachText: {
-    color: GarageTheme.colors.text,
+    color: GarageTheme.text,
   },
   typingIndicator: {
     fontSize: 14,
-    color: GarageTheme.colors.textSecondary,
+    color: GarageTheme.textMuted,
     fontStyle: 'italic',
   },
   suggestionsContainer: {
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderTopWidth: 1,
-    borderTopColor: GarageTheme.colors.border,
+    borderTopColor: GarageTheme.border,
   },
   suggestionChip: {
-    backgroundColor: GarageTheme.colors.card,
+    backgroundColor: GarageTheme.panel,
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 16,
     marginRight: 8,
     borderWidth: 1,
-    borderColor: GarageTheme.colors.border,
+    borderColor: GarageTheme.border,
   },
   suggestionText: {
     fontSize: 13,
-    color: GarageTheme.colors.textSecondary,
+    color: GarageTheme.textMuted,
   },
   inputContainer: {
     flexDirection: 'row',
@@ -285,28 +285,28 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderTopWidth: 1,
-    borderTopColor: GarageTheme.colors.border,
-    backgroundColor: GarageTheme.colors.card,
+    borderTopColor: GarageTheme.border,
+    backgroundColor: GarageTheme.panel,
   },
   input: {
     flex: 1,
-    backgroundColor: GarageTheme.colors.background,
+    backgroundColor: GarageTheme.background,
     borderRadius: 20,
     paddingHorizontal: 16,
     paddingVertical: 8,
     fontSize: 15,
-    color: GarageTheme.colors.text,
+    color: GarageTheme.text,
     maxHeight: 100,
     marginRight: 8,
   },
   sendButton: {
-    backgroundColor: GarageTheme.colors.primary,
+    backgroundColor: GarageTheme.accent,
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 20,
   },
   sendButtonDisabled: {
-    backgroundColor: GarageTheme.colors.border,
+    backgroundColor: GarageTheme.border,
   },
   sendButtonText: {
     color: '#FFF',

@@ -38,7 +38,7 @@ const PRNotification: React.FC<PRNotificationProps> = ({
     } else {
       scaleAnim.setValue(0);
     }
-  }, [visible]);
+  }, [scaleAnim, visible]);
 
   if (!prRecord) return null;
 
@@ -122,7 +122,7 @@ const PRNotification: React.FC<PRNotificationProps> = ({
               </Text>
             </View>
 
-            {prRecord.load_kg && (
+            {prRecord.load_kg != null && (
               <View style={styles.detailsContainer}>
                 <Text style={styles.detailsText}>
                   {prRecord.load_kg} kg × {prRecord.reps || 1} reps

@@ -7,7 +7,14 @@
 // ========================================
 
 export type DeviceType = "VBT" | "manual" | "OVR Velocity";
-export type SetType = "normal" | "amrap" | "drop" | "superset_A" | "superset_B";
+export type SetType =
+  | "normal"
+  | "top_single"
+  | "backoff"
+  | "amrap"
+  | "drop"
+  | "superset_A"
+  | "superset_B";
 
 export interface RepData {
   id?: string; // Unique identifier for the rep (UUID)
@@ -45,6 +52,7 @@ export interface SetData {
   set_type: SetType;
   avg_velocity: number | null;
   velocity_loss: number | null;
+  avg_rom_cm?: number | null;
   rpe?: number;
   e1rm?: number | null;
   timestamp: string; // 完了時間
@@ -252,6 +260,40 @@ export interface NotificationData {
 }
 
 // ========================================
+// Exercise History Types
+// ========================================
+
+export interface ExerciseHistoryEntry {
+  session_id: string;
+  date: string;
+  sets: SetData[];
+  total_volume: number; // Sum of load_kg * reps for this exercise
+  max_load: number; // Heaviest single set load
+  max_reps_at_max_load: number; // Reps at the heaviest load
+  estimated_1rm: number | null; // e1rm from heaviest set or calculated
+  total_sets: number;
+}
+
+export interface ExerciseStats {
+  lift: string;
+  session_count: number;
+  avg_max_load: number; // Average of heaviest sets across sessions
+  best_1rm: number; // Best estimated 1RM
+  avg_volume: number; // Average total volume per session
+  avg_sets: number; // Average sets per session
+  avg_velocity?: number; // Average velocity across all sets
+  recent_sessions: ExerciseHistoryEntry[]; // Recent sessions for this exercise
+}
+
+export interface ExerciseTrendData {
+  lift: string;
+  one_rm_trend: ChartDataPoint[]; // 1RM over time
+  volume_trend: ChartDataPoint[]; // Total volume over time
+  load_trend: ChartDataPoint[]; // Max load over time
+  velocity_trend?: ChartDataPoint[]; // Avg velocity over time
+}
+
+// ========================================
 // Chart/Graph Types
 // ========================================
 
@@ -279,6 +321,7 @@ export interface AppSettings {
   enable_voice_commands: boolean;
   enable_video_recording: boolean;
   target_training_phase: "power" | "hypertrophy" | "strength" | "peaking";
+  powerlifting_block_week: number; // 1-12 week PL block guide
   audio_volume: number; // 0.0 to 1.0
   enable_warmup_recommendations: boolean;
   enable_audio_rep_count: boolean;

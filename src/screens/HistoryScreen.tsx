@@ -3,7 +3,7 @@
  * Calendar view of training sessions
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useIsFocused } from '@react-navigation/native';
 import {
   View,
@@ -35,13 +35,7 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ navigation }) => {
   const [refreshing, setRefreshing] = useState(false);
   const isFocused = useIsFocused();
 
-  useEffect(() => {
-    if (isFocused) {
-      void loadSessions();
-    }
-  }, [isFocused]);
-
-  const enrichSession = async (session: SessionData): Promise<HistorySession> => {
+  const enrichSession = useCallback(async (session: SessionData): Promise<HistorySession> => {
     const sets = await DatabaseService.getSetsForSession(session.session_id);
     const lifts = Array.from(new Set(sets.map((set) => set.lift).filter(Boolean)));
     const derivedTotalSets = sets.length || session.total_sets || 0;
@@ -55,9 +49,9 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ navigation }) => {
       derivedTotalVolume,
       sets,
     };
-  };
+  }, []);
 
-  const loadSessions = async () => {
+  const loadSessions = useCallback(async () => {
     try {
       const allSessions = await DatabaseService.getSessions();
       const enriched = await Promise.all(allSessions.map(enrichSession));
@@ -65,7 +59,13 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ navigation }) => {
     } catch (error) {
       console.error('Failed to load sessions:', error);
     }
-  };
+  }, [enrichSession]);
+
+  useEffect(() => {
+    if (isFocused) {
+      void loadSessions();
+    }
+  }, [isFocused, loadSessions]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -143,9 +143,17 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ navigation }) => {
           <Text style={styles.title}>セッション履歴</Text>
           <Text style={styles.subtitle}>セッション詳細とコーチ分析をここから確認</Text>
         </View>
-        <TouchableOpacity style={styles.headerCoachButton} onPress={handleHistoryCoachPress}>
-          <Text style={styles.headerCoachButtonText}>SUMMARY</Text>
-        </TouchableOpacity>
+        <View style={styles.headerButtons}>
+          <TouchableOpacity
+            style={styles.headerExerciseButton}
+            onPress={() => navigation.navigate('ExerciseHistory')}
+          >
+            <Text style={styles.headerExerciseButtonText}>種目別</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.headerCoachButton} onPress={handleHistoryCoachPress}>
+            <Text style={styles.headerCoachButtonText}>SUMMARY</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {sessions.length === 0 ? (
@@ -276,6 +284,23 @@ const styles = StyleSheet.create({
     color: GarageTheme.textMuted,
     marginTop: 6,
     lineHeight: 18,
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  headerExerciseButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 999,
+    backgroundColor: GarageTheme.accent,
+    borderWidth: 1,
+    borderColor: GarageTheme.accent,
+  },
+  headerExerciseButtonText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '700',
   },
   headerCoachButton: {
     paddingHorizontal: 12,

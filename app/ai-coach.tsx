@@ -13,7 +13,7 @@ import {
   ScrollView,
   Alert,
 } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Speech from 'expo-speech';
 import { useTrainingStore } from '@/src/store/trainingStore';
@@ -28,7 +28,6 @@ type InputMode = 'chat' | 'form' | 'voice';
 export default function AICoachScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams();
 
   const currentExercise = useTrainingStore((state) => state.currentExercise);
   const [mode, setMode] = useState<InputMode>('chat');
@@ -41,12 +40,7 @@ export default function AICoachScreen() {
   } | null>(null);
   const [adviceResult, setAdviceResult] = useState<any>(null);
 
-  // Load LVP data on mount
-  React.useEffect(() => {
-    loadLVPData();
-  }, [currentExercise]);
-
-  const loadLVPData = async () => {
+  const loadLVPData = useCallback(async () => {
     if (!currentExercise) return;
 
     try {
@@ -57,13 +51,18 @@ export default function AICoachScreen() {
           intercept: profile.intercept,
           mvt: profile.mvt,
           r_squared: profile.r_squared,
-          sample_count: profile.sample_count,
+          sample_count: profile.sample_count ?? 0,
         });
       }
     } catch (error) {
       console.error('Failed to load LVP:', error);
     }
-  };
+  }, [currentExercise]);
+
+  // Load LVP data on mount
+  React.useEffect(() => {
+    void loadLVPData();
+  }, [loadLVPData]);
 
   const handleAdviceGenerated = useCallback((advice: any, parsedData: any) => {
     setAdviceResult({ advice, parsedData });
@@ -252,7 +251,7 @@ export default function AICoachScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: GarageTheme.colors.background,
+    backgroundColor: GarageTheme.background,
   },
   centering: {
     flex: 1,
@@ -265,9 +264,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: GarageTheme.colors.card,
+    backgroundColor: GarageTheme.panel,
     borderBottomWidth: 1,
-    borderBottomColor: GarageTheme.colors.border,
+    borderBottomColor: GarageTheme.border,
   },
   headerButton: {
     width: 40,
@@ -277,12 +276,12 @@ const styles = StyleSheet.create({
   },
   headerButtonText: {
     fontSize: 24,
-    color: GarageTheme.colors.text,
+    color: GarageTheme.text,
     fontWeight: 'bold',
   },
   refreshIcon: {
     fontSize: 20,
-    color: GarageTheme.colors.textSecondary,
+    color: GarageTheme.textMuted,
   },
   headerCenter: {
     flex: 1,
@@ -291,18 +290,18 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: GarageTheme.colors.text,
+    color: GarageTheme.text,
   },
   headerSubtitle: {
     fontSize: 14,
-    color: GarageTheme.colors.textSecondary,
+    color: GarageTheme.textMuted,
     marginTop: 2,
   },
   modeSelector: {
     flexDirection: 'row',
-    backgroundColor: GarageTheme.colors.card,
+    backgroundColor: GarageTheme.panel,
     borderBottomWidth: 1,
-    borderBottomColor: GarageTheme.colors.border,
+    borderBottomColor: GarageTheme.border,
   },
   modeButton: {
     flex: 1,
@@ -312,15 +311,15 @@ const styles = StyleSheet.create({
     borderBottomColor: 'transparent',
   },
   modeButtonActive: {
-    borderBottomColor: GarageTheme.colors.primary,
+    borderBottomColor: GarageTheme.accent,
   },
   modeButtonText: {
     fontSize: 14,
-    color: GarageTheme.colors.textSecondary,
+    color: GarageTheme.textMuted,
     fontWeight: '600',
   },
   modeButtonTextActive: {
-    color: GarageTheme.colors.primary,
+    color: GarageTheme.accent,
   },
   content: {
     flex: 1,
@@ -338,17 +337,17 @@ const styles = StyleSheet.create({
   voiceTitle: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: GarageTheme.colors.text,
+    color: GarageTheme.text,
     marginBottom: 8,
   },
   voiceDescription: {
     fontSize: 16,
-    color: GarageTheme.colors.textSecondary,
+    color: GarageTheme.textMuted,
     textAlign: 'center',
     marginBottom: 32,
   },
   voiceButton: {
-    backgroundColor: GarageTheme.colors.primary,
+    backgroundColor: GarageTheme.accent,
     paddingHorizontal: 48,
     paddingVertical: 20,
     borderRadius: 30,
@@ -360,22 +359,22 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   voiceTips: {
-    backgroundColor: GarageTheme.colors.card,
+    backgroundColor: GarageTheme.panel,
     borderRadius: 12,
     padding: 20,
     width: '100%',
     borderWidth: 1,
-    borderColor: GarageTheme.colors.border,
+    borderColor: GarageTheme.border,
   },
   voiceTipsTitle: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: GarageTheme.colors.text,
+    color: GarageTheme.text,
     marginBottom: 12,
   },
   voiceTipsText: {
     fontSize: 14,
-    color: GarageTheme.colors.textSecondary,
+    color: GarageTheme.textMuted,
     marginBottom: 8,
     lineHeight: 20,
   },
@@ -384,14 +383,14 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: GarageTheme.colors.card,
+    backgroundColor: GarageTheme.panel,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     paddingHorizontal: 20,
     paddingTop: 20,
     paddingBottom: 16,
     borderWidth: 1,
-    borderColor: GarageTheme.colors.border,
+    borderColor: GarageTheme.border,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -2 },
     shadowOpacity: 0.1,
@@ -408,7 +407,7 @@ const styles = StyleSheet.create({
   resultTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: GarageTheme.colors.text,
+    color: GarageTheme.text,
   },
   speakButton: {
     fontSize: 24,
@@ -419,35 +418,35 @@ const styles = StyleSheet.create({
   },
   resultText: {
     fontSize: 15,
-    color: GarageTheme.colors.text,
+    color: GarageTheme.text,
     lineHeight: 22,
     marginBottom: 12,
   },
   resultAction: {
     fontSize: 14,
-    color: GarageTheme.colors.primary,
+    color: GarageTheme.accent,
     fontWeight: '600',
     fontStyle: 'italic',
   },
   closeButton: {
-    backgroundColor: GarageTheme.colors.border,
+    backgroundColor: GarageTheme.border,
     borderRadius: 8,
     paddingVertical: 12,
     alignItems: 'center',
   },
   closeButtonText: {
-    color: GarageTheme.colors.text,
+    color: GarageTheme.text,
     fontSize: 16,
     fontWeight: '600',
   },
   errorText: {
     fontSize: 16,
-    color: GarageTheme.colors.accent,
+    color: GarageTheme.accent,
     textAlign: 'center',
     marginBottom: 20,
   },
   backButton: {
-    backgroundColor: GarageTheme.colors.primary,
+    backgroundColor: GarageTheme.accent,
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 8,

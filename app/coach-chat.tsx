@@ -188,7 +188,7 @@ export default function AICoachChatScreen() {
       ? exerciseMaster.find((exercise) => exercise.name === effectiveExercise) ?? null
       : null;
 
-    let sameLiftRecentSets: Array<{
+    let sameLiftRecentSets: {
       date: string;
       lift: string;
       set_index: number;
@@ -197,7 +197,7 @@ export default function AICoachChatScreen() {
       avg_velocity: number | null;
       velocity_loss: number | null;
       e1rm: number | null;
-    }> = [];
+    }[] = [];
 
     if (effectiveExercise) {
       const sameLiftRecords = await Promise.all(
@@ -221,13 +221,13 @@ export default function AICoachChatScreen() {
     }
 
     // Get same-weight history (±2.5kg tolerance)
-    let sameWeightHistory: Array<{
+    let sameWeightHistory: {
       date: string;
       load_kg: number;
       reps: number;
       avg_velocity: number | null;
       velocity_loss: number | null;
-    }> = [];
+    }[] = [];
 
     if (effectiveExercise && routeLoadKg !== null) {
       const tolerance = 2.5;

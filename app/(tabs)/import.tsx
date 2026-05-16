@@ -3,6 +3,7 @@ import { Alert, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, 
 import { useIsFocused } from '@react-navigation/native';
 
 import DatabaseService from '@/src/services/DatabaseService';
+import CodexDataExportService, { type CodexTrainingExportShareResult } from '@/src/services/CodexDataExportService';
 import ExerciseService from '@/src/services/ExerciseService';
 import { GarageTheme } from '@/src/constants/garageTheme';
 import type { SessionData } from '@/src/types/index';
@@ -25,6 +26,8 @@ export default function ImportTab() {
   });
   const [refreshing, setRefreshing] = useState(false);
   const [inferringRom, setInferringRom] = useState(false);
+  const [exportingCodexData, setExportingCodexData] = useState(false);
+  const [lastCodexExport, setLastCodexExport] = useState<CodexTrainingExportShareResult | null>(null);
 
   const loadSummary = async () => {
     await DatabaseService.initialize();
@@ -82,15 +85,37 @@ export default function ImportTab() {
     }
   };
 
+  const handleCodexExport = async () => {
+    setExportingCodexData(true);
+    try {
+      const result = await CodexDataExportService.shareTrainingExportFile();
+      setLastCodexExport(result);
+
+      const shareNote = result.shared
+        ? '共有先でMacを選ぶとCodexが読み取れるJSONを渡せます。'
+        : `共有が使えないため、端末内に保存しました: ${result.fileName}`;
+
+      Alert.alert(
+        'Codex Export 完了',
+        `${result.fileName}\nSessions ${result.payload.counts.sessions} / Sets ${result.payload.counts.sets} / Reps ${result.payload.counts.reps}\n${shareNote}`,
+      );
+    } catch (error) {
+      console.error('Failed to export Codex training data:', error);
+      Alert.alert('エクスポート失敗', error instanceof Error ? error.message : 'Codex用データの書き出しに失敗しました。');
+    } finally {
+      setExportingCodexData(false);
+    }
+  };
+
   return (
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.content}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={GarageTheme.accent} />}
     >
-      <Text style={styles.eyebrow}>DATA BAY / ROM LAB</Text>
+      <Text style={styles.eyebrow}>DATA BAY / CODEX LINK</Text>
       <Text style={styles.title}>データ管理</Text>
-      <Text style={styles.subtitle}>ローカルDBの状態確認とROM再推測をここで行います。</Text>
+      <Text style={styles.subtitle}>ローカルDBの状態確認、Codexへの受け渡し、ROM再推測をここで行います。</Text>
 
       <View style={styles.heroCard}>
         <Text style={styles.heroTitle}>現在のローカルDB</Text>
@@ -108,6 +133,41 @@ export default function ImportTab() {
             <Text style={styles.statValue}>{summary.repCount}</Text>
           </View>
         </View>
+      </View>
+
+      <View style={styles.codexCard}>
+        <View style={styles.codexHeader}>
+          <View>
+            <Text style={styles.cardTitle}>CODEX EXPORT</Text>
+            <Text style={styles.cardMain}>Mac / Codexへ渡す</Text>
+          </View>
+          <View style={styles.codexBadge}>
+            <Text style={styles.codexBadgeText}>JSON</Text>
+          </View>
+        </View>
+        <Text style={styles.cardBody}>セッション、セット、レップ、種目、MY V@1RM用プロファイルを書き出します。</Text>
+        <View style={styles.exportSummaryRow}>
+          <View style={styles.exportSummaryItem}>
+            <Text style={styles.exportSummaryLabel}>SESSIONS</Text>
+            <Text style={styles.exportSummaryValue}>{summary.sessionCount}</Text>
+          </View>
+          <View style={styles.exportSummaryItem}>
+            <Text style={styles.exportSummaryLabel}>SETS</Text>
+            <Text style={styles.exportSummaryValue}>{summary.setCount}</Text>
+          </View>
+          <View style={styles.exportSummaryItem}>
+            <Text style={styles.exportSummaryLabel}>REPS</Text>
+            <Text style={styles.exportSummaryValue}>{summary.repCount}</Text>
+          </View>
+        </View>
+        <TouchableOpacity style={styles.exportButton} onPress={() => void handleCodexExport()} disabled={exportingCodexData}>
+          <Text style={styles.exportButtonText}>{exportingCodexData ? 'EXPORTING...' : 'GET DATA FOR CODEX'}</Text>
+        </TouchableOpacity>
+        {lastCodexExport ? (
+          <Text style={styles.exportMeta}>
+            Last export: {lastCodexExport.fileName} / {Math.max(1, Math.round(lastCodexExport.bytes / 1024))} KB
+          </Text>
+        ) : null}
       </View>
 
       <View style={styles.card}>
@@ -216,6 +276,35 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 16,
   },
+  codexCard: {
+    borderRadius: 18,
+    backgroundColor: GarageTheme.surface,
+    borderWidth: 1,
+    borderColor: GarageTheme.accent,
+    padding: 16,
+    marginBottom: 16,
+  },
+  codexHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 12,
+    marginBottom: 8,
+  },
+  codexBadge: {
+    borderRadius: 10,
+    backgroundColor: GarageTheme.panel,
+    borderWidth: 1,
+    borderColor: GarageTheme.borderStrong,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  codexBadgeText: {
+    color: GarageTheme.accent,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+  },
   cardTitle: {
     color: GarageTheme.accentSoft,
     fontSize: 11,
@@ -238,6 +327,39 @@ const styles = StyleSheet.create({
     color: GarageTheme.textMuted,
     fontSize: 14,
     lineHeight: 20,
+  },
+  exportMeta: {
+    color: GarageTheme.textStrong,
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 12,
+    lineHeight: 18,
+  },
+  exportSummaryRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 14,
+    marginBottom: 12,
+  },
+  exportSummaryItem: {
+    flex: 1,
+    borderRadius: 12,
+    backgroundColor: GarageTheme.panel,
+    borderWidth: 1,
+    borderColor: GarageTheme.border,
+    padding: 10,
+  },
+  exportSummaryLabel: {
+    color: GarageTheme.textMuted,
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 1.1,
+    marginBottom: 4,
+  },
+  exportSummaryValue: {
+    color: GarageTheme.textStrong,
+    fontSize: 18,
+    fontWeight: '800',
   },
   emptyText: {
     color: GarageTheme.textSubtle,
@@ -272,6 +394,20 @@ const styles = StyleSheet.create({
     color: GarageTheme.textStrong,
     fontSize: 13,
     fontWeight: '700',
+    letterSpacing: 1,
+  },
+  exportButton: {
+    borderRadius: 16,
+    backgroundColor: GarageTheme.accent,
+    borderWidth: 1,
+    borderColor: GarageTheme.accent,
+    paddingVertical: 16,
+    alignItems: 'center',
+  },
+  exportButtonText: {
+    color: GarageTheme.background,
+    fontSize: 13,
+    fontWeight: '800',
     letterSpacing: 1,
   },
 });

@@ -43,6 +43,8 @@ const MonitorScreen: React.FC<MonitorScreenProps> = ({ navigation }) => {
     return () => {
       BLEService.stopNotifications();
     };
+    // Monitor callback wiring is intentionally installed once for this legacy screen.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -63,6 +65,8 @@ const MonitorScreen: React.FC<MonitorScreenProps> = ({ navigation }) => {
 
   useEffect(() => {
     void loadRecentLiftSets();
+    // Recent-set lookup should refresh only when this monitor session changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
 
   const setupBLECallbacks = () => {

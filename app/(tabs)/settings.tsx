@@ -41,6 +41,11 @@ import {
 } from "@/src/services/AppSettingsService";
 import { useTrainingStore } from "@/src/store/trainingStore";
 import { HelpButton } from "@/src/components/HelpButton";
+import {
+  POWERLIFTING_PHASES,
+  getBlockWeekPlan,
+  getPhaseForBlockWeek,
+} from "@/src/utils/PowerliftingVBTProtocol";
 import type { AppSettings, Exercise } from "@/src/types/index";
 
 const defaultSettings: AppSettings = DEFAULT_APP_SETTINGS;
@@ -75,6 +80,13 @@ const MODE_LABELS: Record<
   short_rom: "短ROM",
 };
 
+const DEFAULT_WEEK_BY_PHASE: Record<AppSettings["target_training_phase"], number> = {
+  hypertrophy: 1,
+  strength: 5,
+  peaking: 9,
+  power: 5,
+};
+
 export default function SettingsTab() {
   const router = useRouter();
   const updateGlobalSettings = useTrainingStore(
@@ -103,18 +115,22 @@ export default function SettingsTab() {
   const [editingExerciseName, setEditingExerciseName] = useState("");
   const [editingExerciseCategory, setEditingExerciseCategory] =
     useState<Exercise["category"]>("accessory");
-  const [editingExerciseVLThreshold, setEditingExerciseVLThreshold] =
-    useState<number | null>(null);
   const [editingExerciseAutoStartRom, setEditingExerciseAutoStartRom] =
     useState<number | null>(null);
   const [editingTrainingCue, setEditingTrainingCue] = useState("");
   const [editingFocusNote, setEditingFocusNote] = useState("");
+  const blockWeekPlan = useMemo(
+    () => getBlockWeekPlan(settings.powerlifting_block_week, "squat"),
+    [settings.powerlifting_block_week],
+  );
 
   useEffect(() => {
     void loadSettings();
     void loadApiOverride();
     void loadLocalLlm();
     void loadExerciseMaster();
+    // Settings bootstrap is intentionally run once on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadSettings = async () => {
@@ -284,7 +300,6 @@ export default function SettingsTab() {
       setEditingExerciseId(null);
       setEditingExerciseName("");
       setEditingExerciseCategory("accessory");
-      setEditingExerciseVLThreshold(null);
       setEditingExerciseAutoStartRom(null);
       setEditingTrainingCue("");
       setEditingFocusNote("");
@@ -293,7 +308,6 @@ export default function SettingsTab() {
       setEditingExerciseId(exerciseId);
       setEditingExerciseName(exercise.name);
       setEditingExerciseCategory(exercise.category);
-      setEditingExerciseVLThreshold(exercise.velocity_loss_threshold ?? null);
       setEditingExerciseAutoStartRom(exercise.auto_start_rom_cm ?? null);
       setEditingTrainingCue(exercise.training_cue ?? "");
       setEditingFocusNote(exercise.focus_note ?? "");
@@ -311,9 +325,6 @@ export default function SettingsTab() {
       }
       if (editingExerciseCategory !== exercise.category) {
         updates.category = editingExerciseCategory;
-      }
-      if (editingExerciseVLThreshold !== exercise.velocity_loss_threshold) {
-        updates.velocity_loss_threshold = editingExerciseVLThreshold ?? undefined;
       }
       if (editingExerciseAutoStartRom !== exercise.auto_start_rom_cm) {
         updates.auto_start_rom_cm = editingExerciseAutoStartRom ?? undefined;
@@ -334,7 +345,6 @@ export default function SettingsTab() {
       setEditingExerciseId(null);
       setEditingExerciseName("");
       setEditingExerciseCategory("accessory");
-      setEditingExerciseVLThreshold(null);
       setEditingExerciseAutoStartRom(null);
       setEditingTrainingCue("");
       setEditingFocusNote("");
@@ -343,8 +353,6 @@ export default function SettingsTab() {
       Alert.alert("エラー", "種目情報の更新に失敗しました");
     }
   };
-
-  const thresholdOptions = [10, 15, 20, 25, 30];
 
   const filteredExercises = useMemo(
     () =>
@@ -457,6 +465,80 @@ export default function SettingsTab() {
       </View>
 
       <View style={styles.card}>
+        <Text style={styles.sectionTitle}>パワーリフティングVBT運用</Text>
+        <Text style={styles.toggleMeta}>
+          トップシングルで当日の状態を見て、バックオフをVelocity Lossで止める前提に合わせます。
+        </Text>
+        <View style={styles.phaseGrid}>
+          {POWERLIFTING_PHASES.map((phase) => {
+            const active = settings.target_training_phase === phase.value;
+            return (
+              <TouchableOpacity
+                key={phase.value}
+                style={[
+                  styles.phaseOption,
+                  active && styles.phaseOptionActive,
+                ]}
+                onPress={() =>
+                  void saveSettings({
+                    ...settings,
+                    target_training_phase: phase.value,
+                    powerlifting_block_week: DEFAULT_WEEK_BY_PHASE[phase.value],
+                  })
+                }
+              >
+                <Text
+                  style={[
+                    styles.phaseOptionLabel,
+                    active && styles.phaseOptionLabelActive,
+                  ]}
+                >
+                  {phase.label}
+                </Text>
+                <Text style={styles.phaseOptionDescription}>
+                  {phase.description}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+        <View style={styles.blockWeekHeader}>
+          <Text style={styles.blockWeekTitle}>12週間ブロック</Text>
+          <Text style={styles.blockWeekMeta}>
+            Week {blockWeekPlan.week} / {blockWeekPlan.phaseLabel}
+          </Text>
+        </View>
+        <View style={styles.weekGrid}>
+          {Array.from({ length: 12 }, (_, index) => index + 1).map((week) => {
+            const active = settings.powerlifting_block_week === week;
+            return (
+              <TouchableOpacity
+                key={week}
+                style={[styles.weekChip, active && styles.weekChipActive]}
+                onPress={() =>
+                  void saveSettings({
+                    ...settings,
+                    powerlifting_block_week: week,
+                    target_training_phase: getPhaseForBlockWeek(week),
+                  })
+                }
+              >
+                <Text
+                  style={[
+                    styles.weekChipText,
+                    active && styles.weekChipTextActive,
+                  ]}
+                >
+                  {week}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+        <Text style={styles.phaseOptionDescription}>{blockWeekPlan.note}</Text>
+      </View>
+
+      <View style={styles.card}>
         <Text style={styles.sectionTitle}>音声ガイド</Text>
 
         <View style={styles.toggleRow}>
@@ -503,22 +585,6 @@ export default function SettingsTab() {
             value={settings.enable_audio_faster_cue}
             onValueChange={(value) =>
               void saveSettings({ ...settings, enable_audio_faster_cue: value })
-            }
-            trackColor={{ false: "#3b2b28", true: GarageTheme.accent }}
-          />
-        </View>
-
-        <View style={styles.toggleRow}>
-          <View>
-            <Text style={styles.toggleLabel}>VL警告音</Text>
-            <Text style={styles.toggleMeta}>
-              Velocity Loss閾値到達時に警告を再生
-            </Text>
-          </View>
-          <Switch
-            value={settings.enable_vl_warning}
-            onValueChange={(value) =>
-              void saveSettings({ ...settings, enable_vl_warning: value })
             }
             trackColor={{ false: "#3b2b28", true: GarageTheme.accent }}
           />
@@ -615,39 +681,6 @@ export default function SettingsTab() {
                   ]}
                 >
                   {value}cm
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Velocity Loss</Text>
-        <View style={styles.thresholdRow}>
-          {thresholdOptions.map((value) => {
-            const active = settings.velocity_loss_threshold === value;
-            return (
-              <TouchableOpacity
-                key={value}
-                style={[
-                  styles.thresholdButton,
-                  active && styles.thresholdButtonActive,
-                ]}
-                onPress={() =>
-                  void saveSettings({
-                    ...settings,
-                    velocity_loss_threshold: value,
-                  })
-                }
-              >
-                <Text
-                  style={[
-                    styles.thresholdText,
-                    active && styles.thresholdTextActive,
-                  ]}
-                >
-                  {value}%
                 </Text>
               </TouchableOpacity>
             );
@@ -961,43 +994,6 @@ export default function SettingsTab() {
 
                               <View style={styles.exerciseEditRow}>
                                 <Text style={styles.exerciseEditLabel}>
-                                  VL閾値
-                                </Text>
-                                <View style={styles.vlThresholdSelector}>
-                                  {[null, 10, 15, 20, 25, 30].map((value) => {
-                                    const isSelected =
-                                      editingExerciseVLThreshold === value;
-                                    return (
-                                      <TouchableOpacity
-                                        key={value ?? "default"}
-                                        style={[
-                                          styles.vlThresholdChip,
-                                          isSelected &&
-                                            styles.vlThresholdChipActive,
-                                        ]}
-                                        onPress={() =>
-                                          setEditingExerciseVLThreshold(value)
-                                        }
-                                      >
-                                        <Text
-                                          style={[
-                                            styles.vlThresholdChipText,
-                                            isSelected &&
-                                              styles.vlThresholdChipTextActive,
-                                          ]}
-                                        >
-                                          {value === null
-                                            ? "既定"
-                                            : `${value}%`}
-                                        </Text>
-                                      </TouchableOpacity>
-                                    );
-                                  })}
-                                </View>
-                              </View>
-
-                              <View style={styles.exerciseEditRow}>
-                                <Text style={styles.exerciseEditLabel}>
                                   自動スタートROM
                                 </Text>
                                 <View style={styles.vlThresholdSelector}>
@@ -1242,6 +1238,82 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   thresholdTextActive: {
+    color: GarageTheme.textStrong,
+  },
+  phaseGrid: {
+    gap: 10,
+    marginTop: 14,
+  },
+  phaseOption: {
+    borderRadius: 12,
+    padding: 12,
+    backgroundColor: GarageTheme.chip,
+    borderWidth: 1,
+    borderColor: GarageTheme.borderStrong,
+  },
+  phaseOptionActive: {
+    backgroundColor: "#4b2416",
+    borderColor: GarageTheme.accent,
+  },
+  phaseOptionLabel: {
+    color: GarageTheme.text,
+    fontSize: 14,
+    fontWeight: "800",
+    marginBottom: 4,
+  },
+  phaseOptionLabelActive: {
+    color: GarageTheme.textStrong,
+  },
+  phaseOptionDescription: {
+    color: GarageTheme.textMuted,
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  blockWeekHeader: {
+    marginTop: 16,
+    marginBottom: 10,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 10,
+  },
+  blockWeekTitle: {
+    color: GarageTheme.textStrong,
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  blockWeekMeta: {
+    color: GarageTheme.accent,
+    fontSize: 12,
+    fontWeight: "800",
+    textAlign: "right",
+  },
+  weekGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 10,
+  },
+  weekChip: {
+    width: 42,
+    height: 36,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: GarageTheme.chip,
+    borderWidth: 1,
+    borderColor: GarageTheme.borderStrong,
+  },
+  weekChipActive: {
+    backgroundColor: "#4b2416",
+    borderColor: GarageTheme.accent,
+  },
+  weekChipText: {
+    color: GarageTheme.textMuted,
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  weekChipTextActive: {
     color: GarageTheme.textStrong,
   },
   cardBody: {

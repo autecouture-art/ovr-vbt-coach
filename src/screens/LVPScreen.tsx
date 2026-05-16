@@ -25,11 +25,13 @@ interface LVPScreenProps {
 const LVPScreen: React.FC<LVPScreenProps> = ({ navigation, route }) => {
   const { lift } = route.params || { lift: 'Bench Press' };
   const [lvpData, setLvpData] = useState<LVPData | null>(null);
-  const [dataPoints, setDataPoints] = useState<Array<{ x: number; y: number }>>([]);
-  const [lvpLine, setLvpLine] = useState<Array<{ x: number; y: number }>>([]);
+  const [dataPoints, setDataPoints] = useState<{ x: number; y: number }[]>([]);
+  const [lvpLine, setLvpLine] = useState<{ x: number; y: number }[]>([]);
 
   useEffect(() => {
     loadLVPData();
+    // LVP data should refresh only when the route lift changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lift]);
 
   const loadLVPData = async () => {
@@ -126,13 +128,6 @@ const LVPScreen: React.FC<LVPScreenProps> = ({ navigation, route }) => {
     }
 
     setLvpLine(points);
-  };
-
-  const getVelocityZoneColor = (velocity: number): string => {
-    if (velocity >= 1.0) return '#FFD700'; // Power
-    if (velocity >= 0.75) return '#FF8C00'; // Strength-Speed
-    if (velocity >= 0.5) return '#32CD32'; // Hypertrophy
-    return '#DC143C'; // Strength
   };
 
   return (

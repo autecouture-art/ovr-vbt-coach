@@ -3,7 +3,7 @@
  * 速度関連の用語を説明するツールチップ
  */
 
-import React, { useState } from 'react';
+import React from 'react';
 import {
   Modal,
   StyleSheet,

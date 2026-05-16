@@ -6,21 +6,15 @@
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import { RepVeloData } from '../types/index';
+import { createSimulatedRep, createSimulatedSet } from '../utils/VBTSimulator';
 
 // BLE機能はネイティブ環境のみで利用可能
 let BleManager: any = null;
-let Device: any = null;
-let Characteristic: any = null;
-let Service: any = null;
-
 // ネイティブ環境でのみBLEモジュールをインポート
 if (Platform.OS !== 'web') {
   try {
     const bleModule = require('react-native-ble-plx');
     BleManager = bleModule.BleManager;
-    Device = bleModule.Device;
-    Characteristic = bleModule.Characteristic;
-    Service = bleModule.Service;
   } catch (e) {
     console.warn('BLE module not found or failed to load:', e);
   }
@@ -38,9 +32,7 @@ if (Platform.OS === 'android') {
 }
 
 // RepVelo Velocity Device Constants
-const DEVICE_NAME_PREFIX = 'OVR_Velocity';
 const SERVICE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
-const NOTIFY_CHARACTERISTIC_UUID = '14001dc2-5089-47d3-84bc-7c3d418389aa';
 const SCAN_DURATION = 5000; // 5 seconds
 const EXPECTED_DATA_SIZE = 16; // bytes
 
@@ -52,16 +44,6 @@ function base64ToBytes(base64: string): Uint8Array {
     bytes[i] = binaryString.charCodeAt(i);
   }
   return bytes;
-}
-
-// Helper function to read little-endian float from byte array
-function readFloatLE(bytes: Uint8Array, offset: number): number {
-  const buffer = new ArrayBuffer(4);
-  const view = new DataView(buffer);
-  for (let i = 0; i < 4; i++) {
-    view.setUint8(i, bytes[offset + i]);
-  }
-  return view.getFloat32(0, true); // true = little-endian
 }
 
 // Helper function to read little-endian uint16 from byte array
@@ -79,6 +61,15 @@ export interface BLEServiceCallbacks {
   onDebugInfo?: (info: string) => void;
 }
 
+export interface VBTSimulatorOptions {
+  reps?: number;
+  baseVelocity?: number;
+  velocityDropPerRep?: number;
+  romCm?: number;
+  loadKg?: number;
+  intervalMs?: number;
+}
+
 class BLEService {
   private manager: any = null;
   private device: any = null;
@@ -93,6 +84,8 @@ class BLEService {
   private maxReconnectAttempts: number = 3;
   private reconnectTimer: any = null;
   private isWeb: boolean = Platform.OS === 'web';
+  private simulatorConnected: boolean = false;
+  private simulatorTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
     if (this.isWeb) {
@@ -221,6 +214,101 @@ class BLEService {
    */
   setCallbacks(callbacks: BLEServiceCallbacks) {
     this.callbacks = { ...this.callbacks, ...callbacks };
+  }
+
+  clearCallbacks(callbacks?: BLEServiceCallbacks) {
+    if (!callbacks) {
+      this.callbacks = {};
+      return;
+    }
+
+    const nextCallbacks = { ...this.callbacks };
+    const callbackKeys: (keyof BLEServiceCallbacks)[] = [
+      'onDataReceived',
+      'onConnectionStatusChanged',
+      'onError',
+      'onDeviceFound',
+      'onDevicesDiscovered',
+      'onDebugInfo',
+    ];
+
+    for (const key of callbackKeys) {
+      if (callbacks[key] && nextCallbacks[key] === callbacks[key]) {
+        delete nextCallbacks[key];
+      }
+    }
+
+    this.callbacks = nextCallbacks;
+  }
+
+  async connectSimulator(): Promise<boolean> {
+    await this.stopSimulator();
+    this.simulatorConnected = true;
+    this.debug('VBT simulator connected');
+    this.callbacks.onConnectionStatusChanged?.(true);
+    return true;
+  }
+
+  async stopSimulator(): Promise<void> {
+    if (this.simulatorTimer) {
+      clearTimeout(this.simulatorTimer);
+      this.simulatorTimer = null;
+    }
+  }
+
+  async disconnectSimulator(): Promise<void> {
+    await this.stopSimulator();
+    if (this.simulatorConnected) {
+      this.simulatorConnected = false;
+      this.callbacks.onConnectionStatusChanged?.(false);
+      this.debug('VBT simulator disconnected');
+    }
+  }
+
+  emitSimulatedRep(data: Partial<RepVeloData> = {}): void {
+    if (!this.simulatorConnected) {
+      this.simulatorConnected = true;
+      this.callbacks.onConnectionStatusChanged?.(true);
+    }
+
+    this.callbacks.onDataReceived?.(
+      createSimulatedRep({
+        meanVelocity: data.mean_velocity ?? undefined,
+        peakVelocity: data.peak_velocity ?? undefined,
+        romCm: data.rom_cm ?? undefined,
+        repDurationMs: data.rep_duration_ms ?? undefined,
+        timestamp: data.timestamp ?? undefined,
+      }),
+    );
+  }
+
+  async runSimulatedSet(options: VBTSimulatorOptions = {}): Promise<void> {
+    await this.connectSimulator();
+    const reps = Math.max(1, Math.min(options.reps ?? 5, 12));
+    const intervalMs = Math.max(250, options.intervalMs ?? 850);
+    const simulatedReps = createSimulatedSet({
+      reps,
+      baseVelocity: options.baseVelocity,
+      velocityDropPerRep: options.velocityDropPerRep,
+      romCm: options.romCm,
+      loadKg: options.loadKg,
+    });
+
+    await this.stopSimulator();
+
+    for (let index = 0; index < simulatedReps.length; index += 1) {
+      await new Promise<void>((resolve) => {
+        this.simulatorTimer = setTimeout(() => {
+          this.callbacks.onDataReceived?.({
+            ...simulatedReps[index],
+            timestamp: Date.now(),
+          });
+          resolve();
+        }, index === 0 ? 100 : intervalMs);
+      });
+    }
+
+    this.simulatorTimer = null;
   }
 
   /**
@@ -539,21 +627,21 @@ class BLEService {
       this.debug(`Setting up monitor for: ${notifiableChar.uuid}`);
 
       try {
+        if (this.notificationMonitor) {
+          await this.stopNotifications();
+        }
         this.notificationMonitor = this.device.monitorCharacteristicForService(
           notifiableChar.serviceUUID,
           notifiableChar.uuid,
           (error: any, characteristic: any) => {
             if (error) {
-              this.debug(`Notification error: ${error.message}`);
+              console.warn('Notification error:', error);
               this.callbacks.onError?.(`Notification error: ${error.message}`);
               return;
             }
 
             if (characteristic?.value) {
-              this.debug(`Received data: ${characteristic.value}`);
               this.handleNotification(characteristic);
-            } else {
-              this.debug('Received notification without value');
             }
           }
         );
@@ -596,7 +684,7 @@ class BLEService {
 
       // Set up polling
       if (this.notificationMonitor) {
-        clearInterval(this.notificationMonitor);
+        await this.stopNotifications();
       }
 
       this.notificationMonitor = setInterval(async () => {
@@ -605,9 +693,9 @@ class BLEService {
           if (value?.value) {
             this.handleNotification(value);
           }
-        } catch (error) {
-          // Ignore read errors during polling
-        }
+      } catch {
+        // Ignore read errors during polling
+      }
       }, 500); // Poll every 500ms
 
       this.debug('Polling started (500ms interval)');
@@ -631,10 +719,9 @@ class BLEService {
 
       // Decode base64 to byte array
       const bytes = base64ToBytes(base64Data);
-      this.debug(`Data received: ${bytes.length} bytes`);
 
       if (bytes.length !== EXPECTED_DATA_SIZE) {
-        this.debug(`Warning: Expected ${EXPECTED_DATA_SIZE} bytes, got ${bytes.length}`);
+        console.warn(`[BLE] Expected ${EXPECTED_DATA_SIZE} bytes, got ${bytes.length}`);
         // Don't return - try to parse anyway
       }
 
@@ -642,13 +729,12 @@ class BLEService {
       const parsedData = this.parseVelocityData(bytes);
 
       if (parsedData) {
-        this.debug(`Parsed: v=${parsedData.mean_velocity.toFixed(2)} m/s`);
         this.callbacks.onDataReceived?.(parsedData);
       } else {
-        this.debug('Failed to parse data');
+        console.warn('[BLE] Failed to parse data');
       }
     } catch (error) {
-      this.debug(`Error handling notification: ${error}`);
+      console.warn('Error handling notification:', error);
     }
   }
 
@@ -667,7 +753,7 @@ class BLEService {
   private parseVelocityData(bytes: Uint8Array): RepVeloData | null {
     try {
       if (bytes.length < 16) {
-        this.debug(`Data too short: ${bytes.length} bytes`);
+        console.warn(`[BLE] Data too short: ${bytes.length} bytes`);
         return null;
       }
 
@@ -683,8 +769,8 @@ class BLEService {
       const mean_v_raw = readUInt16LE(bytes, 4);
       const peak_p_raw = readUInt16LE(bytes, 6);
       const mean_p_raw = readUInt16LE(bytes, 8);
-      const _reserved1 = readUInt16LE(bytes, 10);
-      const _reserved2 = readUInt16LE(bytes, 12);
+      readUInt16LE(bytes, 10);
+      readUInt16LE(bytes, 12);
       const duration_raw = readUInt16LE(bytes, 14); // ms
 
       // ---------------------------------------------------------
@@ -705,9 +791,6 @@ class BLEService {
       const peak_power_w = peak_p_raw * 1.0;
       const rep_duration_ms = duration_raw;
 
-      // Debug: show all raw values
-      this.debug(`Raw: pv=${peak_v_raw} mv=${mean_v_raw} rom=${rom_raw} mp=${mean_p_raw} t=${duration_raw}`);
-
       return {
         mean_velocity,
         peak_velocity,
@@ -724,7 +807,7 @@ class BLEService {
         raw_peak_p: peak_p_raw,
       };
     } catch (error) {
-      this.debug(`Error parsing velocity data: ${error}`);
+      console.warn('Error parsing velocity data:', error);
       return null;
     }
   }
@@ -733,13 +816,19 @@ class BLEService {
    * Stop notifications
    */
   async stopNotifications(): Promise<void> {
-    if (this.notificationMonitor) {
-      if (typeof this.notificationMonitor === 'function') {
-        // It's a monitor callback, can't cancel it directly
+    const monitor = this.notificationMonitor;
+    this.notificationMonitor = null;
+
+    if (monitor !== null) {
+      if (typeof monitor.remove === 'function') {
+        monitor.remove();
+      } else if (typeof monitor.unsubscribe === 'function') {
+        monitor.unsubscribe();
+      } else if (typeof monitor === 'function') {
+        monitor();
       } else {
-        clearInterval(this.notificationMonitor);
+        clearInterval(monitor);
       }
-      this.notificationMonitor = null;
     }
     this.debug('Notifications stopped');
   }
@@ -748,6 +837,11 @@ class BLEService {
    * Disconnect from device (keeps device info for reconnection)
    */
   async disconnect(): Promise<void> {
+    if (this.simulatorConnected) {
+      await this.disconnectSimulator();
+      return;
+    }
+
     const isExpoGo = Constants.appOwnership === 'expo';
     if (isExpoGo) return;
 
@@ -770,6 +864,11 @@ class BLEService {
    * Fully disconnect and clear device info
    */
   async disconnectAndClear(): Promise<void> {
+    if (this.simulatorConnected) {
+      await this.disconnectSimulator();
+      return;
+    }
+
     const isExpoGo = Constants.appOwnership === 'expo';
     if (isExpoGo) return;
 
@@ -795,6 +894,8 @@ class BLEService {
    * Check if connected
    */
   async isConnected(): Promise<boolean> {
+    if (this.simulatorConnected) return true;
+
     const isExpoGo = Constants.appOwnership === 'expo';
     if (isExpoGo) return false;
 

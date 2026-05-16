@@ -8,7 +8,6 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
-  View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { GarageTheme } from '@/src/constants/garageTheme';

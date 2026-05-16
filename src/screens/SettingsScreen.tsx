@@ -68,11 +68,11 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
   };
 
   const thresholdOptions = [10, 15, 20, 25, 30];
-  const phaseOptions: Array<{
+  const phaseOptions: {
     value: AppSettings["target_training_phase"];
     label: string;
     description: string;
-  }> = [
+  }[] = [
     { value: "power", label: "パワー", description: "最大パワー出力の向上" },
     { value: "hypertrophy", label: "筋肥大", description: "筋肉量の増加" },
     { value: "strength", label: "筋力", description: "最大筋力の向上" },
