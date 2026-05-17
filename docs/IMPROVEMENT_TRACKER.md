@@ -87,6 +87,7 @@ Codex / Claude / GLM / Gemini を含む全エージェントは、改善作業�
 | 2026-05-14-02 | session | VBT SIMでセッションモードを実操作テストし、不具合が出ないか確認する | implemented | high | codex | src/components/PRNotification.tsx | simulator_checked | SimulatorでVBT SIM接続、Squat選択、セッション開始、SIM SET、休憩、SET 2遷移まで確認 | 0kgテスト時にPR通知のload_kg条件が数値0を描画してReact Native警告を出していたため、nullチェックへ修正。HealthKit entitlement警告はSimulator固有 |
 | 2026-05-14-03 | session | Power がずっと 0W 表示になる。セッション開始後画面にもう少し情報が欲しい | implemented | high | codex | app/(tabs)/session.tsx, src/hooks/useSessionLogic.ts, src/services/BLEService.ts | simulator_checked | Simulatorで100kg Squat、SIM REP/SET後にPower 471W、Peak P 556W、SET完了後PRモーダルまで確認 | BLE/Simulatorのmean_power_w/peak_power_wを優先し、0/未提供時は重量×速度で補完。履歴カードも0W保存値に引っ張られないよう補完。アクティブセッション画面にEXERCISE/LOAD/POWERとAVG V/ROM/PEAK Pを追加 |
 | 2026-05-16-01 | manual-entry | 筋トレMEMOの学びを反映し、手動入力で今日のサマリーと文脈つき最近候補を見やすくする | implemented | medium | codex | src/screens/ManualEntryScreen.tsx | untested | 実機で入力速度と見やすさ確認待ち | 今日のセット/レップ/総負荷/次セットを上部カード化。最近使った設定に前回時刻、set type、AV/ROM、e1RMを表示し、候補タップで負荷/レップ/VBT値を反映。AI相談は小ボタンとして分離 |
+| 2026-05-17-01 | history | 筋トレMEMOの学びを反映し、履歴をカレンダー/グラフで追いやすくする | implemented | medium | codex | src/screens/HistoryScreen.tsx | untested | 実機でスクロール量、日付タップ、グラフタップの操作感確認待ち | 履歴画面にリスト/カレンダー/グラフのセグメント切替を追加。カレンダーは記録日を強調し日付タップで当日セッションを表示。グラフは直近14日のボリューム/セット/時間を切替でき、バータップでツールチップ表示 |
 
 ## Active Focus
 

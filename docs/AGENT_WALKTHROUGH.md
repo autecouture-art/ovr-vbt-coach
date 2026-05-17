@@ -801,3 +801,22 @@ Results:
   - Confirmed set completion did not freeze and the PR modal appeared.
 Notes:
 - Simulator still shows `Missing com.apple.developer.healthkit entitlement`, which is expected in the debug Simulator environment and did not block this test.
+
+## 2026-05-17 (Codex)
+Scope: Continue the 筋トレMEMO-inspired UX plan for history review.
+Safety:
+- Work stayed inside repo-local files and normal developer verification commands.
+- No network probing, scans, or device discovery were used.
+Actions:
+- Updated `src/screens/HistoryScreen.tsx`.
+  - Added `リスト / カレンダー / グラフ` segmented view modes.
+  - Calendar mode highlights days with sessions and shows selected-day sessions below the calendar.
+  - Graph mode shows the last 14 training days and can switch between volume, set count, and duration.
+  - Bar taps update a compact tooltip with date, metric value, session count, and main lifts.
+- Updated `docs/IMPROVEMENT_TRACKER.md` with `2026-05-17-01`.
+Results:
+- `pnpm -s lint` passed.
+- `pnpm -s tsc --noEmit` passed.
+- `pnpm -s test` passed: 20 tests passed, 1 skipped.
+Remaining:
+- Real-device UX check for touch target comfort, text fit, and whether calendar or graph should become the default history view.
