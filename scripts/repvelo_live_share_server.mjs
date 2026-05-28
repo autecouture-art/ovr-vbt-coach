@@ -95,6 +95,149 @@ const formatTime = (timestamp) => {
   });
 };
 
+const asNumber = (value) =>
+  typeof value === "number" && Number.isFinite(value) ? value : null;
+
+const getPayloadNumber = (event, key) => asNumber(event?.payload?.[key]);
+
+const getEventTime = (event) => {
+  const raw =
+    event?.payload?.end_timestamp ??
+    event?.payload?.timestamp ??
+    event?.created_at ??
+    null;
+  const time = raw ? new Date(raw).getTime() : NaN;
+  return Number.isFinite(time) ? time : 0;
+};
+
+const getWorkingSets = (sets) =>
+  sets.filter((event) => event?.payload?.is_warmup !== true);
+
+const buildSetAnalysis = (sets) => {
+  const chronological = getWorkingSets(sets).sort(
+    (a, b) => getEventTime(a) - getEventTime(b),
+  );
+  const lastSet = chronological.at(-1) ?? null;
+  if (!lastSet) {
+    return {
+      status: "waiting",
+      headline: "作業セット待ち",
+      recommendation: "Live Shareで作業セットが入ると判定を開始します。",
+      flags: [],
+      current_lift: "-",
+      current_load_kg: null,
+      av: null,
+      av_drop_pct: null,
+      rom_cm: null,
+      rom_drop_cm: null,
+      vl_pct: null,
+      peak_hr: null,
+      rest_s: null,
+      same_load_sets: [],
+      lift_sets: [],
+    };
+  }
+
+  const lastPayload = lastSet.payload ?? {};
+  const currentLift = lastPayload.lift ?? "-";
+  const currentLoad = asNumber(lastPayload.load_kg);
+  const liftSets = chronological.filter(
+    (event) => event.payload?.lift === currentLift,
+  );
+  const sameLoadSets =
+    currentLoad == null
+      ? []
+      : liftSets.filter(
+          (event) => asNumber(event.payload?.load_kg) === currentLoad,
+        );
+
+  const avValues = sameLoadSets
+    .map((event) => getPayloadNumber(event, "avg_velocity"))
+    .filter((value) => value != null);
+  const currentAv = asNumber(lastPayload.avg_velocity);
+  const bestAv = avValues.length > 0 ? Math.max(...avValues) : null;
+  const avDropPct =
+    currentAv != null && bestAv != null && bestAv > 0
+      ? ((bestAv - currentAv) / bestAv) * 100
+      : null;
+
+  const romValues = liftSets
+    .map((event) => getPayloadNumber(event, "avg_rom_cm"))
+    .filter((value) => value != null && value > 0);
+  const currentRom = asNumber(lastPayload.avg_rom_cm);
+  const baselineRom = romValues.length > 0 ? Math.max(...romValues) : null;
+  const romDropCm =
+    currentRom != null && baselineRom != null ? baselineRom - currentRom : null;
+
+  const vlPct = asNumber(lastPayload.velocity_loss);
+  const peakHr = asNumber(lastPayload.peak_hr);
+  const restS = asNumber(lastPayload.rest_duration_s);
+
+  const flags = [];
+  if (avDropPct != null && avDropPct >= 5) {
+    flags.push({
+      severity: avDropPct >= 10 ? "major" : "watch",
+      label: "AV低下",
+      detail: `同重量最高から ${avDropPct.toFixed(1)}% 低下`,
+    });
+  }
+  if (romDropCm != null && romDropCm >= 2) {
+    flags.push({
+      severity: romDropCm >= 4 ? "major" : "watch",
+      label: "ROM低下",
+      detail: `基準ROMから -${romDropCm.toFixed(1)} cm`,
+    });
+  }
+  if (vlPct != null && vlPct >= 15) {
+    flags.push({
+      severity: vlPct >= 20 ? "major" : "watch",
+      label: "VL高め",
+      detail: `${vlPct.toFixed(1)}%`,
+    });
+  }
+  if (peakHr != null && peakHr >= 160) {
+    flags.push({
+      severity: "watch",
+      label: "心拍高め",
+      detail: `Peak ${peakHr} bpm`,
+    });
+  }
+
+  const majorFlags = flags.filter((flag) => flag.severity === "major");
+  const status =
+    majorFlags.length > 0 ? "major" : flags.length > 0 ? "watch" : "good";
+  const headline =
+    status === "major"
+      ? "重量を落として質優先"
+      : status === "watch"
+        ? "次セット条件つき"
+        : "継続しやすい状態";
+  const recommendation =
+    status === "major"
+      ? "次セットは2.5〜10kg落とし、ROMとフォームを戻せるか確認してください。"
+      : status === "watch"
+        ? "休憩を少し伸ばし、次セットはROMと1レップ目の速度を見て継続判断してください。"
+        : "同じ重量または予定通りに継続できます。";
+
+  return {
+    status,
+    headline,
+    recommendation,
+    flags,
+    current_lift: currentLift,
+    current_load_kg: currentLoad,
+    av: currentAv,
+    av_drop_pct: avDropPct,
+    rom_cm: currentRom,
+    rom_drop_cm: romDropCm,
+    vl_pct: vlPct,
+    peak_hr: peakHr,
+    rest_s: restS,
+    same_load_sets: sameLoadSets.slice(-6),
+    lift_sets: liftSets.slice(-12),
+  };
+};
+
 const summarizeEvents = (lines) => {
   const events = lines.map((line) => line.event);
   const sets = events.filter((event) => event.type === "set_completed");
@@ -122,6 +265,7 @@ const summarizeEvents = (lines) => {
     recent_sets: sets.slice(-12).reverse(),
     recent_reps: reps.slice(-12).reverse(),
     recent_videos: videos.slice(-6).reverse(),
+    analysis: buildSetAnalysis(sets),
   };
 };
 
@@ -163,6 +307,24 @@ const buildGptPacket = (lines) => {
 - Reps: ${summary.rep_count}
 - Form videos: ${summary.video_count}
 
+## App-side Live Analysis
+- Status: ${summary.analysis.headline}
+- Recommendation: ${summary.analysis.recommendation}
+- Current load: ${formatMetric(summary.analysis.current_load_kg, 1, " kg")}
+- AV: ${formatMetric(summary.analysis.av, 2, " m/s")}
+- AV drop: ${formatMetric(summary.analysis.av_drop_pct, 1, "%")}
+- ROM: ${formatMetric(summary.analysis.rom_cm, 1, " cm")}
+- ROM drop: ${formatMetric(summary.analysis.rom_drop_cm, 1, " cm")}
+- VL: ${formatMetric(summary.analysis.vl_pct, 1, "%")}
+- Peak HR: ${summary.analysis.peak_hr ?? "-"} bpm
+- Flags: ${
+    summary.analysis.flags.length > 0
+      ? summary.analysis.flags
+          .map((flag) => `${flag.label}(${flag.detail})`)
+          .join(", ")
+      : "none"
+  }
+
 ## Recent Sets
 | set | lift | load | reps | AV | VL | ROM | power | peak HR | time |
 |---:|---|---:|---:|---:|---:|---:|---:|---:|---|
@@ -197,6 +359,25 @@ const dashboardHtml = () => `<!doctype html>
     .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin: 20px 0; }
     .card { background: #171513; border: 1px solid #332b23; border-radius: 10px; padding: 16px; }
     .value { font-size: 28px; font-weight: 850; margin-top: 8px; }
+    .analysis { border-color: #6f4d20; background: linear-gradient(135deg, #211914, #13110f); }
+    .analysis.good { border-color: #2f8f52; }
+    .analysis.watch { border-color: #c7932e; }
+    .analysis.major { border-color: #d05252; }
+    .analysis-head { display: flex; gap: 16px; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; }
+    .headline { font-size: 28px; font-weight: 900; margin: 8px 0; }
+    .recommendation { color: #f2d99d; font-size: 16px; line-height: 1.5; max-width: 760px; }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .chip { border-radius: 999px; padding: 7px 10px; background: #2a241f; border: 1px solid #45372c; font-size: 12px; font-weight: 750; }
+    .chip.watch { border-color: #c7932e; color: #ffd166; }
+    .chip.major { border-color: #d05252; color: #ff9a9a; }
+    .metric-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-top: 16px; }
+    .metric { background: #100f0e; border: 1px solid #302a24; border-radius: 8px; padding: 10px; }
+    .metric-label { color: #a8a097; font-size: 11px; }
+    .metric-value { font-size: 20px; font-weight: 850; margin-top: 4px; }
+    .spark { display: flex; align-items: end; gap: 4px; min-height: 70px; margin-top: 12px; }
+    .bar { width: 16px; min-height: 4px; border-radius: 4px 4px 0 0; background: #ffd166; opacity: 0.85; }
+    .bar.rom { background: #7bdff2; }
+    .split { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
     .section { margin-top: 18px; }
     table { width: 100%; border-collapse: collapse; font-size: 13px; }
     th, td { text-align: left; border-bottom: 1px solid #302a24; padding: 9px 8px; white-space: nowrap; }
@@ -224,6 +405,35 @@ const dashboardHtml = () => `<!doctype html>
       <div class="card"><div class="muted">Reps</div><div class="value" id="reps">0</div></div>
       <div class="card"><div class="muted">Videos</div><div class="value" id="videos">0</div></div>
     </div>
+    <section class="card analysis section" id="analysisCard">
+      <div class="analysis-head">
+        <div>
+          <div class="muted">LIVE DECISION</div>
+          <div class="headline" id="analysisHeadline">作業セット待ち</div>
+          <div class="recommendation" id="analysisRecommendation">Live Shareで作業セットが入ると判定を開始します。</div>
+        </div>
+        <div class="chips" id="analysisFlags"></div>
+      </div>
+      <div class="metric-row">
+        <div class="metric"><div class="metric-label">Load</div><div class="metric-value" id="analysisLoad">-</div></div>
+        <div class="metric"><div class="metric-label">AV</div><div class="metric-value" id="analysisAv">-</div></div>
+        <div class="metric"><div class="metric-label">AV Drop</div><div class="metric-value" id="analysisAvDrop">-</div></div>
+        <div class="metric"><div class="metric-label">ROM</div><div class="metric-value" id="analysisRom">-</div></div>
+        <div class="metric"><div class="metric-label">ROM Drop</div><div class="metric-value" id="analysisRomDrop">-</div></div>
+        <div class="metric"><div class="metric-label">VL</div><div class="metric-value" id="analysisVl">-</div></div>
+        <div class="metric"><div class="metric-label">Peak HR</div><div class="metric-value" id="analysisHr">-</div></div>
+      </div>
+      <div class="split">
+        <div>
+          <h2>Same Load AV</h2>
+          <div class="spark" id="avSpark"></div>
+        </div>
+        <div>
+          <h2>Lift ROM</h2>
+          <div class="spark" id="romSpark"></div>
+        </div>
+      </div>
+    </section>
     <section class="card section">
       <h2>Recent Sets</h2>
       <table><thead><tr><th>set</th><th>lift</th><th>load</th><th>reps</th><th>AV</th><th>VL</th><th>ROM</th><th>HR</th><th>time</th></tr></thead><tbody id="setsBody"></tbody></table>
@@ -245,6 +455,15 @@ const dashboardHtml = () => `<!doctype html>
     const fmt = (value, digits = 2, suffix = "") => typeof value === "number" ? value.toFixed(digits) + suffix : "-";
     const clock = (value) => value ? new Date(value).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) : "-";
     const row = (cells) => "<tr>" + cells.map((cell) => "<td>" + String(cell ?? "-") + "</td>").join("") + "</tr>";
+    const renderFlags = (flags) => flags.length > 0
+      ? flags.map((flag) => '<span class="chip ' + flag.severity + '">' + flag.label + ': ' + flag.detail + '</span>').join("")
+      : '<span class="chip">flagsなし</span>';
+    const renderSpark = (events, key, className = "") => {
+      const values = events.map((event) => event.payload?.[key]).filter((value) => typeof value === "number" && Number.isFinite(value));
+      if (!values.length) return '<span class="muted">dataなし</span>';
+      const max = Math.max(...values, 0.01);
+      return values.map((value) => '<div class="bar ' + className + '" title="' + value.toFixed(2) + '" style="height:' + Math.max(5, Math.round((value / max) * 66)) + 'px"></div>').join("");
+    };
     async function refresh() {
       try {
         const response = await fetch("/events/recent" + tokenQuery);
@@ -256,6 +475,22 @@ const dashboardHtml = () => `<!doctype html>
         document.getElementById("sets").textContent = summary.set_count ?? 0;
         document.getElementById("reps").textContent = summary.rep_count ?? 0;
         document.getElementById("videos").textContent = summary.video_count ?? 0;
+        const analysis = summary.analysis || {};
+        const analysisCard = document.getElementById("analysisCard");
+        analysisCard.classList.remove("good", "watch", "major");
+        analysisCard.classList.add(analysis.status || "watch");
+        document.getElementById("analysisHeadline").textContent = analysis.headline ?? "-";
+        document.getElementById("analysisRecommendation").textContent = analysis.recommendation ?? "-";
+        document.getElementById("analysisFlags").innerHTML = renderFlags(analysis.flags || []);
+        document.getElementById("analysisLoad").textContent = fmt(analysis.current_load_kg, 1, " kg");
+        document.getElementById("analysisAv").textContent = fmt(analysis.av, 2, " m/s");
+        document.getElementById("analysisAvDrop").textContent = fmt(analysis.av_drop_pct, 1, "%");
+        document.getElementById("analysisRom").textContent = fmt(analysis.rom_cm, 1, " cm");
+        document.getElementById("analysisRomDrop").textContent = fmt(analysis.rom_drop_cm, 1, " cm");
+        document.getElementById("analysisVl").textContent = fmt(analysis.vl_pct, 1, "%");
+        document.getElementById("analysisHr").textContent = analysis.peak_hr ? analysis.peak_hr + " bpm" : "-";
+        document.getElementById("avSpark").innerHTML = renderSpark(analysis.same_load_sets || [], "avg_velocity");
+        document.getElementById("romSpark").innerHTML = renderSpark(analysis.lift_sets || [], "avg_rom_cm", "rom");
         document.getElementById("setsBody").innerHTML = summary.recent_sets.map((event) => {
           const p = event.payload || {};
           return row([p.set_index, p.lift, fmt(p.load_kg, 1, " kg"), p.reps, fmt(p.avg_velocity), fmt(p.velocity_loss, 1, "%"), fmt(p.avg_rom_cm, 1, " cm"), p.peak_hr, clock(p.end_timestamp || event.created_at)]);

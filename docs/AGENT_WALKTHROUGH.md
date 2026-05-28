@@ -1343,3 +1343,42 @@ Remaining:
 
 - Real-device check with iPhone sending live events to the Mac.
 - Later phase: richer trend analysis in the Mac dashboard from accumulated JSONL.
+
+## 2026-05-28 (Codex)
+
+Scope: Add richer live analysis to the Mac dashboard.
+
+Safety:
+
+- Stayed inside repo-local dashboard/server code.
+- No network discovery, scanning, or device probing.
+- Analysis is derived only from the existing Live Share JSONL events.
+
+Actions:
+
+- Updated `scripts/repvelo_live_share_server.mjs`.
+  - Added server-side `analysis` to `/events/recent`.
+  - Flags AV drop, ROM drop, high VL, and high peak HR.
+  - Adds short next-set recommendation text.
+  - Dashboard now shows LIVE DECISION, flags, metrics, same-load AV bars, and lift ROM bars.
+  - GPT packet now includes the app-side live analysis summary before the raw tables.
+- Updated `docs/REALTIME_DATA_SHARE_PLAN.md`.
+- Updated `docs/IMPROVEMENT_TRACKER.md` with `2026-05-28-02`.
+
+Results:
+
+- `node --check scripts/repvelo_live_share_server.mjs` passed.
+- `git diff --check` passed.
+- Local analysis smoke check passed:
+  - posted two Squat work sets
+  - `/events/recent?token=...` returned `status=major`
+  - flags included AV低下, ROM低下, VL高め, 心拍高め
+  - `/gpt-packet?token=...` included the live analysis summary
+- `pnpm -s tsc --noEmit` passed.
+- `pnpm -s lint` passed.
+- `pnpm -s test` passed: 28 tests passed, 1 skipped.
+- `pnpm -s build` passed.
+
+Remaining:
+
+- Real-device check with a longer session to tune thresholds.
