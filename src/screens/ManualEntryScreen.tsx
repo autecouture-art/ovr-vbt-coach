@@ -407,42 +407,6 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleAskCoach = () => {
-    navigation.navigate("CoachChat", {
-      source: "manual-entry",
-      sessionId,
-      message:
-        savedSets.length > 0
-          ? "このセッションを評価して"
-          : "このセット設定を評価して",
-      currentExercise: lift,
-      currentSet: setIndex,
-      loadKg: parsedLoadKg ?? loadKg,
-      reps: parsedReps ?? reps,
-      avgVelocity: parsedAvgVelocity ?? avgVelocity,
-      velocityLoss: parsedVelocityLoss ?? velocityLoss,
-      romCm: parsedRomCm ?? romCm,
-      totalSets: sessionSummary.savedSetCount,
-      totalVolume: Math.round(sessionSummary.totalVolume),
-      notes,
-      savedSetCount: sessionSummary.savedSetCount,
-    });
-  };
-
-  const handleRecentSetCoach = (set: SetData) => {
-    navigation.navigate("CoachChat", {
-      source: "manual-entry-history",
-      sessionId: set.session_id,
-      message: "前回セットと比べて今回の設定をどう調整するべき？",
-      currentExercise: set.lift,
-      currentSet: set.set_index,
-      loadKg: set.load_kg,
-      reps: set.reps,
-      totalSets: 1,
-      notes: set.notes ?? "",
-    });
-  };
-
   const handleApplyRecentSet = (set: SetData) => {
     setLoadKg(set.load_kg % 1 === 0 ? set.load_kg.toString() : set.load_kg.toFixed(1));
     setReps(set.reps.toString());
@@ -738,15 +702,6 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({
           </View>
         ) : null}
 
-        <TouchableOpacity style={styles.coachButton} onPress={handleAskCoach}>
-          <Text style={styles.coachButtonText}>AIコーチに確認</Text>
-          <Text style={styles.coachButtonSubtext}>
-            {savedSets.length > 0
-              ? "保存済みセット込みで相談"
-              : "入力前でも負荷設定を相談可能"}
-          </Text>
-        </TouchableOpacity>
-
         <View style={styles.recentCard}>
           <View style={styles.recentHeader}>
             <View>
@@ -791,12 +746,6 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({
                   <Text style={styles.recentItemMeta}>
                     {set.e1rm ? `e1RM ${set.e1rm.toFixed(1)}` : set.set_type}
                   </Text>
-                  <TouchableOpacity
-                    style={styles.recentCoachMiniButton}
-                    onPress={() => handleRecentSetCoach(set)}
-                  >
-                    <Text style={styles.recentItemHint}>AI相談</Text>
-                  </TouchableOpacity>
                 </View>
               </View>
             ))

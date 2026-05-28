@@ -31,7 +31,7 @@ const config: ExpoConfig = {
   ios: {
         supportsTablet: true,
     bundleIdentifier: env.iosBundleId,
-    buildNumber: "86",
+    buildNumber: "89",
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
       NSBluetoothAlwaysUsageDescription:
@@ -41,7 +41,7 @@ const config: ExpoConfig = {
       NSCameraUsageDescription:
         "This app uses the camera to record your workout videos for form analysis.",
       NSMicrophoneUsageDescription:
-        "This app uses the microphone for voice commands during your workouts.",
+        "This app uses the microphone for workout video audio and voice commands during your workouts.",
       NSHealthShareUsageDescription:
         "This app reads your heart rate during training and saves workout data so your rest timing and session analysis stay accurate.",
       NSHealthUpdateUsageDescription:
@@ -50,6 +50,7 @@ const config: ExpoConfig = {
         "This app saves workout videos to your photo library.",
       NSLocationWhenInUseUsageDescription:
         "This app may use location services for enhanced training features.",
+      LSApplicationQueriesSchemes: ["chatgpt"],
     },
   },
   android: {
@@ -93,10 +94,21 @@ const config: ExpoConfig = {
   },
   plugins: [
     "expo-router",
+    "expo-web-browser",
     [
       "expo-audio",
       {
         microphonePermission: "Allow $(PRODUCT_NAME) to access your microphone.",
+      },
+    ],
+    [
+      "expo-camera",
+      {
+        cameraPermission:
+          "Allow $(PRODUCT_NAME) to record workout form videos.",
+        microphonePermission:
+          "Allow $(PRODUCT_NAME) to record audio with workout form videos.",
+        recordAudioAndroid: true,
       },
     ],
     [

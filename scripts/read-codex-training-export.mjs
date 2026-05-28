@@ -84,6 +84,7 @@ function summarizeExport(filePath, payload) {
   const sets = Array.isArray(payload.sets) ? payload.sets : [];
   const reps = Array.isArray(payload.reps) ? payload.reps : [];
   const lvpProfiles = Array.isArray(payload.lvp_profiles) ? payload.lvp_profiles : [];
+  const formVideos = Array.isArray(payload.form_videos) ? payload.form_videos : [];
   const latest = latestSession(payload);
   const validVelocities = reps
     .map((rep) => rep.mean_velocity)
@@ -103,6 +104,7 @@ function summarizeExport(filePath, payload) {
   console.log(`  Reps: ${counts.reps ?? reps.length}`);
   console.log(`  Exercises: ${counts.exercises ?? payload.exercises?.length ?? 0}`);
   console.log(`  LVP profiles: ${counts.lvp_profiles ?? lvpProfiles.length}`);
+  console.log(`  Form videos: ${counts.form_videos ?? formVideos.length}`);
   console.log("");
 
   if (latest) {
@@ -129,6 +131,18 @@ function summarizeExport(filePath, payload) {
     for (const profile of lvpProfiles.slice(0, 10)) {
       const myV1rm = profile.mvt ?? profile.v1rm;
       console.log(`  ${profile.lift}: ${formatNumber(myV1rm)} m/s (${profile.sample_count ?? 0} samples)`);
+    }
+  }
+
+  if (formVideos.length > 0) {
+    console.log("");
+    console.log("Form Videos");
+    for (const video of formVideos.slice(0, 10)) {
+      const setLabel =
+        video.set_index == null ? "session" : `${video.lift} set ${video.set_index}`;
+      console.log(
+        `  ${setLabel}: ${Math.round(video.duration_s ?? 0)}s ${video.local_uri ?? ""}`,
+      );
     }
   }
 }

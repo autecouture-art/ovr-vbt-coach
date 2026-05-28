@@ -2,7 +2,14 @@ import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 
 import DatabaseService from "./DatabaseService";
-import type { Exercise, LVPData, RepData, SessionData, SetData } from "../types/index";
+import type {
+  Exercise,
+  FormVideoRecord,
+  LVPData,
+  RepData,
+  SessionData,
+  SetData,
+} from "../types/index";
 
 export const CODEX_TRAINING_EXPORT_SCHEMA = "repvelocoach.codex-training-export.v1";
 
@@ -19,12 +26,14 @@ export type CodexTrainingExport = {
     reps: number;
     exercises: number;
     lvp_profiles: number;
+    form_videos: number;
   };
   sessions: SessionData[];
   sets: SetData[];
   reps: RepData[];
   exercises: Exercise[];
   lvp_profiles: LVPData[];
+  form_videos: FormVideoRecord[];
 };
 
 export type CodexTrainingExportFile = {
@@ -63,6 +72,14 @@ class CodexDataExportService {
 
     const exercises = await DatabaseService.getExercises();
     const lvpProfiles = await DatabaseService.getAllLVPProfiles();
+    const formVideos: FormVideoRecord[] = [];
+
+    for (const session of sessions) {
+      const videos = await DatabaseService.getFormVideosForSession(
+        session.session_id,
+      );
+      formVideos.push(...videos);
+    }
 
     return {
       schema: CODEX_TRAINING_EXPORT_SCHEMA,
@@ -77,12 +94,14 @@ class CodexDataExportService {
         reps: reps.length,
         exercises: exercises.length,
         lvp_profiles: lvpProfiles.length,
+        form_videos: formVideos.length,
       },
       sessions,
       sets,
       reps,
       exercises,
       lvp_profiles: lvpProfiles,
+      form_videos: formVideos,
     };
   }
 

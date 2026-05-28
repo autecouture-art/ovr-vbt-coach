@@ -24,7 +24,7 @@ interface MonitorScreenProps {
   navigation: any;
 }
 
-const DEFAULT_LIFT = 'ベンチプレス';
+const DEFAULT_LIFT = "Bench Press";
 const DEFAULT_LOAD = 80;
 
 const MonitorScreen: React.FC<MonitorScreenProps> = ({ navigation }) => {
@@ -177,35 +177,6 @@ const MonitorScreen: React.FC<MonitorScreenProps> = ({ navigation }) => {
     }
   };
 
-  const handleAskCoach = () => {
-    navigation.navigate('CoachChat', {
-      source: 'monitor',
-      message: velocityLoss !== null ? '次のセットの推奨を教えて' : 'このセットを評価して',
-      sessionId,
-      currentExercise: DEFAULT_LIFT,
-      currentSet,
-      reps: currentRep,
-      loadKg: DEFAULT_LOAD,
-      velocityLoss: velocityLoss !== null ? velocityLoss.toFixed(1) : '',
-      meanVelocity: liveData?.mean_velocity?.toFixed(2) ?? '',
-      peakVelocity: liveData?.peak_velocity?.toFixed(2) ?? '',
-    });
-  };
-
-  const handleRecentSetCoach = (set: SetData) => {
-    navigation.navigate('CoachChat', {
-      source: 'monitor-history',
-      sessionId: set.session_id,
-      message: 'この前回セットと比べて今日の目標をどう設定するべき？',
-      currentExercise: set.lift,
-      currentSet: set.set_index,
-      loadKg: set.load_kg,
-      reps: set.reps,
-      velocityLoss: set.velocity_loss !== null ? set.velocity_loss.toFixed(1) : '',
-      meanVelocity: set.avg_velocity !== null ? set.avg_velocity.toFixed(2) : '',
-    });
-  };
-
   const getVelocityColor = (velocity: number | null): string => {
     if (!velocity) return GarageTheme.textMuted;
     if (velocity >= 1.0) return GarageTheme.accentSoft;
@@ -232,10 +203,9 @@ const MonitorScreen: React.FC<MonitorScreenProps> = ({ navigation }) => {
           <Text style={styles.recentEmpty}>比較できる過去セットはまだありません</Text>
         ) : (
           recentLiftSets.map((set) => (
-            <TouchableOpacity
+            <View
               key={`${set.session_id}_${set.set_index}_${set.lift}`}
               style={styles.recentItem}
-              onPress={() => handleRecentSetCoach(set)}
             >
               <View>
                 <Text style={styles.recentItemDate}>{formatSessionLabel(set.session_id)}</Text>
@@ -245,9 +215,8 @@ const MonitorScreen: React.FC<MonitorScreenProps> = ({ navigation }) => {
                 <Text style={styles.recentItemMeta}>
                   {set.avg_velocity !== null ? `${set.avg_velocity.toFixed(2)} m/s` : 'manual'}
                 </Text>
-                <Text style={styles.recentItemHint}>AI相談</Text>
               </View>
-            </TouchableOpacity>
+            </View>
           ))
         )}
       </View>
@@ -292,13 +261,6 @@ const MonitorScreen: React.FC<MonitorScreenProps> = ({ navigation }) => {
       )}
 
       <View style={styles.buttonContainer}>
-        <TouchableOpacity
-          style={[styles.button, styles.coachButton]}
-          onPress={handleAskCoach}
-        >
-          <Text style={styles.buttonText}>AIコーチに相談</Text>
-        </TouchableOpacity>
-
         {!isRecording ? (
           <TouchableOpacity
             style={[styles.button, styles.startButton]}

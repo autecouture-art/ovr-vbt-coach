@@ -2,7 +2,6 @@ import { useEffect } from 'react';
 import { useNavigation, useRouter } from 'expo-router';
 import HistoryScreen from '@/src/screens/HistoryScreen';
 import DatabaseService from '@/src/services/DatabaseService';
-import { serializeRouteParams } from '@/src/utils/routeParams';
 
 export default function HistoryRoute() {
   const router = useRouter();
@@ -34,12 +33,7 @@ export default function HistoryRoute() {
         return;
       }
 
-      if (name === 'CoachChat') {
-        router.push({
-          pathname: '/coach-chat',
-          params: serializeRouteParams(params),
-        });
-      }
+      if (name === 'CoachChat') return;
     },
   };
 

@@ -3,8 +3,8 @@
  * Handles voice feedback and sound effects
  */
 
-import { Audio } from 'expo-av';
-import * as Speech from 'expo-speech';
+import { Audio } from "expo-av";
+import * as Speech from "expo-speech";
 
 // Interruption mode constants for audio ducking
 const INTERRUPTION_MODE_IOS_DUCK_OTHERS = 1; // Audio.InterruptionModeIOS.DuckOthers
@@ -26,9 +26,9 @@ class AudioService {
         interruptionModeIOS: INTERRUPTION_MODE_IOS_DUCK_OTHERS,
         interruptionModeAndroid: INTERRUPTION_MODE_ANDROID_DUCK_OTHERS,
       });
-      console.log('Audio Service initialized with ducking enabled');
+      console.log("Audio Service initialized with ducking enabled");
     } catch (error) {
-      console.error('Failed to initialize Audio Service:', error);
+      console.error("Failed to initialize Audio Service:", error);
     }
   }
 
@@ -44,7 +44,11 @@ class AudioService {
     return this.volume;
   }
 
-  async speak(text: string, language: string = 'ja-JP', volume?: number): Promise<void> {
+  async speak(
+    text: string,
+    language: string = "ja-JP",
+    volume?: number,
+  ): Promise<void> {
     if (!this.isEnabled) return;
 
     try {
@@ -55,18 +59,18 @@ class AudioService {
         volume: volume ?? this.volume,
       });
     } catch (error) {
-      console.error('Speech error:', error);
+      console.error("Speech error:", error);
     }
   }
 
   async speakCoach(text: string): Promise<void> {
-    await this.speak(text, 'ja-JP');
+    await this.speak(text, "ja-JP");
   }
 
   async announceRepFeedback(velocity: number, isGood: boolean): Promise<void> {
     if (!this.isEnabled) return;
     const speedText = `${velocity.toFixed(2)}`;
-    const comment = isGood ? 'ナイススピード！' : 'もっと速く！';
+    const comment = isGood ? "ナイススピード！" : "もっと速く！";
     await this.speak(`${speedText}。${comment}`);
   }
 
@@ -77,22 +81,27 @@ class AudioService {
 
   async announceVelocity(velocity: number): Promise<void> {
     const text = `${velocity.toFixed(2)}`;
-    await this.speak(text, 'en-US');
+    await this.speak(text, "en-US");
   }
 
   async playRepComplete(): Promise<void> {
     if (!this.isEnabled) return;
-    await this.speak('アップ', 'ja-JP');
+    await this.speak("アップ", "ja-JP");
+  }
+
+  async announceSetStartReminder(): Promise<void> {
+    if (!this.isEnabled) return;
+    await this.speak("記録中", "ja-JP", Math.min(0.75, this.volume));
   }
 
   async announcePR(): Promise<void> {
     if (!this.isEnabled) return;
-    await this.speak('自己ベスト更新！おめでとうございます！');
+    await this.speak("自己ベスト更新！おめでとうございます！");
   }
 
   async announceVelocityLoss(): Promise<void> {
     if (!this.isEnabled) return;
-    await this.speak('速度低下を検知。セット終了。');
+    await this.speak("速度低下を検知。セット終了。");
   }
 }
 

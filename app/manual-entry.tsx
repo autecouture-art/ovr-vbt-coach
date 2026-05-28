@@ -2,7 +2,6 @@ import { useEffect } from 'react';
 import { useNavigation, useRouter } from 'expo-router';
 import ManualEntryScreen from '@/src/screens/ManualEntryScreen';
 import DatabaseService from '@/src/services/DatabaseService';
-import { serializeRouteParams } from '@/src/utils/routeParams';
 
 export default function ManualEntryRoute() {
   const router = useRouter();
@@ -26,12 +25,7 @@ export default function ManualEntryRoute() {
         return;
       }
 
-      if (name === 'CoachChat') {
-        router.push({
-          pathname: '/coach-chat',
-          params: serializeRouteParams(params),
-        });
-      }
+      if (name === 'CoachChat') return;
     },
   };
 

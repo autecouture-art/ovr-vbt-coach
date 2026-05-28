@@ -26,14 +26,7 @@ export default function ManualTabRoute() {
         return;
       }
 
-      if (name === 'CoachChat') {
-        const routeParams: Record<string, string> = {};
-        for (const [key, value] of Object.entries(params ?? {})) {
-          if (value === undefined || value === null) continue;
-          routeParams[key] = String(value);
-        }
-        router.push({ pathname: '/coach-chat', params: routeParams });
-      }
+      if (name === 'CoachChat') return;
     },
   };
 

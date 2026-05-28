@@ -3,7 +3,7 @@
  * 種目選択モーダル
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -14,9 +14,9 @@ import {
   TextInput,
   Alert,
   Keyboard,
-} from 'react-native';
-import ExerciseService from '@/src/services/ExerciseService';
-import { GarageTheme } from '@/src/constants/garageTheme';
+} from "react-native";
+import ExerciseService from "@/src/services/ExerciseService";
+import { GarageTheme } from "@/src/constants/garageTheme";
 import {
   EXERCISE_SELECTION_GROUPS,
   formatLoadKg,
@@ -25,8 +25,8 @@ import {
   inferExercisePreset,
   matchesExerciseSelectionGroup,
   type ExerciseSelectionGroupId,
-} from '@/src/constants/exerciseCatalog';
-import type { Exercise } from '../types/index';
+} from "@/src/constants/exerciseCatalog";
+import type { Exercise } from "../types/index";
 
 interface ExerciseSelectModalProps {
   visible: boolean;
@@ -35,11 +35,14 @@ interface ExerciseSelectModalProps {
   currentExerciseId?: string;
 }
 
-const MODE_LABELS: Record<NonNullable<Exercise['rep_detection_mode']>, string> = {
-  standard: '標準',
-  tempo: 'テンポ',
-  pause: 'ポーズ',
-  short_rom: '短ROM',
+const MODE_LABELS: Record<
+  NonNullable<Exercise["rep_detection_mode"]>,
+  string
+> = {
+  standard: "標準",
+  tempo: "テンポ",
+  pause: "ポーズ",
+  short_rom: "短ROM",
 };
 
 export function ExerciseSelectModal({
@@ -49,10 +52,11 @@ export function ExerciseSelectModal({
   currentExerciseId,
 }: ExerciseSelectModalProps) {
   const [exercises, setExercises] = useState<Exercise[]>([]);
-  const [selectedGroup, setSelectedGroup] = useState<ExerciseSelectionGroupId>('all');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedGroup, setSelectedGroup] =
+    useState<ExerciseSelectionGroupId>("all");
+  const [searchQuery, setSearchQuery] = useState("");
   const [isAddMode, setIsAddMode] = useState(false);
-  const [newExerciseName, setNewExerciseName] = useState('');
+  const [newExerciseName, setNewExerciseName] = useState("");
 
   useEffect(() => {
     if (visible) {
@@ -61,18 +65,23 @@ export function ExerciseSelectModal({
   }, [visible]);
 
   const loadExercises = async () => {
-    const all = await ExerciseService.getAllExercises();
+    const all = await ExerciseService.getAllExercisesByRecentFrequency();
     setExercises(all);
   };
 
   const filteredExercises = useMemo(
     () =>
       exercises.filter((exercise) => {
-        const matchesGroup = matchesExerciseSelectionGroup(exercise, selectedGroup);
+        const matchesGroup = matchesExerciseSelectionGroup(
+          exercise,
+          selectedGroup,
+        );
         const searchLower = searchQuery.toLowerCase().trim();
-        const matchesSearch = !searchLower ||
+        const matchesSearch =
+          !searchLower ||
           exercise.name.toLowerCase().includes(searchLower) ||
-          (exercise.description && exercise.description.toLowerCase().includes(searchLower));
+          (exercise.description &&
+            exercise.description.toLowerCase().includes(searchLower));
         return matchesGroup && matchesSearch;
       }),
     [exercises, searchQuery, selectedGroup],
@@ -81,14 +90,17 @@ export function ExerciseSelectModal({
   const groupedExercises = useMemo(() => {
     const grouped = new Map<string, Exercise[]>();
     for (const exercise of filteredExercises) {
-      const key = getExerciseSelectionGroup(exercise);
+      const key =
+        selectedGroup === "all"
+          ? getExerciseSelectionGroup(exercise)
+          : selectedGroup;
       if (!grouped.has(key)) {
         grouped.set(key, []);
       }
       grouped.get(key)?.push(exercise);
     }
     return grouped;
-  }, [filteredExercises]);
+  }, [filteredExercises, selectedGroup]);
 
   const presetPreview = useMemo(() => {
     if (!newExerciseName.trim()) return null;
@@ -102,7 +114,7 @@ export function ExerciseSelectModal({
 
   const handleAddExercise = async () => {
     if (!newExerciseName.trim()) {
-      Alert.alert('エラー', '種目名を入力してください');
+      Alert.alert("エラー", "種目名を入力してください");
       return;
     }
 
@@ -110,7 +122,7 @@ export function ExerciseSelectModal({
       const preset = inferExercisePreset(newExerciseName.trim());
       const newExercise = await ExerciseService.addExercise({
         name: newExerciseName.trim(),
-        category: preset.category ?? 'accessory',
+        category: preset.category ?? "accessory",
         subcategory: preset.subcategory,
         has_lvp: preset.has_lvp ?? true,
         machine_weight_steps: preset.machine_weight_steps,
@@ -124,19 +136,19 @@ export function ExerciseSelectModal({
         mvt: preset.mvt,
       });
 
-      setNewExerciseName('');
+      setNewExerciseName("");
       setIsAddMode(false);
-      setSearchQuery(''); // 検索をリセット
+      setSearchQuery(""); // 検索をリセット
       await loadExercises();
 
       // 新しい種目を選択状態にする
       onSelect(newExercise);
       onClose();
 
-      Alert.alert('追加完了', `${newExercise.name} を選択しました`);
+      Alert.alert("追加完了", `${newExercise.name} を選択しました`);
     } catch (error) {
-      console.error('Failed to add exercise:', error);
-      Alert.alert('エラー', '種目の追加に失敗しました');
+      console.error("Failed to add exercise:", error);
+      Alert.alert("エラー", "種目の追加に失敗しました");
     }
   };
 
@@ -147,7 +159,7 @@ export function ExerciseSelectModal({
         ? `${formatLoadKg(exercise.rom_range_min_cm)}-${formatLoadKg(exercise.rom_range_max_cm)}cm`
         : exercise.min_rom_threshold != null
           ? `最小ROM ${formatLoadKg(exercise.min_rom_threshold)}cm`
-          : 'ROM未推定';
+          : "ROM未推定";
 
     return (
       <TouchableOpacity
@@ -165,12 +177,20 @@ export function ExerciseSelectModal({
             ) : null}
           </View>
           <View style={styles.exerciseMetaRow}>
-            <Text style={styles.exerciseCategory}>{getExerciseCategoryLabel(exercise.category)}</Text>
+            <Text style={styles.exerciseCategory}>
+              {getExerciseCategoryLabel(exercise.category)}
+            </Text>
             <Text style={styles.exerciseMetaDot}>•</Text>
-            <Text style={styles.exerciseMeta}>{MODE_LABELS[exercise.rep_detection_mode ?? 'standard']}</Text>
+            <Text style={styles.exerciseMeta}>
+              {MODE_LABELS[exercise.rep_detection_mode ?? "standard"]}
+            </Text>
           </View>
           <Text style={styles.exerciseRom}>{romRange}</Text>
-          {exercise.description ? <Text style={styles.exerciseDescription}>{exercise.description}</Text> : null}
+          {exercise.description ? (
+            <Text style={styles.exerciseDescription}>
+              {exercise.description}
+            </Text>
+          ) : null}
         </View>
         {isSelected ? <Text style={styles.checkmark}>✓</Text> : null}
       </TouchableOpacity>
@@ -178,7 +198,12 @@ export function ExerciseSelectModal({
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      transparent
+      onRequestClose={onClose}
+    >
       <View style={styles.overlay}>
         <View style={styles.container}>
           <View style={styles.header}>
@@ -201,17 +226,29 @@ export function ExerciseSelectModal({
             />
           </View>
 
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryScroll}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.categoryScroll}
+          >
             {EXERCISE_SELECTION_GROUPS.map((group) => (
               <TouchableOpacity
                 key={group.id}
-                style={[styles.categoryChip, selectedGroup === group.id && styles.categoryChipActive]}
+                style={[
+                  styles.categoryChip,
+                  selectedGroup === group.id && styles.categoryChipActive,
+                ]}
                 onPress={() => {
                   Keyboard.dismiss();
                   setSelectedGroup(group.id);
                 }}
               >
-                <Text style={[styles.categoryChipText, selectedGroup === group.id && styles.categoryChipTextActive]}>
+                <Text
+                  style={[
+                    styles.categoryChipText,
+                    selectedGroup === group.id && styles.categoryChipTextActive,
+                  ]}
+                >
                   {group.label}
                 </Text>
               </TouchableOpacity>
@@ -222,7 +259,9 @@ export function ExerciseSelectModal({
             style={styles.exerciseList}
             contentContainerStyle={[
               styles.exerciseListContent,
-              !isAddMode && filteredExercises.length === 0 && styles.exerciseListEmpty,
+              !isAddMode &&
+                filteredExercises.length === 0 &&
+                styles.exerciseListEmpty,
             ]}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
@@ -244,20 +283,31 @@ export function ExerciseSelectModal({
                     <Text style={styles.previewTitle}>推定設定</Text>
                     <View style={styles.previewRow}>
                       <Text style={styles.previewLabel}>カテゴリ:</Text>
-                      <Text style={styles.previewMain}>{getExerciseCategoryLabel(presetPreview.category)}</Text>
+                      <Text style={styles.previewMain}>
+                        {getExerciseCategoryLabel(presetPreview.category)}
+                      </Text>
                     </View>
                     <View style={styles.previewRow}>
                       <Text style={styles.previewLabel}>検出モード:</Text>
-                      <Text style={styles.previewMeta}>{MODE_LABELS[presetPreview.rep_detection_mode ?? 'standard']}</Text>
+                      <Text style={styles.previewMeta}>
+                        {
+                          MODE_LABELS[
+                            presetPreview.rep_detection_mode ?? "standard"
+                          ]
+                        }
+                      </Text>
                     </View>
                     <View style={styles.previewRow}>
                       <Text style={styles.previewLabel}>最小ROM:</Text>
-                      <Text style={styles.previewMeta}>{formatLoadKg(presetPreview.min_rom_threshold ?? 10)}cm</Text>
+                      <Text style={styles.previewMeta}>
+                        {formatLoadKg(presetPreview.min_rom_threshold ?? 10)}cm
+                      </Text>
                     </View>
                     <View style={styles.previewRow}>
                       <Text style={styles.previewLabel}>ROM範囲:</Text>
                       <Text style={styles.previewMeta}>
-                        {formatLoadKg(presetPreview.rom_range_min_cm ?? 0)}-{formatLoadKg(presetPreview.rom_range_max_cm ?? 0)}cm
+                        {formatLoadKg(presetPreview.rom_range_min_cm ?? 0)}-
+                        {formatLoadKg(presetPreview.rom_range_max_cm ?? 0)}cm
                       </Text>
                     </View>
                     {presetPreview.has_lvp && (
@@ -268,7 +318,9 @@ export function ExerciseSelectModal({
                   </View>
                 ) : (
                   <View style={styles.previewCard}>
-                    <Text style={styles.previewPlaceholder}>種目名を入力すると推定設定が表示されます</Text>
+                    <Text style={styles.previewPlaceholder}>
+                      種目名を入力すると推定設定が表示されます
+                    </Text>
                   </View>
                 )}
 
@@ -277,36 +329,51 @@ export function ExerciseSelectModal({
                     style={[styles.addFormButton, styles.cancelButton]}
                     onPress={() => {
                       setIsAddMode(false);
-                      setNewExerciseName('');
+                      setNewExerciseName("");
                     }}
                   >
                     <Text style={styles.addFormButtonText}>キャンセル</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={[styles.addFormButton, styles.confirmButton]} onPress={handleAddExercise}>
+                  <TouchableOpacity
+                    style={[styles.addFormButton, styles.confirmButton]}
+                    onPress={handleAddExercise}
+                  >
                     <Text style={styles.addFormButtonText}>追加</Text>
                   </TouchableOpacity>
                 </View>
               </View>
             ) : (
               <>
-                {Array.from(groupedExercises.entries()).map(([groupId, groupExercises]) => {
-                  const groupLabel = EXERCISE_SELECTION_GROUPS.find((group) => group.id === groupId)?.label ?? groupId;
-                  return (
-                    <View key={groupId} style={styles.groupSection}>
-                      <Text style={styles.groupTitle}>{groupLabel}</Text>
-                      {groupExercises.map(renderExerciseCard)}
-                    </View>
-                  );
-                })}
+                {Array.from(groupedExercises.entries()).map(
+                  ([groupId, groupExercises]) => {
+                    const groupLabel =
+                      EXERCISE_SELECTION_GROUPS.find(
+                        (group) => group.id === groupId,
+                      )?.label ?? groupId;
+                    return (
+                      <View key={groupId} style={styles.groupSection}>
+                        <Text style={styles.groupTitle}>{groupLabel}</Text>
+                        {groupExercises.map(renderExerciseCard)}
+                      </View>
+                    );
+                  },
+                )}
 
                 {filteredExercises.length === 0 ? (
                   <View style={styles.emptyState}>
-                    <Text style={styles.emptyStateText}>条件に合う種目がありません</Text>
-                    <Text style={styles.emptyStateSubText}>検索ワードを変えるか、新しい種目を追加してください</Text>
+                    <Text style={styles.emptyStateText}>
+                      条件に合う種目がありません
+                    </Text>
+                    <Text style={styles.emptyStateSubText}>
+                      検索ワードを変えるか、新しい種目を追加してください
+                    </Text>
                   </View>
                 ) : null}
 
-                <TouchableOpacity style={styles.addExerciseButton} onPress={() => setIsAddMode(true)}>
+                <TouchableOpacity
+                  style={styles.addExerciseButton}
+                  onPress={() => setIsAddMode(true)}
+                >
                   <Text style={styles.addExerciseButtonText}>+ 種目を追加</Text>
                 </TouchableOpacity>
               </>
@@ -321,21 +388,21 @@ export function ExerciseSelectModal({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.78)',
-    justifyContent: 'flex-end',
+    backgroundColor: "rgba(0, 0, 0, 0.78)",
+    justifyContent: "flex-end",
   },
   container: {
     backgroundColor: GarageTheme.background,
     borderTopLeftRadius: 26,
     borderTopRightRadius: 26,
-    height: '86%',
+    height: "86%",
     borderTopWidth: 1,
     borderColor: GarageTheme.borderStrong,
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     paddingHorizontal: 18,
     paddingTop: 18,
     paddingBottom: 16,
@@ -345,21 +412,21 @@ const styles = StyleSheet.create({
   eyebrow: {
     color: GarageTheme.accent,
     fontSize: 11,
-    fontWeight: '800',
+    fontWeight: "800",
     letterSpacing: 2,
     marginBottom: 4,
   },
   title: {
     fontSize: 22,
-    fontWeight: '800',
+    fontWeight: "800",
     color: GarageTheme.text,
   },
   closeButton: {
     width: 38,
     height: 38,
     borderRadius: 19,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: GarageTheme.chip,
     borderWidth: 1,
     borderColor: GarageTheme.borderStrong,
@@ -396,9 +463,9 @@ const styles = StyleSheet.create({
     marginRight: 8,
     borderWidth: 1.2,
     borderColor: GarageTheme.borderStrong,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.3,
     shadowRadius: 2,
@@ -407,7 +474,7 @@ const styles = StyleSheet.create({
   categoryChipActive: {
     backgroundColor: GarageTheme.accent,
     borderColor: GarageTheme.accent,
-    shadowColor: '#ff6a2a',
+    shadowColor: "#ff6a2a",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.5,
     shadowRadius: 4,
@@ -416,12 +483,12 @@ const styles = StyleSheet.create({
   categoryChipText: {
     fontSize: 11,
     color: GarageTheme.textMuted,
-    fontWeight: '700',
+    fontWeight: "700",
     letterSpacing: 0.5,
   },
   categoryChipTextActive: {
-    color: '#fff4ec',
-    fontWeight: '800',
+    color: "#fff4ec",
+    fontWeight: "800",
   },
   exerciseList: {
     flex: 1,
@@ -433,7 +500,7 @@ const styles = StyleSheet.create({
   },
   exerciseListEmpty: {
     flexGrow: 1,
-    justifyContent: 'center',
+    justifyContent: "center",
   },
   groupSection: {
     marginBottom: 18,
@@ -441,32 +508,32 @@ const styles = StyleSheet.create({
   groupTitle: {
     color: GarageTheme.accentSoft,
     fontSize: 13,
-    fontWeight: '800',
+    fontWeight: "800",
     letterSpacing: 1.2,
     marginBottom: 12,
     marginTop: 8,
   },
   exerciseItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
     padding: 16,
     backgroundColor: GarageTheme.surface,
     borderRadius: 16,
     marginBottom: 10,
     borderWidth: 1.5,
     borderColor: GarageTheme.borderStrong,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
     shadowRadius: 3,
     elevation: 2,
   },
   exerciseItemSelected: {
-    backgroundColor: '#4b2416',
+    backgroundColor: "#4b2416",
     borderColor: GarageTheme.accent,
     borderWidth: 2,
-    shadowColor: '#ff6a2a',
+    shadowColor: "#ff6a2a",
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.4,
     shadowRadius: 5,
@@ -476,28 +543,28 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   exerciseTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
     marginBottom: 4,
   },
   exerciseName: {
     fontSize: 17,
-    fontWeight: '700',
+    fontWeight: "700",
     color: GarageTheme.textStrong,
     flexShrink: 1,
     letterSpacing: 0.3,
   },
   exerciseMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
     marginTop: 6,
   },
   exerciseCategory: {
     color: GarageTheme.info,
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   exerciseMetaDot: {
     color: GarageTheme.textSubtle,
@@ -506,13 +573,13 @@ const styles = StyleSheet.create({
   exerciseMeta: {
     color: GarageTheme.textMuted,
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   exerciseRom: {
     color: GarageTheme.accentSoft,
     fontSize: 13,
     marginTop: 10,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   exerciseDescription: {
     color: GarageTheme.textMuted,
@@ -524,28 +591,28 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 8,
     paddingVertical: 3,
-    backgroundColor: '#1d3020',
+    backgroundColor: "#1d3020",
     borderWidth: 1,
     borderColor: GarageTheme.success,
   },
   lvpBadgeText: {
     color: GarageTheme.success,
     fontSize: 11,
-    fontWeight: '800',
+    fontWeight: "800",
     letterSpacing: 0.8,
   },
   checkmark: {
     backgroundColor: GarageTheme.accent,
-    color: '#fff4ec',
+    color: "#fff4ec",
     fontSize: 16,
-    fontWeight: '800',
+    fontWeight: "800",
     width: 28,
     height: 28,
     borderRadius: 14,
-    textAlign: 'center',
+    textAlign: "center",
     lineHeight: 28,
     marginLeft: 12,
-    shadowColor: '#ff6a2a',
+    shadowColor: "#ff6a2a",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.4,
     shadowRadius: 3,
@@ -555,15 +622,15 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1,
     borderColor: GarageTheme.accent,
-    backgroundColor: '#4b2416',
+    backgroundColor: "#4b2416",
     paddingVertical: 16,
-    alignItems: 'center',
+    alignItems: "center",
     marginTop: 6,
   },
   addExerciseButtonText: {
     color: GarageTheme.textStrong,
     fontSize: 15,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   addForm: {
     backgroundColor: GarageTheme.surface,
@@ -575,7 +642,7 @@ const styles = StyleSheet.create({
   addFormTitle: {
     color: GarageTheme.textStrong,
     fontSize: 18,
-    fontWeight: '800',
+    fontWeight: "800",
     marginBottom: 12,
   },
   nameInput: {
@@ -599,56 +666,56 @@ const styles = StyleSheet.create({
   previewTitle: {
     color: GarageTheme.textMuted,
     fontSize: 11,
-    fontWeight: '800',
+    fontWeight: "800",
     letterSpacing: 1,
     marginBottom: 10,
   },
   previewRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 8,
   },
   previewLabel: {
     color: GarageTheme.textMuted,
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   previewMain: {
     color: GarageTheme.textStrong,
     fontSize: 15,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   previewMeta: {
     color: GarageTheme.accentSoft,
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   previewPlaceholder: {
     color: GarageTheme.textMuted,
     fontSize: 13,
-    fontStyle: 'italic',
-    textAlign: 'center',
+    fontStyle: "italic",
+    textAlign: "center",
     padding: 8,
   },
   lvpIndicator: {
     marginTop: 8,
-    backgroundColor: '#1d3020',
+    backgroundColor: "#1d3020",
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 6,
-    alignSelf: 'flex-start',
+    alignSelf: "flex-start",
     borderWidth: 1,
     borderColor: GarageTheme.success,
   },
   lvpIndicatorText: {
     color: GarageTheme.success,
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: "800",
     letterSpacing: 0.5,
   },
   addFormButtons: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 10,
     marginTop: 16,
   },
@@ -656,7 +723,7 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: 14,
     paddingVertical: 14,
-    alignItems: 'center',
+    alignItems: "center",
   },
   cancelButton: {
     backgroundColor: GarageTheme.chip,
@@ -664,28 +731,28 @@ const styles = StyleSheet.create({
     borderColor: GarageTheme.borderStrong,
   },
   confirmButton: {
-    backgroundColor: '#4b2416',
+    backgroundColor: "#4b2416",
     borderWidth: 1,
     borderColor: GarageTheme.accent,
   },
   addFormButtonText: {
     color: GarageTheme.textStrong,
     fontSize: 14,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   emptyState: {
     paddingVertical: 24,
-    alignItems: 'center',
+    alignItems: "center",
   },
   emptyStateText: {
     color: GarageTheme.textStrong,
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: "700",
     marginBottom: 6,
   },
   emptyStateSubText: {
     color: GarageTheme.textMuted,
     fontSize: 13,
-    textAlign: 'center',
+    textAlign: "center",
   },
 });

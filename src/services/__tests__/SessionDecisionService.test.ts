@@ -1,0 +1,69 @@
+import { describe, expect, it } from "vitest";
+import SessionDecisionService from "../SessionDecisionService";
+import type { SetData } from "../../types/index";
+
+const makeSet = (overrides: Partial<SetData>): SetData => ({
+  session_id: "session_test",
+  lift: "Low Bar Squat",
+  set_index: 1,
+  load_kg: 120,
+  reps: 5,
+  device_type: "OVR Velocity",
+  set_type: "normal",
+  avg_velocity: 0.45,
+  velocity_loss: 7,
+  avg_rom_cm: 63.5,
+  e1rm: 140,
+  timestamp: "2026-05-25T00:00:00.000Z",
+  is_warmup: false,
+  ...overrides,
+});
+
+describe("SessionDecisionService", () => {
+  it("separates working-set AV and detects same-load AV/ROM drop", () => {
+    const decision = SessionDecisionService.analyze({
+      currentLoad: 110,
+      currentHeartRate: 164,
+      purpose: "form_consistency",
+      targetVelocityRange: [0.42, 0.48],
+      sets: [
+        makeSet({
+          set_index: 1,
+          load_kg: 70,
+          avg_velocity: 0.77,
+          avg_rom_cm: 64,
+          is_warmup: true,
+        }),
+        makeSet({ set_index: 2, load_kg: 120, avg_velocity: 0.45, avg_rom_cm: 63.5 }),
+        makeSet({ set_index: 3, load_kg: 120, avg_velocity: 0.46, avg_rom_cm: 62.0 }),
+        makeSet({ set_index: 4, load_kg: 120, avg_velocity: 0.42, avg_rom_cm: 62.8 }),
+        makeSet({ set_index: 5, load_kg: 110, avg_velocity: 0.49, avg_rom_cm: 61.2 }),
+      ],
+    });
+
+    expect(decision.workingSets).toHaveLength(4);
+    expect(decision.allSetAvgAV).toBeGreaterThan(decision.workingSetAvgAV ?? 0);
+    expect(decision.trendFlags.sameLoadAVDrop).toBe(true);
+    expect(decision.trendFlags.romDrop).toBe(true);
+    expect(decision.trendFlags.hrHigh).toBe(true);
+    expect(decision.formStatus).toBe("rom_drop_detected");
+    expect(decision.recommendedNextLoad).toBe(102.5);
+    expect(decision.waitUntilHRBelow).toBe(135);
+  });
+
+  it("ignores zero HR recovery values in averages", () => {
+    const decision = SessionDecisionService.analyze({
+      currentLoad: 120,
+      currentHeartRate: 132,
+      purpose: "menu_completion",
+      sets: [
+        makeSet({ set_index: 1, hr_recovery_to_120_s: 0 }),
+        makeSet({ set_index: 2, hr_recovery_to_120_s: 200 }),
+        makeSet({ set_index: 3, hr_recovery_to_120_s: 120 }),
+      ],
+    });
+
+    expect(decision.avgHrTo120Working).toBe(160);
+    expect(decision.hrDataReliability).toBe("good");
+  });
+});

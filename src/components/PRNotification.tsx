@@ -41,6 +41,8 @@ const PRNotification: React.FC<PRNotificationProps> = ({
   }, [scaleAnim, visible]);
 
   if (!prRecord) return null;
+  const hasPreviousValue = prRecord.previous_value != null;
+  const hasImprovement = hasPreviousValue && prRecord.improvement > 0;
 
   const formatValue = (type: string, value: number | undefined): string => {
     if (value === undefined) return 'N/A';
@@ -105,7 +107,7 @@ const PRNotification: React.FC<PRNotificationProps> = ({
               <Text style={styles.newValue}>
                 {formatValue(prRecord.type, prRecord.value)}
               </Text>
-              {prRecord.previous_value !== null && (
+              {hasPreviousValue && (
                 <View style={styles.comparisonContainer}>
                   <Text style={styles.previousLabel}>前回:</Text>
                   <Text style={styles.previousValue}>
@@ -115,12 +117,14 @@ const PRNotification: React.FC<PRNotificationProps> = ({
               )}
             </View>
 
-            <View style={styles.improvementContainer}>
-              <Text style={styles.improvementLabel}>向上</Text>
-              <Text style={styles.improvementValue}>
-                +{formatValue(prRecord.type, prRecord.improvement)}
-              </Text>
-            </View>
+            {hasImprovement && (
+              <View style={styles.improvementContainer}>
+                <Text style={styles.improvementLabel}>向上</Text>
+                <Text style={styles.improvementValue}>
+                  +{formatValue(prRecord.type, prRecord.improvement)}
+                </Text>
+              </View>
+            )}
 
             {prRecord.load_kg != null && (
               <View style={styles.detailsContainer}>

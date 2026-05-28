@@ -11,18 +11,18 @@
 - App name: RepVelo VBT Coach
 - iOS bundle id: `com.autecouture.repvelocoach.hh`
 - Marketing version: `2.3.5`
-- Native iOS build number in `ios/RepVeloCoach/Info.plist`: `80`
-- Expo config build number in `app.config.ts`: `80`
-- Latest successful TestFlight upload: build `80` (uploaded 2026-04-22 13:01:04 JST)
+- Native iOS build number in `ios/RepVeloCoach/Info.plist`: `89`
+- Expo config build number in `app.config.ts`: `89`
+- Latest successful TestFlight upload: build `89` (uploaded 2026-05-26 17:24:25 JST)
 
 ## Build Number Status
-- `app.config.ts`, `ios/RepVeloCoach/Info.plist`, and `ios/RepVeloCoach.xcodeproj/project.pbxproj` are aligned at build `80`.
-- For the next release, bump to a value higher than `80` and keep all three sources synchronized.
+- `app.config.ts`, `ios/RepVeloCoach/Info.plist`, and `ios/RepVeloCoach.xcodeproj/project.pbxproj` are aligned at build `89`.
+- For the next release, bump to a value higher than `89` and keep all three sources synchronized.
 
 ## Current Working Tree
 - Working tree was clean immediately before the successful build `76` upload.
 
-## What Was Implemented Recently (Build 80)
+## What Was Implemented Recently (Latest Build 89)
 - **Phase 1 & 2 Improvements** (build 78):
   - VL warning toggle in settings
   - Volume control UI (25/50/75/100%)
@@ -38,6 +38,12 @@
   - VL settings UI added to session screen (toggle + threshold buttons)
   - Audio ducking implemented for iOS/Android (music lowers during voice announcements)
   - TrainingStore optimized with array size limits
+- **Build 89 Improvements**:
+  - Session freeze-risk reduction through narrower store subscriptions, lighter recovery/detail loading, and persisted recovery snapshots.
+  - VBT decision summary with working-set AV/ROM/HR trends, fatigue/form flags, PR stage handling, and ChatGPT copy packet.
+  - AI coach screens/services removed in favor of detailed GPT handoff context.
+  - Exercise catalog cleanup: Katakana aliases such as ナローベンチ/ローバー/ハイバー migrate to English canonical names.
+  - Mac exercise catalog GUI added via `pnpm exercise:gui`.
 - Previous implementations:
   - Direct GLM mode with local API key
   - AI Coach error reporting improvements
@@ -69,8 +75,8 @@
 
 ## Validation Status
 - TypeScript check passed: `pnpm -s tsc --noEmit`
-- TestFlight upload succeeded for version `2.3.5` build `80`.
-- Build numbers are aligned across all three sources (app.config.ts, Info.plist, project.pbxproj) at `80`.
+- TestFlight upload succeeded for version `2.3.5` build `89`.
+- Build numbers are aligned across all three sources (app.config.ts, Info.plist, project.pbxproj) at `89`.
 - Real-device verification is still required for:
   - AI Coach live send success
   - Session detail appearing immediately after set completion
@@ -78,6 +84,14 @@
   - Audio interruption and resume behavior
   - Recent exercise history card behavior
   - Auto-finish on background feature
+
+## Latest TestFlight Upload (2026-05-26)
+- Version: `2.3.5`
+- Build: `89`
+- Upload result: succeeded at 2026-05-26 17:24:25 JST
+- IPA: `ios/fastlane_export/RepVeloCoach.ipa`
+- Command: `source ~/.zshrc && FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT=20 FASTLANE_XCODEBUILD_SETTINGS_RETRIES=6 bash scripts/deploy.sh`
+- Notes: build number was aligned from app/Info 88 and Xcode project 86 to 89 before upload. TestFlight processing may take 15-30 minutes.
 
 ## Build And Upload
 Use the repo-local canonical path above. The agent-neutral release workflow is documented in:
@@ -101,12 +115,12 @@ These are already enforced in `AGENTS.md`:
 - Record TestFlight build numbers and upload results.
 
 ## Recommended Next Steps
-1. Device-test build 80 focusing on:
-   - VL settings UI functionality (toggle and threshold buttons)
-   - Audio ducking effectiveness during voice announcements
-   - Performance improvements in long sessions (50+ sets)
-   - Session history power display accuracy
-   - Auto-start functionality
-   - First session recording behavior
+1. Device-test build 89 focusing on:
+   - Long session behavior around 6+ sets and recovery after relaunch.
+   - English canonical exercise migration for existing Katakana lift history.
+   - VBT decision card readability during rest.
+   - GPT copy/open flow.
+   - Session history power display accuracy.
+   - Auto-start functionality.
 2. Monitor TestFlight processing (usually 15-30 minutes) and verify build appears in TestFlight
 3. After device verification, decide next improvements based on user feedback

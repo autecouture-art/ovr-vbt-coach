@@ -80,12 +80,7 @@ export default function SessionStartScreen() {
           <Text style={styles.headerTitle}>{currentExercise.name}</Text>
           <Text style={styles.headerSubtitle}>{data.currentLoad}kg</Text>
         </View>
-        <TouchableOpacity
-          style={styles.headerButton}
-          onPress={() => router.push('/ai-coach')}
-        >
-          <Text style={styles.aiCoachButton}>🤖</Text>
-        </TouchableOpacity>
+        <View style={styles.headerButton} />
       </View>
 
       <ScrollView

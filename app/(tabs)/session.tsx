@@ -23,6 +23,10 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNavigation, useRouter } from "expo-router";
+import * as Clipboard from "expo-clipboard";
+import * as Linking from "expo-linking";
+import * as Sharing from "expo-sharing";
+import { shallow } from "zustand/shallow";
 import { useTrainingStore } from "@/src/store/trainingStore";
 import { useSessionLogic } from "@/src/hooks/useSessionLogic";
 import { ExerciseSelectModal } from "@/src/components/ExerciseSelectModal";
@@ -30,7 +34,13 @@ import PRNotification from "@/src/components/PRNotification";
 import DatabaseService from "@/src/services/DatabaseService";
 import BLEService from "@/src/services/BLEService";
 import ExerciseService from "@/src/services/ExerciseService";
-import AICoachService from "@/src/services/AICoachService";
+import SessionRecoveryService from "@/src/services/SessionRecoveryService";
+import VideoRecordingService from "@/src/services/VideoRecordingService";
+import LiveShareService from "@/src/services/LiveShareService";
+import SessionDecisionService, {
+  type NextSetPurpose,
+} from "@/src/services/SessionDecisionService";
+import VBTGuideService from "@/src/services/VBTGuideService";
 import { VBTLogic } from "@/src/services/VBTLogic";
 import { RepDetailModal } from "@/src/components/RepDetailModal";
 import { SetEditModal } from "@/src/components/SetEditModal";
@@ -44,7 +54,10 @@ import {
 } from "@/src/constants/exerciseCatalog";
 import { GarageTheme } from "@/src/constants/garageTheme";
 import { estimateRPEFromVelocityLoss } from "@/src/utils/RPECalculator";
-import { calculateRecoverySignal, getPeakHeartRate } from "@/src/utils/HeartRateUtils";
+import {
+  calculateRecoverySignal,
+  getPeakHeartRate,
+} from "@/src/utils/HeartRateUtils";
 import {
   VelocityTooltip,
   VELOCITY_GLOSSARY,
@@ -60,6 +73,7 @@ import {
 } from "@/src/utils/PowerliftingVBTProtocol";
 import type {
   Exercise,
+  FormVideoRecord,
   LVPData,
   PRRecord,
   RepData,
@@ -78,6 +92,115 @@ const getDisplayPower = (
     return VBTLogic.calculatePower(loadKg, velocity);
   }
   return null;
+};
+
+const formatDurationSeconds = (seconds: number): string => {
+  const safeSeconds = Math.max(0, Math.round(seconds));
+  const minutes = Math.floor(safeSeconds / 60);
+  const restSeconds = safeSeconds % 60;
+  return `${minutes}:${restSeconds.toString().padStart(2, "0")}`;
+};
+
+const formatClockTime = (timestamp?: string | null): string | null => {
+  if (!timestamp) return null;
+  const time = new Date(timestamp);
+  if (Number.isNaN(time.getTime())) return null;
+  return time.toLocaleTimeString("ja-JP", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
+const formatClockTimeWithSeconds = (timestamp?: string | null): string | null => {
+  if (!timestamp) return null;
+  const time = new Date(timestamp);
+  if (Number.isNaN(time.getTime())) return null;
+  return time.toLocaleTimeString("ja-JP", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+};
+
+const formatDateTimeWithSeconds = (date: Date): string =>
+  date.toLocaleString("ja-JP", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+
+const SESSION_LIGHTWEIGHT_SET_LIMIT = 5;
+const SESSION_RECOVERY_MAX_AGE_MS = 18 * 60 * 60 * 1000;
+const CHATGPT_APP_URL = "chatgpt://";
+const CHATGPT_WEB_URL = "https://chatgpt.com/";
+const NEXT_SET_PURPOSE_OPTIONS: {
+  value: NextSetPurpose;
+  label: string;
+  shortLabel: string;
+}[] = [
+  { value: "menu_completion", label: "メニュー完遂優先", shortLabel: "完遂" },
+  { value: "form_consistency", label: "フォーム固定優先", shortLabel: "フォーム" },
+  { value: "lvp_building", label: "LVP作成優先", shortLabel: "LVP" },
+  { value: "hypertrophy_volume", label: "筋肥大ボリューム優先", shortLabel: "量" },
+];
+
+const formatNumber = (
+  value: number | null | undefined,
+  digits: number = 2,
+  suffix: string = "",
+): string => {
+  if (value == null || !Number.isFinite(value)) return "-";
+  return `${value.toFixed(digits)}${suffix}`;
+};
+
+const openChatGPT = async (): Promise<"app" | "web" | "none"> => {
+  try {
+    const canOpenApp = await Linking.canOpenURL(CHATGPT_APP_URL);
+    if (canOpenApp) {
+      await Linking.openURL(CHATGPT_APP_URL);
+      return "app";
+    }
+    await Linking.openURL(CHATGPT_WEB_URL);
+    return "web";
+  } catch (error) {
+    console.warn("[SessionScreen] Failed to open ChatGPT:", error);
+    return "none";
+  }
+};
+
+const formatNullableSeconds = (seconds: number | null | undefined) =>
+  seconds == null ? "-" : formatDurationSeconds(seconds);
+
+const getDecisionLabel = (status: string) => {
+  switch (status) {
+    case "good":
+      return "良好";
+    case "watch":
+      return "注意";
+    case "moderate_to_high":
+      return "中〜高";
+    case "high":
+      return "高";
+    case "rom_drop_detected":
+      return "ROM低下";
+    case "candidate_pr":
+      return "Candidate";
+    case "confirmed_pr":
+      return "Confirmed";
+    case "baseline":
+      return "Baseline";
+    case "excluded":
+      return "除外";
+    case "unknown":
+      return "不明";
+    default:
+      return status;
+  }
 };
 
 export default function SessionScreen() {
@@ -115,15 +238,17 @@ export default function SessionScreen() {
         );
         return;
       }
+      const startedAt = new Date().toISOString();
       const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       startSession(sessionId);
       try {
         await DatabaseService.insertSession({
           session_id: sessionId,
-          date: new Date().toISOString().split("T")[0],
+          date: startedAt.split("T")[0],
           total_volume: 0,
           total_sets: 0,
           lifts: [],
+          start_timestamp: startedAt,
         });
       } catch (e) {
         console.error("セッション作成失敗:", e);
@@ -140,6 +265,7 @@ export default function SessionScreen() {
     currentLoad,
     currentReps,
     setHistory,
+    sensorInputMuted,
     currentSession,
     isSessionActive,
     sessionStartTime,
@@ -148,12 +274,14 @@ export default function SessionScreen() {
     targetWeight,
     setTargetWeight,
     setConnectionStatus,
+    setSensorInputMuted,
     currentHeartRate,
     restStartTime,
     sessionHRPoints,
     repHistory,
     setCurrentExercise,
     startSession,
+    restoreRecoveredSession,
     endSession,
     isPaused,
     setPaused,
@@ -167,13 +295,58 @@ export default function SessionScreen() {
     proposedMVT,
     setProposedMVT,
     updateSetHistory,
+    removeSetFromHistory,
     settings,
     updateSettings,
-  } = useTrainingStore();
+  } = useTrainingStore(
+    (state) => ({
+      currentSetIndex: state.currentSetIndex,
+      isConnected: state.isConnected,
+      liveData: state.liveData,
+      currentExercise: state.currentExercise,
+      currentLoad: state.currentLoad,
+      currentReps: state.currentReps,
+      setHistory: state.setHistory,
+      sensorInputMuted: state.sensorInputMuted,
+      currentSession: state.currentSession,
+      isSessionActive: state.isSessionActive,
+      sessionStartTime: state.sessionStartTime,
+      currentLift: state.currentLift,
+      updateLoad: state.updateLoad,
+      targetWeight: state.targetWeight,
+      setTargetWeight: state.setTargetWeight,
+      setConnectionStatus: state.setConnectionStatus,
+      setSensorInputMuted: state.setSensorInputMuted,
+      currentHeartRate: state.currentHeartRate,
+      restStartTime: state.restStartTime,
+      sessionHRPoints: state.sessionHRPoints,
+      repHistory: state.repHistory,
+      setCurrentExercise: state.setCurrentExercise,
+      startSession: state.startSession,
+      restoreRecoveredSession: state.restoreRecoveredSession,
+      endSession: state.endSession,
+      isPaused: state.isPaused,
+      setPaused: state.setPaused,
+      pauseReason: state.pauseReason,
+      cnsBattery: state.cnsBattery,
+      estimated1RM: state.estimated1RM,
+      estimated1RM_confidence: state.estimated1RM_confidence,
+      suggestedLoad: state.suggestedLoad,
+      proposedMVT: state.proposedMVT,
+      setProposedMVT: state.setProposedMVT,
+      updateSetHistory: state.updateSetHistory,
+      removeSetFromHistory: state.removeSetFromHistory,
+      settings: state.settings,
+      updateSettings: state.updateSettings,
+    }),
+    shallow,
+  );
 
   const [showExerciseModal, setShowExerciseModal] = useState(false);
   const [isWarmupMode, setIsWarmupMode] = useState(false);
   const [isSimulatingSet, setIsSimulatingSet] = useState(false);
+  const [nextSetPurpose, setNextSetPurpose] =
+    useState<NextSetPurpose>("form_consistency");
   const vbtProtocol = useMemo(
     () =>
       getPowerliftingProtocol(
@@ -186,11 +359,11 @@ export default function SessionScreen() {
     () => getTopSingleTargetText(currentExercise?.mvt, vbtProtocol),
     [currentExercise?.mvt, vbtProtocol],
   );
-
   // レップ詳細モーダルの状態
   const [repDetailVisible, setRepDetailVisible] = useState(false);
   const [selectedSetIndex, setSelectedSetIndex] = useState<number>(1);
   const [selectedSetLift, setSelectedSetLift] = useState<string>("");
+  const [detailSet, setDetailSet] = useState<SetData | null>(null);
   const [editingSet, setEditingSet] = useState<SetData | null>(null);
 
   // ツールチップの状態
@@ -215,11 +388,34 @@ export default function SessionScreen() {
     [],
   );
   const [lvpProfile, setLvpProfile] = useState<LVPData | null>(null);
+  const targetVelocityRange = useMemo<[number, number] | null>(() => {
+    const mvt = currentExercise?.mvt ?? lvpProfile?.mvt ?? null;
+    if (mvt == null) return null;
+    return [
+      Number((mvt + vbtProtocol.topSingleMvtMargin.min).toFixed(2)),
+      Number((mvt + vbtProtocol.topSingleMvtMargin.max).toFixed(2)),
+    ];
+  }, [
+    currentExercise?.mvt,
+    lvpProfile?.mvt,
+    vbtProtocol.topSingleMvtMargin.max,
+    vbtProtocol.topSingleMvtMargin.min,
+  ]);
   // Historical session reps for detail modal
   const [historicalSessionReps, setHistoricalSessionReps] = useState<{
     sessionId: string;
     reps: RepData[];
   } | null>(null);
+  const [selectedSetReps, setSelectedSetReps] = useState<RepData[] | null>(
+    null,
+  );
+  const [detailFormVideos, setDetailFormVideos] = useState<FormVideoRecord[]>(
+    [],
+  );
+  const shouldLoadSessionReps =
+    (!settings.enable_session_lightweight_mode &&
+      settings.session_display_session_history) ||
+    repDetailVisible;
 
   const refreshSessionAllReps = useCallback(async () => {
     if (!currentSession?.session_id) {
@@ -234,7 +430,12 @@ export default function SessionScreen() {
   }, [currentSession?.session_id]);
 
   const refreshRecentExerciseHistory = useCallback(async () => {
-    if (!currentLift) {
+    if (
+      !currentLift ||
+      (!settings.session_display_same_load_history &&
+        !settings.session_display_recent_history &&
+        !settings.session_display_readiness)
+    ) {
       setRecentExerciseHistory([]);
       return;
     }
@@ -250,7 +451,13 @@ export default function SessionScreen() {
       console.error("Failed to fetch recent exercise history:", error);
       setRecentExerciseHistory([]);
     }
-  }, [currentLift, currentSession?.session_id]);
+  }, [
+    currentLift,
+    currentSession?.session_id,
+    settings.session_display_readiness,
+    settings.session_display_recent_history,
+    settings.session_display_same_load_history,
+  ]);
 
   const refreshLvpProfile = useCallback(async () => {
     if (!currentLift) {
@@ -268,7 +475,16 @@ export default function SessionScreen() {
   }, [currentLift]);
 
   useEffect(() => {
+    if (!shouldLoadSessionReps) {
+      setSessionAllReps([]);
+      return;
+    }
+
     void refreshSessionAllReps();
+
+    if (settings.enable_session_lightweight_mode && setHistory.length >= 5) {
+      return;
+    }
 
     // セット保存直後はDB書き込みが少し遅延するため、短い再読込を入れて詳細を即時参照可能にする
     const timerId = setTimeout(() => {
@@ -276,7 +492,12 @@ export default function SessionScreen() {
     }, 450);
 
     return () => clearTimeout(timerId);
-  }, [refreshSessionAllReps, setHistory.length]);
+  }, [
+    refreshSessionAllReps,
+    setHistory.length,
+    settings.enable_session_lightweight_mode,
+    shouldLoadSessionReps,
+  ]);
 
   // Refresh recent exercise history when lift changes
   useEffect(() => {
@@ -313,7 +534,9 @@ export default function SessionScreen() {
   const liveVelocityLossDecision = useMemo(() => {
     const validVelocities = repHistory
       .map((rep) => rep.mean_velocity)
-      .filter((velocity): velocity is number => velocity != null && velocity > 0);
+      .filter(
+        (velocity): velocity is number => velocity != null && velocity > 0,
+      );
     if (validVelocities.length < 2) return null;
 
     const fastestVelocity = Math.max(...validVelocities);
@@ -338,7 +561,9 @@ export default function SessionScreen() {
 
     const baselineVelocities = similarLoadRecentHistory
       .map((set) => set.avg_velocity)
-      .filter((velocity): velocity is number => velocity != null && velocity > 0)
+      .filter(
+        (velocity): velocity is number => velocity != null && velocity > 0,
+      )
       .sort((a, b) => a - b);
     if (baselineVelocities.length < 2) return null;
 
@@ -390,24 +615,225 @@ export default function SessionScreen() {
     return "ROMも一緒に見ます。速度が速くても深さやポーズが変わったデータは別扱いです。";
   }, [currentExercise, liveData?.rom_cm]);
   const liveMeanPower = useMemo(
-    () => getDisplayPower(liveData?.mean_power_w, liveData?.mean_velocity, currentLoad),
+    () =>
+      getDisplayPower(
+        liveData?.mean_power_w,
+        liveData?.mean_velocity,
+        currentLoad,
+      ),
     [currentLoad, liveData?.mean_power_w, liveData?.mean_velocity],
   );
   const livePeakPower = useMemo(
-    () => getDisplayPower(liveData?.peak_power_w, liveData?.peak_velocity, currentLoad),
+    () =>
+      getDisplayPower(
+        liveData?.peak_power_w,
+        liveData?.peak_velocity,
+        currentLoad,
+      ),
     [currentLoad, liveData?.peak_power_w, liveData?.peak_velocity],
   );
   const focusRomText =
     liveData?.rom_cm != null ? `${Math.round(liveData.rom_cm)} cm` : "-";
   const focusVelocityText =
-    liveData?.mean_velocity != null ? `${liveData.mean_velocity.toFixed(2)} m/s` : "-";
+    liveData?.mean_velocity != null
+      ? `${liveData.mean_velocity.toFixed(2)} m/s`
+      : "-";
   const focusPowerText =
     liveMeanPower != null ? `${Math.round(liveMeanPower)} W` : "-";
+  const visibleSetHistory = useMemo(() => {
+    if (!settings.enable_session_lightweight_mode) {
+      return setHistory;
+    }
+    return setHistory.slice(-SESSION_LIGHTWEIGHT_SET_LIMIT);
+  }, [setHistory, settings.enable_session_lightweight_mode]);
+  const hiddenSetHistoryCount = setHistory.length - visibleSetHistory.length;
+  const formRecordingAvailable =
+    Boolean(settings.enable_video_recording) &&
+    Boolean(currentSession?.session_id) &&
+    Boolean(currentLift || currentExercise?.name);
+  const currentRecordingLift = currentLift || currentExercise?.name || "";
+  const lastCompletedSetAt = setHistory[setHistory.length - 1]?.timestamp ?? null;
+  const showAdviceDisplay = settings.session_display_advice_group;
+  const nextSetPurposeLabel =
+    NEXT_SET_PURPOSE_OPTIONS.find((option) => option.value === nextSetPurpose)
+      ?.label ?? "フォーム固定優先";
+  const sessionDecision = useMemo(
+    () =>
+      SessionDecisionService.analyze({
+        sets: setHistory.filter(
+          (setItem) =>
+            !currentLift || setItem.lift === currentLift || setItem.lift === currentExercise?.name,
+        ),
+        currentLoad,
+        currentHeartRate,
+        purpose: nextSetPurpose,
+        targetVelocityRange,
+      }),
+    [
+      currentExercise?.name,
+      currentHeartRate,
+      currentLift,
+      currentLoad,
+      nextSetPurpose,
+      setHistory,
+      targetVelocityRange,
+    ],
+  );
 
   // Initialize session note from current session
   useEffect(() => {
     setSessionNote(currentSession?.notes ?? "");
   }, [currentSession?.notes]);
+
+  const recoveryInitializedRef = useRef(false);
+  const recoverySaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+
+  useEffect(() => {
+    if (recoveryInitializedRef.current || isSessionActive) return;
+    recoveryInitializedRef.current = true;
+
+    const restoreSessionOrLastExercise = async () => {
+      try {
+        await DatabaseService.initialize();
+        await ExerciseService.initialize();
+        const exercises = await ExerciseService.getAllExercises();
+        const recovery = await SessionRecoveryService.getActiveSession();
+
+        if (recovery) {
+          const recoveryAge = Date.now() - new Date(recovery.saved_at).getTime();
+          if (recoveryAge <= SESSION_RECOVERY_MAX_AGE_MS) {
+            const session =
+              (await DatabaseService.getSession(recovery.session_id)) ??
+              (await DatabaseService.ensureSession(recovery.session_id));
+
+            if (!session.end_timestamp) {
+              const sets = await DatabaseService.getSetsForSession(
+                recovery.session_id,
+              );
+              const exercise =
+                exercises.find(
+                  (item) => item.id === recovery.current_exercise_id,
+                ) ??
+                exercises.find(
+                  (item) => item.name === recovery.current_exercise_name,
+                ) ??
+                exercises.find((item) => item.name === recovery.current_lift) ??
+                null;
+              const restoredLift =
+                exercise?.name ??
+                recovery.current_lift ??
+                sets[sets.length - 1]?.lift ??
+                null;
+
+              restoreRecoveredSession({
+                session: {
+                  ...session,
+                  id: session.session_id,
+                  exercises: exercise ? [exercise] : [],
+                  sets,
+                  total_volume: sets.reduce(
+                    (sum, setItem) => sum + setItem.load_kg * setItem.reps,
+                    0,
+                  ),
+                  start_timestamp:
+                    session.start_timestamp ??
+                    recovery.session_start_timestamp ??
+                    undefined,
+                },
+                setHistory: sets,
+                currentExercise: exercise,
+                currentLift: restoredLift,
+                currentLoad: recovery.current_load,
+                currentReps: recovery.current_reps,
+                currentSetIndex: recovery.current_set_index,
+                sessionStartTime: recovery.session_start_time,
+                sessionStartTimeStamp: recovery.session_start_timestamp,
+              });
+              Alert.alert(
+                "前回セッションを復元しました",
+                `${restoredLift ?? "前回種目"} / ${sets.length}セット目までを同じセッションとして継続できます。`,
+              );
+              return;
+            }
+          }
+
+          await SessionRecoveryService.clearActiveSession();
+        }
+
+        const lastExercise = await SessionRecoveryService.getLastExercise();
+        const exercise =
+          (lastExercise
+            ? exercises.find((item) => item.id === lastExercise.exercise_id) ??
+              exercises.find(
+                (item) => item.name === lastExercise.exercise_name,
+              )
+            : null) ?? null;
+        if (exercise && !currentExercise) {
+          setCurrentExercise(exercise);
+        }
+      } catch (error) {
+        console.error("[SessionScreen] Failed to restore session:", error);
+      }
+    };
+
+    void restoreSessionOrLastExercise();
+  }, [
+    currentExercise,
+    isSessionActive,
+    restoreRecoveredSession,
+    setCurrentExercise,
+  ]);
+
+  useEffect(() => {
+    if (recoverySaveTimerRef.current) {
+      clearTimeout(recoverySaveTimerRef.current);
+      recoverySaveTimerRef.current = null;
+    }
+
+    if (!isSessionActive || !currentSession?.session_id) return;
+
+    recoverySaveTimerRef.current = setTimeout(() => {
+      void SessionRecoveryService.saveActiveSession({
+        session_id: currentSession.session_id,
+        session_start_time: sessionStartTime,
+        session_start_timestamp:
+          currentSession.start_timestamp ?? currentSession.date ?? null,
+        current_exercise_id: currentExercise?.id ?? null,
+        current_exercise_name: currentExercise?.name ?? null,
+        current_lift: currentLift ?? currentExercise?.name ?? null,
+        current_load: currentLoad,
+        current_reps: currentReps,
+        current_set_index: currentSetIndex,
+        completed_set_count: setHistory.length,
+        last_completed_set_at: lastCompletedSetAt,
+      }).catch((error) => {
+        console.error("[SessionScreen] Failed to save recovery:", error);
+      });
+    }, 600);
+
+    return () => {
+      if (recoverySaveTimerRef.current) {
+        clearTimeout(recoverySaveTimerRef.current);
+        recoverySaveTimerRef.current = null;
+      }
+    };
+  }, [
+    currentExercise?.id,
+    currentExercise?.name,
+    currentLift,
+    currentLoad,
+    currentReps,
+    currentSession?.date,
+    currentSession?.session_id,
+    currentSession?.start_timestamp,
+    currentSetIndex,
+    isSessionActive,
+    lastCompletedSetAt,
+    sessionStartTime,
+    setHistory.length,
+  ]);
 
   // Auto-finish session on app background to prevent data loss
   const autoFinishHandled = useRef(false);
@@ -447,6 +873,9 @@ export default function SessionScreen() {
 
   const [inputTargetWeight, setInputTargetWeight] = useState("");
   const [inputLoad, setInputLoad] = useState(formatLoadKg(currentLoad));
+  const [formVideoCountsBySet, setFormVideoCountsBySet] = useState<
+    Record<string, number>
+  >({});
 
   const getSetKey = useCallback(
     (lift: string, setIndex: number) => `${lift}::${setIndex}`,
@@ -467,6 +896,34 @@ export default function SessionScreen() {
     return map;
   }, [getSetKey, sessionAllReps]);
 
+  useEffect(() => {
+    const sessionId = currentSession?.session_id;
+    if (!settings.enable_video_recording || !sessionId) {
+      setFormVideoCountsBySet({});
+      return;
+    }
+
+    void VideoRecordingService.getFormVideosForSession(sessionId)
+      .then((videos) => {
+        const counts: Record<string, number> = {};
+        for (const video of videos) {
+          if (!video.lift || video.set_index == null) continue;
+          const key = getSetKey(video.lift, video.set_index);
+          counts[key] = (counts[key] ?? 0) + 1;
+        }
+        setFormVideoCountsBySet(counts);
+      })
+      .catch((error) => {
+        console.warn("[SessionScreen] Failed to load form videos:", error);
+        setFormVideoCountsBySet({});
+      });
+  }, [
+    currentSession?.session_id,
+    getSetKey,
+    settings.enable_video_recording,
+    setHistory.length,
+  ]);
+
   const selectedSet = useMemo(
     () =>
       setHistory.find(
@@ -476,6 +933,49 @@ export default function SessionScreen() {
       ) ?? null,
     [selectedSetIndex, selectedSetLift, setHistory],
   );
+
+  const timeAllocationSummary = useMemo(() => {
+    const completedSets = setHistory.filter(
+      (setItem) =>
+        setItem.start_timestamp && (setItem.end_timestamp || setItem.timestamp),
+    );
+    if (completedSets.length === 0) return null;
+
+    const setDurations = completedSets
+      .map((setItem) => {
+        const start = new Date(setItem.start_timestamp!).getTime();
+        const end = new Date(
+          setItem.end_timestamp ?? setItem.timestamp,
+        ).getTime();
+        return end > start ? (end - start) / 1000 : null;
+      })
+      .filter((duration): duration is number => duration != null);
+    const restDurations = completedSets
+      .map((setItem) => setItem.rest_duration_s)
+      .filter(
+        (duration): duration is number => duration != null && duration >= 0,
+      );
+    const averageSetS =
+      setDurations.length > 0
+        ? setDurations.reduce((sum, duration) => sum + duration, 0) /
+          setDurations.length
+        : null;
+    const averageRestS =
+      restDurations.length > 0
+        ? restDurations.reduce((sum, duration) => sum + duration, 0) /
+          restDurations.length
+        : null;
+    const nextSetStartAt =
+      restStartTime && averageRestS != null
+        ? new Date(restStartTime + averageRestS * 1000).toISOString()
+        : null;
+
+    return {
+      averageSetS,
+      averageRestS,
+      nextSetStartAt,
+    };
+  }, [restStartTime, setHistory]);
 
   useEffect(() => {
     if (targetWeight !== null) {
@@ -520,29 +1020,130 @@ export default function SessionScreen() {
   const openRepDetail = async (setItem: SetData) => {
     setSelectedSetIndex(setItem.set_index);
     setSelectedSetLift(setItem.lift);
+    setDetailSet(setItem);
+    setSelectedSetReps(null);
+    setDetailFormVideos([]);
 
-    // Check if this is a historical set (different session)
-    if (setItem.session_id !== currentSession?.session_id) {
-      // Fetch reps for the historical session
-      try {
-        const historicalReps = await DatabaseService.getRepsForSession(
+    try {
+      const [reps, videos] = await Promise.all([
+        DatabaseService.getRepsForSet(
           setItem.session_id,
-        );
-        setHistoricalSessionReps({
-          sessionId: setItem.session_id,
-          reps: historicalReps,
-        });
-      } catch (error) {
-        console.error("Failed to fetch historical reps:", error);
-        setHistoricalSessionReps(null);
-      }
-    } else {
-      // Current session - use current session reps
+          setItem.lift,
+          setItem.set_index,
+        ),
+        VideoRecordingService.getFormVideosForSet(
+          setItem.session_id,
+          setItem.lift,
+          setItem.set_index,
+        ),
+      ]);
+      setSelectedSetReps(reps);
+      setDetailFormVideos(videos);
+      setHistoricalSessionReps(
+        setItem.session_id !== currentSession?.session_id
+          ? {
+              sessionId: setItem.session_id,
+              reps,
+            }
+          : null,
+      );
+    } catch (error) {
+      console.error("Failed to fetch set reps:", error);
+      setSelectedSetReps(null);
+      setDetailFormVideos([]);
       setHistoricalSessionReps(null);
-      await refreshSessionAllReps();
     }
 
     setRepDetailVisible(true);
+  };
+
+  const refreshFormVideoCounts = useCallback(async () => {
+    const sessionId = currentSession?.session_id;
+    if (!settings.enable_video_recording || !sessionId) {
+      setFormVideoCountsBySet({});
+      return;
+    }
+
+    try {
+      const videos = await VideoRecordingService.getFormVideosForSession(
+        sessionId,
+      );
+      const counts: Record<string, number> = {};
+      for (const video of videos) {
+        if (!video.lift || video.set_index == null) continue;
+        const key = getSetKey(video.lift, video.set_index);
+        counts[key] = (counts[key] ?? 0) + 1;
+      }
+      setFormVideoCountsBySet(counts);
+    } catch (error) {
+      console.warn("[SessionScreen] Failed to load form videos:", error);
+      setFormVideoCountsBySet({});
+    }
+  }, [
+    currentSession?.session_id,
+    getSetKey,
+    settings.enable_video_recording,
+  ]);
+
+  const handleOpenFormVideo = async (video: FormVideoRecord) => {
+    try {
+      const canOpen = await Linking.canOpenURL(video.local_uri);
+      if (!canOpen) {
+        Alert.alert("再生できません", "この動画URIを開けませんでした。");
+        return;
+      }
+      await Linking.openURL(video.local_uri);
+    } catch (error) {
+      console.warn("[SessionScreen] Failed to open form video:", error);
+      Alert.alert("再生エラー", "フォーム動画を開けませんでした。");
+    }
+  };
+
+  const handleShareFormVideo = async (video: FormVideoRecord) => {
+    try {
+      const available = await Sharing.isAvailableAsync();
+      if (!available) {
+        Alert.alert("共有できません", "この端末では共有シートを開けません。");
+        return;
+      }
+      await Sharing.shareAsync(video.local_uri, {
+        dialogTitle: `${video.lift} Set ${video.set_index ?? "-"}`,
+      });
+    } catch (error) {
+      console.warn("[SessionScreen] Failed to share form video:", error);
+      Alert.alert("共有エラー", "フォーム動画の共有に失敗しました。");
+    }
+  };
+
+  const handleDeleteFormVideo = (video: FormVideoRecord) => {
+    Alert.alert(
+      "動画の紐付け解除",
+      "この動画をセット詳細から外します。動画ファイル本体は端末に残します。",
+      [
+        { text: "キャンセル", style: "cancel" },
+        {
+          text: "解除",
+          style: "destructive",
+          onPress: () => {
+            void (async () => {
+              try {
+                await VideoRecordingService.deleteFormVideoRecord(video.id);
+                setDetailFormVideos((current) =>
+                  current.filter((item) => item.id !== video.id),
+                );
+                await refreshFormVideoCounts();
+              } catch (error) {
+                console.warn(
+                  "[SessionScreen] Failed to delete form video metadata:",
+                  error,
+                );
+                Alert.alert("解除失敗", "動画の紐付け解除に失敗しました。");
+              }
+            })();
+          },
+        },
+      ],
+    );
   };
 
   const showTooltip = (
@@ -584,12 +1185,19 @@ export default function SessionScreen() {
 
   const handleExerciseSelect = (exercise: Exercise) => {
     setCurrentExercise(exercise);
+    void SessionRecoveryService.saveLastExercise(exercise);
     setShowExerciseModal(false);
   };
 
   const handleExclude = async (repId: string, reason: string) => {
     await handleExcludeRep(repId, reason);
-    if (currentSession?.session_id) {
+    if (detailSet) {
+      DatabaseService.getRepsForSet(
+        detailSet.session_id,
+        detailSet.lift,
+        detailSet.set_index,
+      ).then(setSelectedSetReps);
+    } else if (currentSession?.session_id && shouldLoadSessionReps) {
       DatabaseService.getRepsForSession(currentSession.session_id).then(
         setSessionAllReps,
       );
@@ -605,6 +1213,7 @@ export default function SessionScreen() {
 
     try {
       const targetSetReps =
+        selectedSetReps ??
         repsBySetKey.get(getSetKey(selectedSet.lift, selectedSet.set_index)) ??
         [];
       const manualVelocity =
@@ -649,7 +1258,16 @@ export default function SessionScreen() {
       if (metrics) {
         updateSetHistory(selectedSet.set_index, selectedSet.lift, metrics);
       }
-      await refreshSessionAllReps();
+      setSelectedSetReps(
+        await DatabaseService.getRepsForSet(
+          currentSession.session_id,
+          selectedSet.lift,
+          selectedSet.set_index,
+        ),
+      );
+      if (shouldLoadSessionReps) {
+        await refreshSessionAllReps();
+      }
 
       Alert.alert("成功", "レップを追加しました");
     } catch (error) {
@@ -660,6 +1278,59 @@ export default function SessionScreen() {
 
   const handleEditSetLoad = (setItem: SetData) => {
     setEditingSet(setItem);
+  };
+
+  const handleDeleteSet = (setItem: SetData) => {
+    Alert.alert(
+      "セットを削除",
+      `${setItem.lift} / Set ${setItem.set_index} を削除しますか？関連するrepも削除されます。`,
+      [
+        { text: "キャンセル", style: "cancel" },
+        {
+          text: "削除",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await DatabaseService.deleteSet(
+                setItem.session_id,
+                setItem.set_index,
+                setItem.lift,
+              );
+              removeSetFromHistory(setItem.set_index, setItem.lift);
+              setSessionAllReps((current) =>
+                current.filter(
+                  (rep) =>
+                    !(
+                      rep.session_id === setItem.session_id &&
+                      rep.set_index === setItem.set_index &&
+                      rep.lift === setItem.lift
+                    ),
+                ),
+              );
+              if (
+                detailSet?.session_id === setItem.session_id &&
+                detailSet.set_index === setItem.set_index &&
+                detailSet.lift === setItem.lift
+              ) {
+                setRepDetailVisible(false);
+                setDetailSet(null);
+                setSelectedSetReps(null);
+              }
+              if (
+                editingSet?.session_id === setItem.session_id &&
+                editingSet.set_index === setItem.set_index &&
+                editingSet.lift === setItem.lift
+              ) {
+                setEditingSet(null);
+              }
+            } catch (error) {
+              console.error("Failed to delete set:", error);
+              Alert.alert("削除失敗", "セットの削除に失敗しました。");
+            }
+          },
+        },
+      ],
+    );
   };
 
   const handleSaveSetEdits = async (values: {
@@ -702,7 +1373,16 @@ export default function SessionScreen() {
         ...(metrics ?? {}),
       });
 
-      await refreshSessionAllReps();
+      setSelectedSetReps(
+        await DatabaseService.getRepsForSet(
+          currentSession.session_id,
+          newLift,
+          editingSet.set_index,
+        ),
+      );
+      if (shouldLoadSessionReps) {
+        await refreshSessionAllReps();
+      }
       setEditingSet(null);
     } catch (error) {
       console.error("Failed to update set fields:", error);
@@ -720,20 +1400,29 @@ export default function SessionScreen() {
       return;
     }
     // UUID風のセッションIDを生成
+    const startedAt = new Date().toISOString();
     const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     startSession(sessionId);
     // DBにセッションレコードを作成
     try {
       await DatabaseService.insertSession({
         session_id: sessionId,
-        date: new Date().toISOString().split("T")[0],
+        date: startedAt.split("T")[0],
         total_volume: 0,
         total_sets: 0,
         lifts: [],
+        start_timestamp: startedAt,
       });
     } catch (e) {
       console.error("セッション作成失敗:", e);
     }
+    void LiveShareService.sendEvent("session_started", {
+      session_id: sessionId,
+      date: startedAt.split("T")[0],
+      start_timestamp: startedAt,
+      current_lift: currentLift,
+      current_load_kg: currentLoad,
+    });
   };
 
   const handleConnectSimulator = async () => {
@@ -758,7 +1447,10 @@ export default function SessionScreen() {
     }
 
     if (isPaused) {
-      Alert.alert("一時停止中", "次のセットを開始してからSIM SETを実行してください。");
+      Alert.alert(
+        "一時停止中",
+        "次のセットを開始してからSIM SETを実行してください。",
+      );
       return;
     }
 
@@ -781,7 +1473,9 @@ export default function SessionScreen() {
 
       setTimeout(() => {
         void finishSet();
-        void refreshSessionAllReps();
+        if (shouldLoadSessionReps) {
+          void refreshSessionAllReps();
+        }
       }, 1200);
     } finally {
       setIsSimulatingSet(false);
@@ -795,7 +1489,35 @@ export default function SessionScreen() {
     }
 
     await finishSet();
-    await refreshSessionAllReps();
+    if (shouldLoadSessionReps) {
+      await refreshSessionAllReps();
+    }
+  };
+
+  const handleOpenFormVideoRecorder = () => {
+    if (!currentSession?.session_id || !currentRecordingLift) {
+      Alert.alert(
+        "録画できません",
+        "セッションを開始し、種目を選択してからフォーム動画を撮影してください。",
+      );
+      return;
+    }
+
+    router.push(
+      {
+        pathname: "/form-video-recorder",
+        params: {
+          session_id: currentSession.session_id,
+          lift: currentRecordingLift,
+          set_index: String(currentSetIndex),
+          load_kg: String(currentLoad),
+        },
+      } as unknown as Parameters<typeof router.push>[0],
+    );
+  };
+
+  const handleToggleSensorInputMuted = () => {
+    setSensorInputMuted(!sensorInputMuted);
   };
 
   const handleSaveSessionNote = async () => {
@@ -813,6 +1535,284 @@ export default function SessionScreen() {
     }
   };
 
+  const handleCopyTrainingContext = async () => {
+    try {
+      const now = new Date();
+      const latestWorkingSet =
+        sessionDecision.workingSets[sessionDecision.workingSets.length - 1] ??
+        null;
+      const latestSetReps =
+        currentSession?.session_id && latestWorkingSet
+          ? await DatabaseService.getRepsForSet(
+              currentSession.session_id,
+              currentLift || currentExercise?.name || "Unknown",
+              latestWorkingSet.set,
+            )
+          : [];
+      const sessionDurationSeconds = sessionStartTime
+        ? (Date.now() - sessionStartTime) / 1000
+        : null;
+      const currentSetReps = (repHistory.length > 0 ? repHistory : latestSetReps)
+        .map(
+          (rep) =>
+            `| ${rep.rep_index} | ${formatNumber(rep.mean_velocity)} | ${formatNumber(rep.peak_velocity)} | ${formatNumber(rep.rom_cm, 1, " cm")} | ${rep.hr_bpm ?? "-"} | ${rep.is_excluded ? "除外" : rep.is_failed ? "失敗" : rep.is_valid_rep ? "有効" : "無効"} |`,
+        )
+        .join("\n");
+      const workingRows = sessionDecision.workingSets
+        .map(
+          (set) =>
+            `| ${set.set} | ${formatNumber(set.load, 1)} | ${set.reps} | ${formatNumber(set.av)} | ${formatNumber(set.avChangePct, 1, "%")} | ${formatNumber(set.vl, 1, "%")} | ${formatNumber(set.rom, 1, " cm")} | ${formatNumber(set.romDiff, 1, " cm")} | ${formatNumber(set.e1rm, 1)} | ${formatNumber(set.avgHR, 0)} | ${formatNumber(set.peakHR, 0)} | ${formatNullableSeconds(set.hrTo120)} | ${formatNullableSeconds(set.rest)} |`,
+        )
+        .join("\n");
+      const sameLoadRows = sameLoadRecentHistory
+        .slice(0, 8)
+        .map(
+          (set) =>
+            `| ${set.timestamp.split("T")[0]} | ${set.lift} | ${formatNumber(set.load_kg, 1, " kg")} | ${set.reps} | ${formatNumber(set.avg_velocity)} | ${formatNumber(set.velocity_loss, 1, "%")} | ${formatNumber(set.avg_rom_cm, 1, " cm")} | ${formatNumber(set.e1rm, 1, " kg")} |`,
+        )
+        .join("\n");
+      const appDecisionJson = {
+        session: {
+          lift: currentLift || currentExercise?.name || null,
+          phase: settings.target_training_phase,
+          week: settings.powerlifting_block_week,
+          goal: nextSetPurpose,
+          currentHR: currentHeartRate,
+          currentLoad,
+          currentSet: currentSetIndex,
+        },
+        targets: {
+          topSingleVelocityRange: targetVelocityRange,
+          mvt: currentExercise?.mvt ?? lvpProfile?.mvt ?? null,
+          maxVL: vbtProtocol.backoffVelocityLoss.max,
+          romPriority:
+            nextSetPurpose === "form_consistency" ||
+            nextSetPurpose === "lvp_building"
+              ? "high"
+              : "medium",
+        },
+        appDecision: {
+          recommendedNextLoad: sessionDecision.recommendedNextLoad,
+          recommendedRestMin: sessionDecision.recommendedRestMin,
+          waitUntilHRBelow: sessionDecision.waitUntilHRBelow,
+          fatigueStatus: sessionDecision.fatigueStatus,
+          formStatus: sessionDecision.formStatus,
+          hrRecoveryStatus: sessionDecision.hrRecoveryStatus,
+          prStatus: sessionDecision.prStatus,
+          confidence: sessionDecision.confidence,
+          reasons: sessionDecision.reasonBullets,
+          passCriteria: sessionDecision.passCriteria,
+          stopCriteria: sessionDecision.stopCriteria,
+        },
+        summary: {
+          allSetAvgAV: sessionDecision.allSetAvgAV,
+          workingSetAvgAV: sessionDecision.workingSetAvgAV,
+          recent3WorkingSetAvgAV: sessionDecision.recent3WorkingSetAvgAV,
+          bestWorkingAV: sessionDecision.bestWorkingAV,
+          sameLoadAVDropPct: sessionDecision.sameLoadAVDropPct,
+          baselineROM: sessionDecision.baselineROM,
+          latestROM: sessionDecision.latestROM,
+          romDiff: sessionDecision.romDiff,
+          avgHrTo120All: sessionDecision.avgHrTo120All,
+          avgHrTo120Working: sessionDecision.avgHrTo120Working,
+          hrDataReliability: sessionDecision.hrDataReliability,
+        },
+        workingSets: sessionDecision.workingSets,
+        trendFlags: sessionDecision.trendFlags,
+      };
+
+      const context = [
+        "# VBT相談パケット v3",
+        `- 出力日時: ${formatDateTimeWithSeconds(now)}`,
+        `- セッション時間: ${sessionDurationSeconds != null ? formatDurationSeconds(sessionDurationSeconds) : "-"}`,
+        "",
+        "## 1. 今すぐ判断してほしいこと",
+        `- 現在種目: ${currentLift || currentExercise?.name || "未選択"}`,
+        `- 現在重量: ${formatNumber(currentLoad, 1, " kg")}`,
+        `- 次セット候補: ${sessionDecision.recommendedNextLoad != null ? `${formatLoadKg(sessionDecision.recommendedNextLoad)}kg × ${currentReps}` : "-"}`,
+        `- 今日の目的: ${nextSetPurposeLabel}`,
+        "- 迷っていること:",
+        "  - 重量を維持するか",
+        "  - 落とすか",
+        "  - 休憩を伸ばすか",
+        "  - 種目を終了するか",
+        "",
+        "## 2. 今日の目的・メニュー",
+        `- 期分け: ${settings.target_training_phase}`,
+        `- ブロック週: Week ${settings.powerlifting_block_week}`,
+        `- 今日の狙い: ${blockWeekPlan.focus}`,
+        `- 予定重量/回数/セット: ${formatNumber(currentLoad, 1, " kg")} × ${currentReps} / 現在Set ${currentSetIndex}`,
+        `- 目標速度帯: ${targetVelocityRange ? `${targetVelocityRange[0]}〜${targetVelocityRange[1]} m/s` : topSingleTargetText}`,
+        `- 許容VL: ${vbtProtocol.backoffVelocityLoss.min}〜${vbtProtocol.backoffVelocityLoss.max}%`,
+        `- ROM重視度: ${nextSetPurpose === "form_consistency" || nextSetPurpose === "lvp_building" ? "高" : "中"}`,
+        "",
+        "## 3. アプリ側の暫定判定",
+        `- 推奨次重量: ${sessionDecision.recommendedNextLoad != null ? `${formatLoadKg(sessionDecision.recommendedNextLoad)} kg` : "-"}`,
+        `- 推奨休憩: HR${sessionDecision.waitUntilHRBelow ?? "-"}以下 / ${sessionDecision.recommendedRestMin ?? "-"}分目安`,
+        `- 疲労判定: ${getDecisionLabel(sessionDecision.fatigueStatus)}`,
+        `- フォーム判定: ${getDecisionLabel(sessionDecision.formStatus)}`,
+        `- HR回復判定: ${getDecisionLabel(sessionDecision.hrRecoveryStatus)}`,
+        `- PR判定: ${getDecisionLabel(sessionDecision.prStatus)}`,
+        `- 判定信頼度: ${sessionDecision.confidence}`,
+        `- 理由: ${sessionDecision.reasonBullets.join(" / ")}`,
+        `- 合格ライン: ${sessionDecision.passCriteria.join(" / ")}`,
+        `- 終了条件: ${sessionDecision.stopCriteria.join(" / ")}`,
+        "",
+        "## 4. 作業セットのみの要約",
+        "| set | load | reps | AV | AV変化 | VL | ROM | ROM差 | e1RM | avgHR | peakHR | HR→120 | rest |",
+        "|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        workingRows || "| - | - | - | - | - | - | - | - | - | - | - | - | - |",
+        "",
+        "## 5. 直近セットの詳細",
+        "| rep | mean v | peak v | ROM | HR | status |",
+        "|---:|---:|---:|---:|---:|---|",
+        currentSetReps || "| - | - | - | - | - | - |",
+        "",
+        "## 6. 今日のトレンド",
+        `- 全セット平均AV: ${formatNumber(sessionDecision.allSetAvgAV)} m/s`,
+        `- 作業セット平均AV: ${formatNumber(sessionDecision.workingSetAvgAV)} m/s`,
+        `- 直近3作業セット平均AV: ${formatNumber(sessionDecision.recent3WorkingSetAvgAV)} m/s`,
+        `- 同重量AV推移: ${sessionDecision.sameLoadTrendText}`,
+        `- ROM推移: ${sessionDecision.romTrendText}`,
+        `- HR→120推移: ${sessionDecision.hrTo120TrendText}`,
+        `- HR→120平均 全体: ${formatNullableSeconds(sessionDecision.avgHrTo120All)}`,
+        `- HR→120平均 作業セット: ${formatNullableSeconds(sessionDecision.avgHrTo120Working)}`,
+        "- HR→130/135平均: 未計測（現在は120到達時間のみ保存）",
+        `- e1RM推移: ${sessionDecision.e1rmTrendText}`,
+        `- 現在HR: ${currentHeartRate ?? "-"} bpm`,
+        `- データ欠損/注意点: HR信頼度 ${sessionDecision.hrDataReliability}`,
+        "",
+        "## 7. PR判定用情報",
+        `- 同種目履歴: ${recentExerciseHistory.length}件`,
+        `- 同重量履歴: ${sameLoadRecentHistory.length}件`,
+        `- 今日が初回ベースラインか: ${sessionDecision.prStatus === "baseline" ? "yes" : "no"}`,
+        `- PR判定から除外すべきセット: ${sessionDecision.prStatus === "excluded" ? "ROM/ウォームアップ/条件不一致の可能性あり" : "-"}`,
+        "- ROM条件を満たしたセットのみでPR判定するか: yes",
+        "",
+        "## 8. 直近同重量履歴",
+        "| date | lift | load | reps | AV | VL | ROM | e1RM |",
+        "|---|---|---:|---:|---:|---:|---:|---:|",
+        sameLoadRows || "| - | - | - | - | - | - | - | - |",
+        "",
+        "## 9. AI用JSON",
+        "```json",
+        JSON.stringify(appDecisionJson, null, 2),
+        "```",
+        "",
+        "## 10. ChatGPTへの依頼",
+        "下の実測データだけを根拠に、疲労度、次セット重量、休憩時間、今日の狙いから外れていないか、PR扱いするかを実用的に判断してください。断定しすぎず、理由と条件つきで提案してください。",
+      ].join("\n");
+
+      await Clipboard.setStringAsync(context);
+      const openResult = await openChatGPT();
+      Alert.alert(
+        openResult === "none" ? "コピーしました" : "コピーしてGPTを開きました",
+        openResult === "app"
+          ? "ChatGPTアプリを開きました。入力欄へ貼り付けて送信してください。"
+          : openResult === "web"
+            ? "ChatGPT Webを開きました。入力欄へ貼り付けて送信してください。"
+            : "VBT相談パケット v3 をコピーしました。",
+      );
+    } catch (error) {
+      console.error("[SessionScreen] Failed to copy training context:", error);
+      Alert.alert(
+        "コピー失敗",
+        "トレーニング状況のコピーに失敗しました。セッションは保存されたままです。",
+      );
+    }
+  };
+
+  const handleCopyFreezeDiagnostic = async () => {
+    try {
+      const recovery = await SessionRecoveryService.getActiveSession();
+      const dbSets = currentSession?.session_id
+        ? await DatabaseService.getSetsForSession(currentSession.session_id)
+        : [];
+      const dbReps = currentSession?.session_id
+        ? await DatabaseService.getRepsForSession(currentSession.session_id)
+        : [];
+      const lastSets = (dbSets.length > 0 ? dbSets : setHistory)
+        .slice(-10)
+        .map(
+          (set) =>
+            `| ${set.set_index} | ${set.lift} | ${formatNumber(set.load_kg, 1, " kg")} | ${set.reps} | ${formatNumber(set.avg_velocity)} | ${formatNumber(set.velocity_loss, 1, "%")} | ${formatNumber(set.avg_power_w, 0, " W")} | ${set.start_timestamp ?? "-"} | ${set.end_timestamp ?? set.timestamp ?? "-"} |`,
+        )
+        .join("\n");
+      const currentReps = repHistory
+        .map(
+          (rep) =>
+            `| ${formatClockTimeWithSeconds(rep.timestamp) ?? "-"} | ${rep.rep_index} | ${formatNumber(rep.mean_velocity)} | ${formatNumber(rep.peak_velocity)} | ${formatNumber(rep.rom_cm, 1, " cm")} | ${formatNumber(getDisplayPower(rep.mean_power_w, rep.mean_velocity, rep.load_kg), 0, " W")} | ${rep.hr_bpm ?? "-"} |`,
+        )
+        .join("\n");
+      const report = [
+        "# RepVeloCoach 固まり調査用診断レポート",
+        "",
+        "このままCodexへ貼ってください。6セット目付近で固まった直後、または再起動直後の状態確認用です。",
+        "",
+        "## 端末内状態",
+        `- 出力日時: ${formatDateTimeWithSeconds(new Date())}`,
+        `- 現在セッションID: ${currentSession?.session_id ?? "なし"}`,
+        `- セッションActive: ${isSessionActive ? "yes" : "no"}`,
+        `- Pause状態: ${isPaused ? `yes (${pauseReason ?? "-"})` : "no"}`,
+        `- 現在種目: ${currentLift ?? currentExercise?.name ?? "-"}`,
+        `- 現在重量: ${formatNumber(currentLoad, 1, " kg")}`,
+        `- 現在セット番号: ${currentSetIndex}`,
+        `- 完了セット数(store): ${setHistory.length}`,
+        `- 完了セット数(DB): ${dbSets.length}`,
+        `- セッションrep数(DB): ${dbReps.length}`,
+        `- 未保存/現在セットrep数(store): ${repHistory.length}`,
+        `- 軽量モード: ${settings.enable_session_lightweight_mode ? "ON" : "OFF"}`,
+        `- セッション履歴表示: ${settings.session_display_session_history ? "ON" : "OFF"}`,
+        `- 速度チャート表示: ${settings.session_display_velocity_chart ? "ON" : "OFF"}`,
+        `- 直近履歴表示: ${settings.session_display_recent_history ? "ON" : "OFF"}`,
+        `- 同重量履歴表示: ${settings.session_display_same_load_history ? "ON" : "OFF"}`,
+        `- センサー接続: ${isConnected ? "接続中" : "未接続"}`,
+        `- センサー入力: ${sensorInputMuted ? "OFF" : "ON"}`,
+        `- 現在心拍: ${currentHeartRate ?? "-"} bpm`,
+        `- sessionAllReps state件数: ${sessionAllReps.length}`,
+        `- recentExerciseHistory件数: ${recentExerciseHistory.length}`,
+        "",
+        "## 復旧スナップショット",
+        recovery
+          ? [
+              `- saved_at: ${recovery.saved_at}`,
+              `- session_id: ${recovery.session_id}`,
+              `- current_lift: ${recovery.current_lift ?? "-"}`,
+              `- current_load: ${recovery.current_load}`,
+              `- current_set_index: ${recovery.current_set_index}`,
+              `- completed_set_count: ${recovery.completed_set_count}`,
+              `- last_completed_set_at: ${recovery.last_completed_set_at ?? "-"}`,
+            ].join("\n")
+          : "- なし",
+        "",
+        "## 直近完了セット",
+        "| set | lift | load | reps | AV | VL | power | start | end |",
+        "|---:|---|---:|---:|---:|---:|---:|---|---|",
+        lastSets || "| - | - | - | - | - | - | - | - | - |",
+        "",
+        "## 現在セットの未完了rep",
+        "| time | rep | mean v | peak v | ROM | power | HR |",
+        "|---|---:|---:|---:|---:|---:|---:|",
+        currentReps || "| - | - | - | - | - | - | - |",
+        "",
+        "## Codexに見てほしい観点",
+        "- 6セット目付近で store の setHistory / sessionAllReps / DB再読込が重くなっていないか。",
+        "- 軽量モードONでも重い場合、SessionScreenの再描画範囲とZustand selector分割が必要か。",
+        "- 復旧スナップショットとDBセット数がズレていないか。",
+        "- 未完了repが残っている場合、固まる直前に保存キューが詰まっていないか。",
+      ].join("\n");
+
+      await Clipboard.setStringAsync(report);
+      Alert.alert(
+        "診断をコピーしました",
+        "固まり調査用レポートをコピーしました。Codexにそのまま貼ってください。",
+      );
+    } catch (error) {
+      console.error("[SessionScreen] Failed to copy freeze diagnostic:", error);
+      Alert.alert("診断コピー失敗", "診断レポートの作成に失敗しました。");
+    }
+  };
+
   const isMeasuring = isSessionActive && !isPaused;
 
   // セッション終了 & DBへの集計保存
@@ -827,6 +1827,7 @@ export default function SessionScreen() {
             text: "終了",
             style: "destructive",
             onPress: () => {
+              void SessionRecoveryService.clearActiveSession();
               endSession();
               if (navigationState.canGoBack()) {
                 router.back();
@@ -879,6 +1880,7 @@ export default function SessionScreen() {
       }
     }
 
+    await SessionRecoveryService.clearActiveSession();
     endSession();
     Alert.alert(
       "セッション完了",
@@ -930,7 +1932,12 @@ export default function SessionScreen() {
       {isMeasuring ? (
         // フォーカスモード：セット記録中のシンプルUI
         <View style={styles.focusModeContainer}>
-          <View style={[styles.focusModeHeader, { paddingTop: (insets.top || 0) + 12 }]}>
+          <View
+            style={[
+              styles.focusModeHeader,
+              { paddingTop: (insets.top || 0) + 12 },
+            ]}
+          >
             <TouchableOpacity
               onPress={() => setPaused(true, "manual")}
               style={styles.focusModeBackButton}
@@ -939,6 +1946,22 @@ export default function SessionScreen() {
             </TouchableOpacity>
             <Text style={styles.focusModeTitle}>SET {currentSetIndex}</Text>
             <TouchableOpacity
+              onPress={handleToggleSensorInputMuted}
+              style={[
+                styles.focusModeSensorButton,
+                sensorInputMuted && styles.sensorMuteButtonActive,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.focusModeSensorButtonText,
+                  sensorInputMuted && styles.sensorMuteButtonTextActive,
+                ]}
+              >
+                {sensorInputMuted ? "入力OFF" : "ラック"}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
               onPress={handleFinishSet}
               style={styles.focusModeCompleteButton}
             >
@@ -946,104 +1969,140 @@ export default function SessionScreen() {
             </TouchableOpacity>
           </View>
 
-          <View style={styles.focusModeSimulatorPanel}>
-            <View>
-              <Text style={styles.focusModeSimulatorTitle}>VBT SIM</Text>
-              <Text style={styles.focusModeSimulatorMeta}>
-                {isSimulatingSet ? "RUNNING" : "READY"}
-              </Text>
+          {settings.session_display_focus_simulator && (
+            <View style={styles.focusModeSimulatorPanel}>
+              <View>
+                <Text style={styles.focusModeSimulatorTitle}>VBT SIM</Text>
+                <Text style={styles.focusModeSimulatorMeta}>
+                  {isSimulatingSet ? "RUNNING" : "READY"}
+                </Text>
+              </View>
+              <View style={styles.focusModeSimulatorActions}>
+                <TouchableOpacity
+                  style={styles.focusModeSimulatorButton}
+                  onPress={() => void handleConnectSimulator()}
+                >
+                  <Text style={styles.focusModeSimulatorButtonText}>
+                    CONNECT
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.focusModeSimulatorButton}
+                  onPress={handleSimulatedRep}
+                >
+                  <Text style={styles.focusModeSimulatorButtonText}>REP</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.focusModeSimulatorButton,
+                    isSimulatingSet && styles.focusModeSimulatorButtonDisabled,
+                  ]}
+                  onPress={() => void handleRunSimulatedSet()}
+                  disabled={isSimulatingSet}
+                >
+                  <Text style={styles.focusModeSimulatorButtonText}>SET</Text>
+                </TouchableOpacity>
+              </View>
             </View>
-            <View style={styles.focusModeSimulatorActions}>
-              <TouchableOpacity
-                style={styles.focusModeSimulatorButton}
-                onPress={() => void handleConnectSimulator()}
-              >
-                <Text style={styles.focusModeSimulatorButtonText}>CONNECT</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.focusModeSimulatorButton}
-                onPress={handleSimulatedRep}
-              >
-                <Text style={styles.focusModeSimulatorButtonText}>REP</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.focusModeSimulatorButton,
-                  isSimulatingSet && styles.focusModeSimulatorButtonDisabled,
-                ]}
-                onPress={() => void handleRunSimulatedSet()}
-                disabled={isSimulatingSet}
-              >
-                <Text style={styles.focusModeSimulatorButtonText}>SET</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+          )}
 
-          <View style={styles.focusModeInfoGrid}>
-            <View style={styles.focusModeInfoCellWide}>
-              <Text style={styles.focusModeInfoLabel}>EXERCISE</Text>
-              <Text style={styles.focusModeInfoValue} numberOfLines={1}>
-                {currentLift || currentExercise?.name || "未選択"}
+          {sensorInputMuted && (
+            <View style={styles.sensorMutedBanner}>
+              <Text style={styles.sensorMutedTitle}>センサー入力OFF</Text>
+              <Text style={styles.sensorMutedBody}>
+                ラック位置調整中の数値は記録しません。再開するときは入力ONに戻してください。
               </Text>
             </View>
-            <View style={styles.focusModeInfoCell}>
-              <Text style={styles.focusModeInfoLabel}>LOAD</Text>
-              <Text style={styles.focusModeInfoValue}>{formatLoadKg(currentLoad)} kg</Text>
+          )}
+
+          {settings.session_display_focus_info_grid && (
+            <View style={styles.focusModeInfoGrid}>
+              <View style={styles.focusModeInfoCellWide}>
+                <Text style={styles.focusModeInfoLabel}>EXERCISE</Text>
+                <Text style={styles.focusModeInfoValue} numberOfLines={1}>
+                  {currentLift || currentExercise?.name || "未選択"}
+                </Text>
+              </View>
+              <View style={styles.focusModeInfoCell}>
+                <Text style={styles.focusModeInfoLabel}>LOAD</Text>
+                <Text style={styles.focusModeInfoValue}>
+                  {formatLoadKg(currentLoad)} kg
+                </Text>
+              </View>
+              <View style={styles.focusModeInfoCell}>
+                <Text style={styles.focusModeInfoLabel}>POWER</Text>
+                <Text style={styles.focusModeInfoValue}>{focusPowerText}</Text>
+              </View>
             </View>
-            <View style={styles.focusModeInfoCell}>
-              <Text style={styles.focusModeInfoLabel}>POWER</Text>
-              <Text style={styles.focusModeInfoValue}>{focusPowerText}</Text>
-            </View>
-          </View>
+          )}
 
           {/* 速度表示メインエリア */}
-          <View style={styles.focusModeVelocityArea}>
-            {liveData?.mean_velocity ? (
-              <>
-                <Text style={styles.focusModeVelocityValue}>
-                  {liveData.mean_velocity.toFixed(2)}
-                </Text>
-                <Text style={styles.focusModeVelocityUnit}>m/s</Text>
-              </>
-            ) : (
-              <Text style={styles.focusModeWaitingText}>レップ待機中...</Text>
-            )}
-          </View>
+          {settings.session_display_focus_velocity && (
+            <View style={styles.focusModeVelocityArea}>
+              {liveData?.mean_velocity ? (
+                <>
+                  <Text style={styles.focusModeVelocityValue}>
+                    {liveData.mean_velocity.toFixed(2)}
+                  </Text>
+                  <Text style={styles.focusModeVelocityUnit}>m/s</Text>
+                </>
+              ) : (
+                <Text style={styles.focusModeWaitingText}>レップ待機中...</Text>
+              )}
+            </View>
+          )}
 
-          <View style={styles.focusModeMetricStrip}>
-            <View style={styles.focusModeMetricItem}>
-              <Text style={styles.focusModeInfoLabel}>AVG V</Text>
-              <Text style={styles.focusModeMetricValue}>{focusVelocityText}</Text>
+          {settings.session_display_focus_metrics && (
+            <View style={styles.focusModeMetricStrip}>
+              <View style={styles.focusModeMetricItem}>
+                <Text style={styles.focusModeInfoLabel}>AVG V</Text>
+                <Text style={styles.focusModeMetricValue}>
+                  {focusVelocityText}
+                </Text>
+              </View>
+              <View style={styles.focusModeMetricItem}>
+                <Text style={styles.focusModeInfoLabel}>ROM</Text>
+                <Text style={styles.focusModeMetricValue}>{focusRomText}</Text>
+              </View>
+              <View style={styles.focusModeMetricItem}>
+                <Text style={styles.focusModeInfoLabel}>PEAK P</Text>
+                <Text style={styles.focusModeMetricValue}>
+                  {livePeakPower != null
+                    ? `${Math.round(livePeakPower)} W`
+                    : "-"}
+                </Text>
+              </View>
             </View>
-            <View style={styles.focusModeMetricItem}>
-              <Text style={styles.focusModeInfoLabel}>ROM</Text>
-              <Text style={styles.focusModeMetricValue}>{focusRomText}</Text>
-            </View>
-            <View style={styles.focusModeMetricItem}>
-              <Text style={styles.focusModeInfoLabel}>PEAK P</Text>
-              <Text style={styles.focusModeMetricValue}>
-                {livePeakPower != null ? `${Math.round(livePeakPower)} W` : "-"}
-              </Text>
-            </View>
-          </View>
+          )}
 
           {/* レップカウンター */}
-          <View style={styles.focusModeRepCounter}>
-            <Text style={styles.focusModeRepCount}>{repHistory.length}</Text>
-            <Text style={styles.focusModeRepLabel}>REPS</Text>
-          </View>
+          {settings.session_display_focus_rep_counter && (
+            <View style={styles.focusModeRepCounter}>
+              <Text style={styles.focusModeRepCount}>{repHistory.length}</Text>
+              <Text style={styles.focusModeRepLabel}>REPS</Text>
+            </View>
+          )}
 
           {/* ゾーンインジケーター */}
-          {liveData?.mean_velocity && (
+          {settings.session_display_focus_zone && liveData?.mean_velocity && (
             <View style={styles.focusModeZoneIndicator}>
               {(() => {
-                const zone = AICoachService.getZone(liveData.mean_velocity);
+                const zone = VBTGuideService.getZone(liveData.mean_velocity);
                 return (
-                  <View style={[styles.focusModeZoneBadge, { borderColor: zone.color }]}>
-                    <Text style={[styles.focusModeZoneEmoji, { color: zone.color }]}>
+                  <View
+                    style={[
+                      styles.focusModeZoneBadge,
+                      { borderColor: zone.color },
+                    ]}
+                  >
+                    <Text
+                      style={[styles.focusModeZoneEmoji, { color: zone.color }]}
+                    >
                       {zone.emoji}
                     </Text>
-                    <Text style={[styles.focusModeZoneName, { color: zone.color }]}>
+                    <Text
+                      style={[styles.focusModeZoneName, { color: zone.color }]}
+                    >
                       {zone.name}
                     </Text>
                   </View>
@@ -1052,38 +2111,47 @@ export default function SessionScreen() {
             </View>
           )}
 
-          {liveVelocityLossDecision && (
-            <View
-              style={[
-                styles.focusModeVlBox,
-                liveVelocityLossDecision.status === "stop" &&
-                  styles.focusModeVlBoxStop,
-              ]}
-            >
-              <Text style={styles.focusModeVlLabel}>
-                VL {liveVelocityLossDecision.velocityLoss.toFixed(1)}%
-              </Text>
-              <Text style={styles.focusModeVlText}>
-                {liveVelocityLossDecision.status === "stop"
-                  ? "このセット終了"
-                  : `上限 ${liveVelocityLossDecision.threshold}%`}
-              </Text>
-            </View>
-          )}
+          {showAdviceDisplay &&
+            settings.session_display_focus_vl &&
+            liveVelocityLossDecision && (
+              <View
+                style={[
+                  styles.focusModeVlBox,
+                  liveVelocityLossDecision.status === "stop" &&
+                    styles.focusModeVlBoxStop,
+                ]}
+              >
+                <Text style={styles.focusModeVlLabel}>
+                  VL {liveVelocityLossDecision.velocityLoss.toFixed(1)}%
+                </Text>
+                <Text style={styles.focusModeVlText}>
+                  {liveVelocityLossDecision.status === "stop"
+                    ? "このセット終了"
+                    : `上限 ${liveVelocityLossDecision.threshold}%`}
+                </Text>
+              </View>
+            )}
 
           {/* 心拍数表示 */}
-          {currentHeartRate != null && (
-            <View style={styles.focusModeHrDisplay}>
-              <Text style={styles.focusModeHrIcon}>❤️</Text>
-              <Text style={styles.focusModeHrValue}>{Math.round(currentHeartRate)}</Text>
-            </View>
-          )}
+          {settings.session_display_focus_heart_rate &&
+            currentHeartRate != null && (
+              <View style={styles.focusModeHrDisplay}>
+                <Text style={styles.focusModeHrIcon}>❤️</Text>
+                <Text style={styles.focusModeHrValue}>
+                  {Math.round(currentHeartRate)}
+                </Text>
+              </View>
+            )}
 
           {/* 重量表示 */}
-          <View style={styles.focusModeLoadDisplay}>
-            <Text style={styles.focusModeLoadValue}>{formatLoadKg(currentLoad)}</Text>
-            <Text style={styles.focusModeLoadUnit}>kg</Text>
-          </View>
+          {settings.session_display_focus_load && (
+            <View style={styles.focusModeLoadDisplay}>
+              <Text style={styles.focusModeLoadValue}>
+                {formatLoadKg(currentLoad)}
+              </Text>
+              <Text style={styles.focusModeLoadUnit}>kg</Text>
+            </View>
+          )}
         </View>
       ) : (
         // 通常モード
@@ -1100,1235 +2168,1542 @@ export default function SessionScreen() {
               <Text style={styles.backButtonText}>← 戻る</Text>
             </TouchableOpacity>
             <Text style={styles.title}>セッション</Text>
-            {/* AIコーチボタン */}
             <TouchableOpacity
               style={styles.coachNavButton}
-              onPress={() => router.push('/ai-coach')}
+              onPress={() => void handleCopyTrainingContext()}
             >
-              <Text style={styles.coachNavButtonText}>AIコーチ</Text>
+              <Text style={styles.coachNavButtonText}>GPTを開く</Text>
             </TouchableOpacity>
           </View>
 
-        {/* Connection Status */}
-        <View style={styles.statusCard}>
-          <View style={styles.statusRow}>
-            <View
-              style={[
-                styles.statusDot,
-                {
-                  backgroundColor: isConnected
-                    ? GarageTheme.success
-                    : GarageTheme.danger,
-                },
-              ]}
-            />
-            <Text style={styles.statusText}>
-              {isConnected ? "センサー接続中" : "センサー未接続"}
+          <View style={styles.diagnosticBar}>
+            <Text style={styles.diagnosticBarText}>
+              固まった/再起動後の原因調査
             </Text>
-          </View>
-          {currentHeartRate != null && (
-            <View style={styles.hrBadge}>
-              <Text style={styles.hrValue}>{Math.round(currentHeartRate)}</Text>
-              <Text style={styles.hrUnit}>bpm</Text>
-              {(() => {
-                const peakHr =
-                  setHistory.length > 0 && setHistory[setHistory.length - 1].peak_hr
-                    ? setHistory[setHistory.length - 1].peak_hr!
-                    : getPeakHeartRate(sessionHRPoints);
-
-                if (peakHr > 0) {
-                  const signal = calculateRecoverySignal(currentHeartRate, peakHr);
-                  return (
-                    <View style={[styles.signalDot, { backgroundColor: signal.color }]}>
-                      <Text style={styles.signalLabel}>{signal.label}</Text>
-                    </View>
-                  );
-                }
-                return null;
-              })()}
-            </View>
-          )}
-        </View>
-
-        <View style={styles.simulatorCard}>
-          <View>
-            <Text style={styles.simulatorTitle}>VBT SIM</Text>
-            <Text style={styles.simulatorMeta}>
-              {isSimulatingSet ? "RUNNING" : "READY"}
-            </Text>
-          </View>
-          <View style={styles.simulatorActions}>
             <TouchableOpacity
-              style={styles.simulatorButton}
-              onPress={() => void handleConnectSimulator()}
+              style={styles.diagnosticButton}
+              onPress={() => void handleCopyFreezeDiagnostic()}
             >
-              <Text style={styles.simulatorButtonText}>CONNECT</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.simulatorButton}
-              onPress={handleSimulatedRep}
-            >
-              <Text style={styles.simulatorButtonText}>REP</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.simulatorButton,
-                isSimulatingSet && styles.simulatorButtonDisabled,
-              ]}
-              onPress={() => void handleRunSimulatedSet()}
-              disabled={isSimulatingSet}
-            >
-              <Text style={styles.simulatorButtonText}>SET</Text>
+              <Text style={styles.diagnosticButtonText}>診断コピー</Text>
             </TouchableOpacity>
           </View>
-        </View>
 
-        {/* Exercise Selection */}
-        <View style={styles.exerciseCard}>
-          <Text style={styles.exerciseLabel}>Exercise</Text>
-          {currentExercise ? (
-            <TouchableOpacity
-              style={styles.exerciseSelector}
-              onPress={() => setShowExerciseModal(true)}
-            >
-              <View style={styles.exerciseInfo}>
-                <Text style={styles.exerciseName}>{currentExercise.name}</Text>
-                <Text style={styles.exerciseCategory}>
-                  {getExerciseCategoryLabel(currentExercise.category)}
-                </Text>
-              </View>
-              <Text style={styles.exerciseChange}>Change</Text>
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity
-              style={styles.exerciseSelectButton}
-              onPress={() => setShowExerciseModal(true)}
-            >
-              <Text style={styles.exerciseSelectButtonText}>
-                Select Exercise
-              </Text>
-            </TouchableOpacity>
-          )}
-        </View>
-
-        {/* VL Threshold Quick Setting */}
-        {currentExercise && (
-          <View style={styles.vlSettingsCard}>
-            <View style={styles.vlSettingsHeader}>
-              <View>
-                <Text style={styles.vlSettingsTitle}>VL閾値</Text>
-                <Text style={styles.vlSettingsMeta}>
-                  推奨 {vbtProtocol.backoffVelocityLoss.min}〜{vbtProtocol.backoffVelocityLoss.max}% / {vbtProtocol.phaseLabel}
-                </Text>
-              </View>
-              <View style={styles.vlToggleRow}>
-                <Text style={styles.vlToggleLabel}>オン</Text>
-                <TouchableOpacity
-                  style={[
-                    styles.vlToggleButton,
-                    settings.enable_vl_warning ? styles.vlToggleButtonOn : styles.vlToggleOff,
-                  ]}
-                  onPress={() => updateSettings({ enable_vl_warning: !settings.enable_vl_warning })}
-                >
-                  <View style={[
-                    styles.vlToggleKnob,
-                    settings.enable_vl_warning ? styles.vlToggleKnobOn : styles.vlToggleKnobOff,
-                  ]} />
-                </TouchableOpacity>
-              </View>
-            </View>
-            {settings.enable_vl_warning && (
-              <View style={styles.vlThresholdButtons}>
-                {[10, 15, 20, 25, 30].map((threshold) => {
-                  const currentThreshold = currentExercise.velocity_loss_threshold ?? settings.velocity_loss_threshold;
-                  const isSelected = currentThreshold === threshold;
-                  return (
-                    <TouchableOpacity
-                      key={threshold}
-                      style={[
-                        styles.vlThresholdButton,
-                        isSelected ? styles.vlThresholdButtonSelected : styles.vlThresholdButtonUnselected,
-                      ]}
-                      onPress={async () => {
-                        const updatedExercise = { ...currentExercise, velocity_loss_threshold: threshold };
-                        setCurrentExercise(updatedExercise);
-                        await ExerciseService.updateExercise(currentExercise.id, { velocity_loss_threshold: threshold });
-                      }}
-                    >
-                      <Text style={[
-                        styles.vlThresholdButtonText,
-                        isSelected ? styles.vlThresholdButtonTextSelected : styles.vlThresholdButtonTextUnselected,
-                      ]}>
-                        {threshold}%
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            )}
-          </View>
-        )}
-
-        {currentExercise && (
-          <View style={styles.protocolCard}>
-            <View style={styles.protocolHeader}>
-              <Text style={styles.protocolKicker}>PL VBT PROTOCOL</Text>
-              <Text style={styles.protocolPhase}>{vbtProtocol.phaseLabel}</Text>
-            </View>
-            <Text style={styles.protocolTitle}>
-              トップシングルで当日の状態を見て、バックオフはVLで止める
-            </Text>
-            <View style={styles.protocolGrid}>
-              <View style={styles.protocolMetric}>
-                <Text style={styles.protocolMetricLabel}>トップシングル</Text>
-                <Text style={styles.protocolMetricValue}>
-                  {topSingleTargetText}
-                </Text>
-              </View>
-              <View style={styles.protocolMetric}>
-                <Text style={styles.protocolMetricLabel}>バックオフVL</Text>
-                <Text style={styles.protocolMetricValue}>
-                  {vbtProtocol.backoffVelocityLoss.min}〜{vbtProtocol.backoffVelocityLoss.max}%
-                </Text>
-              </View>
-            </View>
-            <View style={styles.protocolDivider} />
-            <View style={styles.protocolGrid}>
-              <View style={styles.protocolMetric}>
-                <Text style={styles.protocolMetricLabel}>Week {blockWeekPlan.week}</Text>
-                <Text style={styles.protocolMetricValue}>
-                  {blockWeekPlan.phaseLabel}
-                </Text>
-              </View>
-              <View style={styles.protocolMetric}>
-                <Text style={styles.protocolMetricLabel}>今日の狙い</Text>
-                <Text style={styles.protocolMetricValue}>
-                  {blockWeekPlan.focus}
-                </Text>
-              </View>
-            </View>
-            <Text style={styles.protocolBody}>{vbtProtocol.guidance}</Text>
-            <Text style={styles.protocolBody}>{blockWeekPlan.note}</Text>
-          </View>
-        )}
-
-        {currentExercise && isBig3(currentExercise.category) && (
-          <View style={styles.protocolCard}>
-            <View style={styles.protocolHeader}>
-              <Text style={styles.protocolKicker}>LVP BUILD</Text>
-              <Text style={styles.protocolPhase}>{lvpStatusText}</Text>
-            </View>
-            <Text style={styles.protocolTitle}>
-              速度基準はウォームアップ中のAVとROMで作る
-            </Text>
-            <View style={styles.lvpChecklist}>
-              {LVP_CHECKPOINTS.map((checkpoint) => (
-                <View key={checkpoint.percentRange} style={styles.lvpCheckpoint}>
-                  <Text style={styles.lvpCheckpointRange}>
-                    {checkpoint.percentRange}
-                  </Text>
-                  <Text style={styles.lvpCheckpointText}>
-                    {checkpoint.reps} / {checkpoint.label}
-                    {checkpoint.required ? "" : "（任意）"}
-                  </Text>
-                </View>
-              ))}
-            </View>
-            <Text style={styles.protocolBody}>
-              タッチ&ゴーとポーズ、スモウとコンベンショナルなどは別の基準として扱います。
-            </Text>
-          </View>
-        )}
-
-        {/* Training Cue & Focus Note */}
-        {currentExercise &&
-          (currentExercise.training_cue || currentExercise.focus_note) && (
-            <View style={styles.trainingNotesCard}>
-              {currentExercise.training_cue && (
-                <View style={styles.noteSection}>
-                  <Text style={styles.noteLabel}>トレーニングキュー</Text>
-                  <Text style={styles.noteText}>
-                    {currentExercise.training_cue}
-                  </Text>
-                </View>
-              )}
-              {currentExercise.focus_note && (
-                <View style={styles.noteSection}>
-                  <Text style={styles.noteLabel}>フォーカスノート</Text>
-                  <Text style={styles.noteText}>
-                    {currentExercise.focus_note}
-                  </Text>
-                </View>
-              )}
-            </View>
-          )}
-
-        {/* Session Note */}
-        {isSessionActive && (
-          <View style={styles.sessionNoteCard}>
-            <View style={styles.sessionNoteHeader}>
-              <Text style={styles.sessionNoteLabel}>
-                今日のトレーニングメモ
-              </Text>
-              <TouchableOpacity
-                onPress={() => setEditingSessionNote(!editingSessionNote)}
-                style={styles.sessionNoteEditButton}
-              >
-                <Text style={styles.sessionNoteEditText}>
-                  {editingSessionNote ? "閉じる" : "編集"}
-                </Text>
-              </TouchableOpacity>
-            </View>
-            {editingSessionNote ? (
-              <View style={styles.sessionNoteEditContainer}>
-                <TextInput
-                  style={styles.sessionNoteInput}
-                  value={sessionNote}
-                  onChangeText={setSessionNote}
-                  placeholder="今日のトレーニングのメモを入力..."
-                  placeholderTextColor={GarageTheme.textSubtle}
-                  multiline
-                  numberOfLines={4}
-                  textAlignVertical="top"
-                />
-                <TouchableOpacity
-                  style={styles.sessionNoteSaveButton}
-                  onPress={handleSaveSessionNote}
-                >
-                  <Text style={styles.sessionNoteSaveButtonText}>保存</Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <Text style={styles.sessionNoteText}>
-                {sessionNote || "メモはまだありません"}
-              </Text>
-            )}
-          </View>
-        )}
-
-        {/* セッション開始バナー */}
-        {!isSessionActive ? (
-          <View style={styles.sessionStartBanner}>
-            <View style={styles.sessionStartBannerContent}>
-              <View style={styles.sessionStartBadge}>
-                <Text style={styles.sessionStartBadgeIcon}>⚡</Text>
-              </View>
-              <View style={styles.sessionStartTextContainer}>
-                <Text style={styles.sessionStartTitle}>
-                  セッションを開始してください
-                </Text>
-                <Text style={styles.sessionStartSubtitle}>
-                  BLEセンサー接続済み
-                </Text>
-              </View>
-            </View>
-            <TouchableOpacity
-              style={[styles.button, styles.startSessionButton]}
-              onPress={handleStartSession}
-            >
-              <Text style={styles.buttonText}>セッション開始</Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <View style={styles.sessionActiveBanner}>
-            <View style={styles.sessionActiveBannerLeft}>
-              <View
-                style={[
-                  styles.sessionActiveIndicator,
-                  isPaused && styles.sessionActiveIndicatorPaused,
-                ]}
-              >
+          {/* Connection Status */}
+          {settings.session_display_status && (
+            <View style={styles.statusCard}>
+              <View style={styles.statusRow}>
                 <View
                   style={[
-                    styles.sessionActiveIndicatorDot,
-                    isPaused && styles.sessionActiveIndicatorDotPaused,
-                  ]}
-                />
-              </View>
-              <View style={styles.sessionActiveTextContainer}>
-                <Text style={styles.sessionActiveTitle}>
-                  {isPaused
-                    ? `SET ${Math.max(1, currentSetIndex - 1)} PAUSED`
-                    : `SET ${currentSetIndex} RECORDING`}
-                </Text>
-                <Text style={styles.sessionActiveSubtitle}>
-                  {isPaused ? "一時停止中" : "レコーディング中"}
-                </Text>
-              </View>
-            </View>
-            <TouchableOpacity
-              style={[styles.pauseBtn, isPaused && styles.pausedBtnActive]}
-              onPress={() => {
-                if (isPaused) {
-                  // 再開時：履歴を保持するため resumeSet を使用
-                  resumeSet();
-                } else {
-                  // 一時停止時はsetPausedを使用
-                  setPaused(true, "manual");
-                }
-              }}
-            >
-              <View style={styles.pauseBtnContent}>
-                <Text style={styles.pauseBtnIcon}>{isPaused ? "▶" : "⏸"}</Text>
-                <Text style={styles.pauseBtnText}>
-                  {isPaused ? "再開" : "一時停止"}
-                </Text>
-              </View>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* CNS Battery & VBT Intelligence Summary */}
-        {isSessionActive && (
-          <View style={styles.intelligenceRow}>
-            <View style={styles.cnsBatteryContainer}>
-              <Text style={styles.cnsLabel}>CNS BATTERY™</Text>
-              <View style={styles.batteryGageBg}>
-                <View
-                  style={[
-                    styles.batteryGageFill,
+                    styles.statusDot,
                     {
-                      width: `${cnsBattery}%`,
-                      backgroundColor:
-                        cnsBattery > 70
-                          ? GarageTheme.success
-                          : cnsBattery > 40
-                            ? GarageTheme.warning
-                            : GarageTheme.danger,
+                      backgroundColor: isConnected
+                        ? GarageTheme.success
+                        : GarageTheme.danger,
                     },
                   ]}
                 />
+                <Text style={styles.statusText}>
+                  {isConnected ? "センサー接続中" : "センサー未接続"}
+                </Text>
               </View>
-              <Text style={styles.cnsValue}>{cnsBattery}%</Text>
-            </View>
+              {currentHeartRate != null && (
+                <View style={styles.hrBadge}>
+                  <Text style={styles.hrValue}>
+                    {Math.round(currentHeartRate)}
+                  </Text>
+                  <Text style={styles.hrUnit}>bpm</Text>
+                  {(() => {
+                    const peakHr =
+                      setHistory.length > 0 &&
+                      setHistory[setHistory.length - 1].peak_hr
+                        ? setHistory[setHistory.length - 1].peak_hr!
+                        : getPeakHeartRate(sessionHRPoints);
 
-            {estimated1RM !== null && (
-              <View style={styles.intelligenceBadge}>
-                <Text style={styles.intelligenceLabel}>本日予想1RM（参考）</Text>
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "baseline",
-                    gap: 4,
-                  }}
-                >
-                  <Text style={styles.intelligenceValue}>{estimated1RM}</Text>
-                  <Text style={styles.unitSmall}>kg</Text>
+                    if (peakHr > 0) {
+                      const signal = calculateRecoverySignal(
+                        currentHeartRate,
+                        peakHr,
+                      );
+                      return (
+                        <View
+                          style={[
+                            styles.signalDot,
+                            { backgroundColor: signal.color },
+                          ]}
+                        >
+                          <Text style={styles.signalLabel}>{signal.label}</Text>
+                        </View>
+                      );
+                    }
+                    return null;
+                  })()}
                 </View>
-                {estimated1RM_confidence && (
-                  <View
+              )}
+            </View>
+          )}
+
+          {settings.session_display_simulator && (
+            <View style={styles.simulatorCard}>
+              <View>
+                <Text style={styles.simulatorTitle}>VBT SIM</Text>
+                <Text style={styles.simulatorMeta}>
+                  {isSimulatingSet ? "RUNNING" : "READY"}
+                </Text>
+              </View>
+              <View style={styles.simulatorActions}>
+                <TouchableOpacity
+                  style={styles.simulatorButton}
+                  onPress={() => void handleConnectSimulator()}
+                >
+                  <Text style={styles.simulatorButtonText}>CONNECT</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.simulatorButton}
+                  onPress={handleSimulatedRep}
+                >
+                  <Text style={styles.simulatorButtonText}>REP</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.simulatorButton,
+                    isSimulatingSet && styles.simulatorButtonDisabled,
+                  ]}
+                  onPress={() => void handleRunSimulatedSet()}
+                  disabled={isSimulatingSet}
+                >
+                  <Text style={styles.simulatorButtonText}>SET</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
+          {/* Exercise Selection */}
+          {settings.session_display_exercise_picker && (
+            <View style={styles.exerciseCard}>
+              <Text style={styles.exerciseLabel}>Exercise</Text>
+              {currentExercise ? (
+                <TouchableOpacity
+                  style={styles.exerciseSelector}
+                  onPress={() => setShowExerciseModal(true)}
+                >
+                  <View style={styles.exerciseInfo}>
+                    <Text style={styles.exerciseName}>
+                      {currentExercise.name}
+                    </Text>
+                    <Text style={styles.exerciseCategory}>
+                      {getExerciseCategoryLabel(currentExercise.category)}
+                    </Text>
+                  </View>
+                  <Text style={styles.exerciseChange}>Change</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  style={styles.exerciseSelectButton}
+                  onPress={() => setShowExerciseModal(true)}
+                >
+                  <Text style={styles.exerciseSelectButtonText}>
+                    Select Exercise
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+
+          {/* VL Threshold Quick Setting */}
+          {settings.session_display_vl_settings && currentExercise && (
+            <View style={styles.vlSettingsCard}>
+              <View style={styles.vlSettingsHeader}>
+                <View>
+                  <Text style={styles.vlSettingsTitle}>VL閾値</Text>
+                  <Text style={styles.vlSettingsMeta}>
+                    推奨 {vbtProtocol.backoffVelocityLoss.min}〜
+                    {vbtProtocol.backoffVelocityLoss.max}% /{" "}
+                    {vbtProtocol.phaseLabel}
+                  </Text>
+                </View>
+                <View style={styles.vlToggleRow}>
+                  <Text style={styles.vlToggleLabel}>オン</Text>
+                  <TouchableOpacity
                     style={[
-                      styles.confidenceIndicator,
-                      {
-                        backgroundColor:
-                          estimated1RM_confidence === "high"
-                            ? GarageTheme.success
-                            : estimated1RM_confidence === "medium"
-                              ? GarageTheme.warning
-                              : GarageTheme.danger,
-                      },
+                      styles.vlToggleButton,
+                      settings.enable_vl_warning
+                        ? styles.vlToggleButtonOn
+                        : styles.vlToggleOff,
                     ]}
+                    onPress={() =>
+                      updateSettings({
+                        enable_vl_warning: !settings.enable_vl_warning,
+                      })
+                    }
                   >
-                    <Text style={styles.confidenceText}>
-                      {estimated1RM_confidence === "high"
-                        ? "High"
-                        : estimated1RM_confidence === "medium"
-                          ? "Med"
-                          : "Low"}
+                    <View
+                      style={[
+                        styles.vlToggleKnob,
+                        settings.enable_vl_warning
+                          ? styles.vlToggleKnobOn
+                          : styles.vlToggleKnobOff,
+                      ]}
+                    />
+                  </TouchableOpacity>
+                </View>
+              </View>
+              {settings.enable_vl_warning && (
+                <View style={styles.vlThresholdButtons}>
+                  {[10, 15, 20, 25, 30].map((threshold) => {
+                    const currentThreshold =
+                      currentExercise.velocity_loss_threshold ??
+                      settings.velocity_loss_threshold;
+                    const isSelected = currentThreshold === threshold;
+                    return (
+                      <TouchableOpacity
+                        key={threshold}
+                        style={[
+                          styles.vlThresholdButton,
+                          isSelected
+                            ? styles.vlThresholdButtonSelected
+                            : styles.vlThresholdButtonUnselected,
+                        ]}
+                        onPress={async () => {
+                          const updatedExercise = {
+                            ...currentExercise,
+                            velocity_loss_threshold: threshold,
+                          };
+                          setCurrentExercise(updatedExercise);
+                          await ExerciseService.updateExercise(
+                            currentExercise.id,
+                            { velocity_loss_threshold: threshold },
+                          );
+                        }}
+                      >
+                        <Text
+                          style={[
+                            styles.vlThresholdButtonText,
+                            isSelected
+                              ? styles.vlThresholdButtonTextSelected
+                              : styles.vlThresholdButtonTextUnselected,
+                          ]}
+                        >
+                          {threshold}%
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
+            </View>
+          )}
+
+          {showAdviceDisplay &&
+            settings.session_display_protocol &&
+            currentExercise && (
+              <View style={styles.protocolCard}>
+                <View style={styles.protocolHeader}>
+                  <Text style={styles.protocolKicker}>PL VBT PROTOCOL</Text>
+                  <Text style={styles.protocolPhase}>
+                    {vbtProtocol.phaseLabel}
+                  </Text>
+                </View>
+                <Text style={styles.protocolTitle}>
+                  トップシングルで当日の状態を見て、バックオフはVLで止める
+                </Text>
+                <View style={styles.protocolGrid}>
+                  <View style={styles.protocolMetric}>
+                    <Text style={styles.protocolMetricLabel}>
+                      トップシングル
+                    </Text>
+                    <Text style={styles.protocolMetricValue}>
+                      {topSingleTargetText}
+                    </Text>
+                  </View>
+                  <View style={styles.protocolMetric}>
+                    <Text style={styles.protocolMetricLabel}>バックオフVL</Text>
+                    <Text style={styles.protocolMetricValue}>
+                      {vbtProtocol.backoffVelocityLoss.min}〜
+                      {vbtProtocol.backoffVelocityLoss.max}%
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.protocolDivider} />
+                <View style={styles.protocolGrid}>
+                  <View style={styles.protocolMetric}>
+                    <Text style={styles.protocolMetricLabel}>
+                      Week {blockWeekPlan.week}
+                    </Text>
+                    <Text style={styles.protocolMetricValue}>
+                      {blockWeekPlan.phaseLabel}
+                    </Text>
+                  </View>
+                  <View style={styles.protocolMetric}>
+                    <Text style={styles.protocolMetricLabel}>今日の狙い</Text>
+                    <Text style={styles.protocolMetricValue}>
+                      {blockWeekPlan.focus}
+                    </Text>
+                  </View>
+                </View>
+                <Text style={styles.protocolBody}>{vbtProtocol.guidance}</Text>
+                <Text style={styles.protocolBody}>{blockWeekPlan.note}</Text>
+              </View>
+            )}
+
+          {showAdviceDisplay &&
+            settings.session_display_lvp_build &&
+            currentExercise &&
+            isBig3(currentExercise.category) && (
+              <View style={styles.protocolCard}>
+                <View style={styles.protocolHeader}>
+                  <Text style={styles.protocolKicker}>LVP BUILD</Text>
+                  <Text style={styles.protocolPhase}>{lvpStatusText}</Text>
+                </View>
+                <Text style={styles.protocolTitle}>
+                  速度基準はウォームアップ中のAVとROMで作る
+                </Text>
+                <View style={styles.lvpChecklist}>
+                  {LVP_CHECKPOINTS.map((checkpoint) => (
+                    <View
+                      key={checkpoint.percentRange}
+                      style={styles.lvpCheckpoint}
+                    >
+                      <Text style={styles.lvpCheckpointRange}>
+                        {checkpoint.percentRange}
+                      </Text>
+                      <Text style={styles.lvpCheckpointText}>
+                        {checkpoint.reps} / {checkpoint.label}
+                        {checkpoint.required ? "" : "（任意）"}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+                <Text style={styles.protocolBody}>
+                  タッチ&ゴーとポーズ、スモウとコンベンショナルなどは別の基準として扱います。
+                </Text>
+              </View>
+            )}
+
+          {/* Training Cue & Focus Note */}
+          {settings.session_display_training_notes &&
+            currentExercise &&
+            (currentExercise.training_cue || currentExercise.focus_note) && (
+              <View style={styles.trainingNotesCard}>
+                {currentExercise.training_cue && (
+                  <View style={styles.noteSection}>
+                    <Text style={styles.noteLabel}>トレーニングキュー</Text>
+                    <Text style={styles.noteText}>
+                      {currentExercise.training_cue}
+                    </Text>
+                  </View>
+                )}
+                {currentExercise.focus_note && (
+                  <View style={styles.noteSection}>
+                    <Text style={styles.noteLabel}>フォーカスノート</Text>
+                    <Text style={styles.noteText}>
+                      {currentExercise.focus_note}
                     </Text>
                   </View>
                 )}
               </View>
             )}
-          </View>
-        )}
 
-        {isSessionActive && attemptPlan && isBig3(currentExercise?.category) && (
-          <View style={styles.vbtDecisionCard}>
-            <View style={styles.vbtDecisionHeader}>
-              <Text style={styles.protocolKicker}>ATTEMPT GUIDE</Text>
-              <Text style={styles.protocolPhase}>e1RM参考</Text>
-            </View>
-            <View style={styles.attemptGrid}>
-              <View style={styles.attemptCell}>
-                <Text style={styles.protocolMetricLabel}>第1</Text>
-                <Text style={styles.attemptValue}>{formatLoadKg(attemptPlan.opener)}kg</Text>
-              </View>
-              <View style={styles.attemptCell}>
-                <Text style={styles.protocolMetricLabel}>第2</Text>
-                <Text style={styles.attemptValue}>{formatLoadKg(attemptPlan.second)}kg</Text>
-              </View>
-              <View style={styles.attemptCell}>
-                <Text style={styles.protocolMetricLabel}>第3</Text>
-                <Text style={styles.attemptValue}>
-                  {formatLoadKg(attemptPlan.thirdLow)}〜{formatLoadKg(attemptPlan.thirdHigh)}kg
+          {/* Session Note */}
+          {settings.session_display_session_note && isSessionActive && (
+            <View style={styles.sessionNoteCard}>
+              <View style={styles.sessionNoteHeader}>
+                <Text style={styles.sessionNoteLabel}>
+                  今日のトレーニングメモ
                 </Text>
-              </View>
-            </View>
-            <Text style={styles.protocolBody}>
-              第1は確実に成功する重量。{attemptPlan.note}
-            </Text>
-          </View>
-        )}
-
-        {/* Adaptive Load Suggestion */}
-        {isSessionActive &&
-          suggestedLoad !== null &&
-          suggestedLoad !== currentLoad && (
-            <TouchableOpacity
-              style={styles.suggestionBanner}
-              onPress={() => handleLoadChange(suggestedLoad.toString())}
-            >
-              <View style={styles.suggestionContent}>
-                <Text style={styles.suggestionText}>
-                  推奨重量:{" "}
-                  <Text style={styles.suggestionWeight}>
-                    {formatLoadKg(suggestedLoad)}kg
-                  </Text>{" "}
-                  に変更しますか？
-                </Text>
-              </View>
-              <Text style={styles.applyText}>適用する</Text>
-            </TouchableOpacity>
-          )}
-
-        {!isSessionActive && currentLift && (
-          <TouchableOpacity
-            style={styles.optimizeMvtButton}
-            onPress={() => void calculateAndProposeMVT()}
-          >
-            <Text style={styles.optimizeMvtButtonText}>
-              履歴から V@1RM を最適化
-            </Text>
-          </TouchableOpacity>
-        )}
-
-        {/* MVT Proposal Banner */}
-        {!isSessionActive && proposedMVT !== null && currentLift && (
-          <View
-            style={[
-              styles.suggestionBanner,
-              {
-                backgroundColor: GarageTheme.surface,
-                borderLeftColor: GarageTheme.accentSoft,
-              },
-            ]}
-          >
-            <View style={styles.suggestionContent}>
-              <View>
-                <Text style={styles.suggestionText}>
-                  {currentLift}の新しい限界速度(MVT)候補:
-                </Text>
-                <Text
-                  style={[
-                    styles.suggestionWeight,
-                    { color: GarageTheme.accentSoft, fontSize: 16 },
-                  ]}
+                <TouchableOpacity
+                  onPress={() => setEditingSessionNote(!editingSessionNote)}
+                  style={styles.sessionNoteEditButton}
                 >
-                  {proposedMVT} m/s
-                </Text>
+                  <Text style={styles.sessionNoteEditText}>
+                    {editingSessionNote ? "閉じる" : "編集"}
+                  </Text>
+                </TouchableOpacity>
               </View>
-            </View>
-            <View style={{ flexDirection: "row", gap: 12 }}>
-              <TouchableOpacity onPress={() => setProposedMVT(null)}>
-                <Text
-                  style={[styles.applyText, { color: GarageTheme.textMuted }]}
-                >
-                  無視
+              {editingSessionNote ? (
+                <View style={styles.sessionNoteEditContainer}>
+                  <TextInput
+                    style={styles.sessionNoteInput}
+                    value={sessionNote}
+                    onChangeText={setSessionNote}
+                    placeholder="今日のトレーニングのメモを入力..."
+                    placeholderTextColor={GarageTheme.textSubtle}
+                    multiline
+                    numberOfLines={4}
+                    textAlignVertical="top"
+                  />
+                  <TouchableOpacity
+                    style={styles.sessionNoteSaveButton}
+                    onPress={handleSaveSessionNote}
+                  >
+                    <Text style={styles.sessionNoteSaveButtonText}>保存</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <Text style={styles.sessionNoteText}>
+                  {sessionNote || "メモはまだありません"}
                 </Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={handleAcceptMVT}>
-                <Text
-                  style={[
-                    styles.applyText,
-                    { color: GarageTheme.accentSoft, fontSize: 14 },
-                  ]}
-                >
-                  更新する
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
-
-        {/* Rest Timer Banner */}
-        {isSessionActive && isPaused && pauseReason === "rest" && (
-          <View style={styles.restBanner}>
-            <View style={styles.restHeader}>
-              <Text style={styles.restLabel}>RESTING...</Text>
-              <RestTimer
-                startTime={restStartTime || 0}
-                hr={currentHeartRate}
-                peakHr={
-                  setHistory.length > 0
-                    ? setHistory[setHistory.length - 1].peak_hr
-                    : null
-                }
-              />
-            </View>
-            <TouchableOpacity
-              style={styles.startNextSetButton}
-              onPress={startSet}
-            >
-              <Text style={styles.startNextSetText}>次のセットを開始</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* Target Weight Input (Big 3 Only) */}
-        {isBig3(currentExercise?.category) && isSessionActive && (
-          <View style={styles.targetWeightCard}>
-            <Text style={styles.targetWeightLabel}>
-              今日の目標重量 (Top Set)
-            </Text>
-            <View style={styles.targetInputRow}>
-              <TextInput
-                style={styles.targetInput}
-                value={inputTargetWeight}
-                onChangeText={handleTargetWeightChange}
-                placeholder="最高重量を入力"
-                placeholderTextColor="#666"
-                keyboardType="decimal-pad"
-                returnKeyType="done"
-                selectTextOnFocus
-              />
-              <Text style={styles.unitText}>kg</Text>
-            </View>
-          </View>
-        )}
-
-        {/* Warmup Guide */}
-        {isBig3(currentExercise?.category) &&
-          targetWeight &&
-          isSessionActive &&
-          settings.enable_warmup_recommendations && (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>WARMUP GUIDE</Text>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={styles.warmupScroll}
-              >
-                {calculateWarmupSteps(targetWeight).map((step, idx) => {
-                  const isCurrent = currentLoad === step.load_kg;
-                  return (
-                    <TouchableOpacity
-                      key={idx}
-                      style={[
-                        styles.warmupStep,
-                        isCurrent && styles.warmupStepActive,
-                      ]}
-                      onPress={() => handleLoadChange(step.load_kg.toString())}
-                    >
-                      <Text
-                        style={[
-                          styles.warmupStepLabel,
-                          isCurrent && styles.warmupStepLabelActive,
-                        ]}
-                      >
-                        {step.label}
-                      </Text>
-                      <Text
-                        style={[
-                          styles.warmupWeight,
-                          isCurrent && styles.warmupWeightActive,
-                        ]}
-                      >
-                        {formatLoadKg(step.load_kg)}kg
-                      </Text>
-                      <Text
-                        style={[
-                          styles.warmupReps,
-                          isCurrent && styles.warmupRepsActive,
-                        ]}
-                      >
-                        {step.reps > 0 ? `${step.reps} reps` : "Main"}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
+              )}
             </View>
           )}
 
-        {isSessionActive && readinessDecision && (
-          <View
-            style={[
-              styles.vbtDecisionCard,
-              readinessDecision.decision.label === "excellent" &&
-                styles.vbtDecisionPositive,
-              readinessDecision.decision.label === "down" &&
-                styles.vbtDecisionWarn,
-              readinessDecision.decision.label === "fatigued" &&
-                styles.vbtDecisionDanger,
-            ]}
-          >
-            <View style={styles.vbtDecisionHeader}>
-              <Text style={styles.protocolKicker}>WARMUP READINESS</Text>
-              <Text style={styles.protocolPhase}>
-                基準比 {readinessDecision.decision.deltaVelocity >= 0 ? "+" : ""}
-                {readinessDecision.decision.deltaVelocity.toFixed(2)} m/s
-              </Text>
-            </View>
-            <Text style={styles.protocolTitle}>
-              {readinessDecision.decision.message}
-            </Text>
-            <Text style={styles.protocolBody}>
-              同程度の重量 {readinessDecision.sampleCount}セットの中央値{" "}
-              {readinessDecision.baselineVelocity.toFixed(2)} m/s と比較しています。
-            </Text>
-          </View>
-        )}
-
-        {/* Set Configuration */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>SET CONFIGURATION</Text>
-          <View style={styles.loadControlContainer}>
-            <Text style={styles.loadControlLabel}>Load (kg)</Text>
-            <View style={styles.loadControlWrapper}>
-              <View style={styles.loadAdjustRow}>
-                <TouchableOpacity
-                  style={styles.adjustBtn}
-                  onPress={() => adjustLoad(-5)}
-                >
-                  <Text style={styles.adjustBtnText}>-5</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.adjustBtn}
-                  onPress={() => adjustLoad(-1)}
-                >
-                  <Text style={styles.adjustBtnText}>-1</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.adjustBtn}
-                  onPress={() => adjustLoad(-0.5)}
-                >
-                  <Text style={styles.adjustBtnText}>-0.5</Text>
-                </TouchableOpacity>
-              </View>
-              <View style={styles.loadDisplayValue}>
-                <Text style={styles.loadDisplayValueText}>
-                  {formatLoadKg(currentLoad)}
-                </Text>
-              </View>
-              <View style={styles.loadAdjustRow}>
-                <TouchableOpacity
-                  style={styles.adjustBtn}
-                  onPress={() => adjustLoad(0.5)}
-                >
-                  <Text style={styles.adjustBtnText}>+0.5</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.adjustBtn}
-                  onPress={() => adjustLoad(1)}
-                >
-                  <Text style={styles.adjustBtnText}>+1</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.adjustBtn}
-                  onPress={() => adjustLoad(5)}
-                >
-                  <Text style={styles.adjustBtnText}>+5</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-            <View style={styles.loadInputRow}>
-              <TextInput
-                style={styles.loadInput}
-                value={inputLoad}
-                onChangeText={setInputLoad}
-                onEndEditing={(event) =>
-                  commitLoadInput(event.nativeEvent.text)
-                }
-                onBlur={() => commitLoadInput(inputLoad)}
-                keyboardType="decimal-pad"
-                placeholder="重量を入力"
-                placeholderTextColor={GarageTheme.textSubtle}
-                returnKeyType="done"
-                selectTextOnFocus
-              />
-              <Text style={styles.unitText}>kg</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Live データ表示 */}
-        <View style={styles.dataCard}>
-          <Text style={styles.dataTitle}>Live Data</Text>
-          {liveData ? (
-            <>
-              {/* 速度ゾーンバッジ */}
-              {(() => {
-                const zone = AICoachService.getZone(liveData.mean_velocity);
-                return (
-                  <View style={[styles.zoneBadge, { borderColor: zone.color }]}>
-                    <Text
-                      style={[
-                        styles.zoneTag,
-                        { color: zone.color, borderColor: zone.color },
-                      ]}
-                    >
-                      {zone.emoji}
+          {/* セッション開始バナー */}
+          {settings.session_display_session_banner &&
+            (!isSessionActive ? (
+              <View style={styles.sessionStartBanner}>
+                <View style={styles.sessionStartBannerContent}>
+                  <View style={styles.sessionStartBadge}>
+                    <Text style={styles.sessionStartBadgeIcon}>⚡</Text>
+                  </View>
+                  <View style={styles.sessionStartTextContainer}>
+                    <Text style={styles.sessionStartTitle}>
+                      セッションを開始してください
                     </Text>
-                    <Text style={[styles.zoneName, { color: zone.color }]}>
-                      {zone.name}
+                    <Text style={styles.sessionStartSubtitle}>
+                      BLEセンサー接続済み
                     </Text>
                   </View>
-                );
-              })()}
-              <TouchableOpacity
-                style={styles.dataRow}
-                onPress={() =>
-                  showTooltip("MEAN_VELOCITY", liveData.mean_velocity)
-                }
-              >
-                <Text style={styles.dataLabel}>Mean Velocity</Text>
-                <Text
-                  style={[
-                    styles.dataValue,
-                    {
-                      color: AICoachService.getZone(liveData.mean_velocity)
-                        .color,
-                    },
-                  ]}
-                >
-                  {liveData.mean_velocity.toFixed(2)} m/s
-                </Text>
-                <Text style={styles.helpIcon}>❓</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.dataRow}
-                onPress={() =>
-                  showTooltip("PEAK_VELOCITY", liveData.peak_velocity)
-                }
-              >
-                <Text style={styles.dataLabel}>Peak Velocity</Text>
-                <Text style={styles.dataValue}>
-                  {liveData.peak_velocity.toFixed(2)} m/s
-                </Text>
-                <Text style={styles.helpIcon}>❓</Text>
-              </TouchableOpacity>
-              <View style={styles.dataRow}>
-                <Text style={styles.dataLabel}>Mean Power</Text>
-                <Text style={styles.dataValue}>
-                  {liveMeanPower != null ? `${Math.round(liveMeanPower)} W` : "-"}
-                </Text>
-              </View>
-              <View style={styles.dataRow}>
-                <Text style={styles.dataLabel}>Peak Power</Text>
-                <Text style={styles.dataValue}>
-                  {livePeakPower != null ? `${Math.round(livePeakPower)} W` : "-"}
-                </Text>
-              </View>
-              <TouchableOpacity
-                style={styles.dataRow}
-                onPress={() => showTooltip("ROM", liveData.rom_cm)}
-              >
-                <Text style={styles.dataLabel}>ROM</Text>
-                <Text style={styles.dataValue}>
-                  {liveData.rom_cm.toFixed(0)} cm
-                </Text>
-                <Text style={styles.helpIcon}>❓</Text>
-              </TouchableOpacity>
-              {romConsistencyMessage && (
-                <Text style={styles.liveHintText}>{romConsistencyMessage}</Text>
-              )}
-            </>
-          ) : (
-            <>
-              <Text style={styles.noDataText}>REP INPUT WAITING</Text>
-              <View style={styles.dataRow}>
-                <Text style={styles.dataLabel}>Mean Power</Text>
-                <Text style={styles.dataValue}>-</Text>
-              </View>
-              <View style={styles.dataRow}>
-                <Text style={styles.dataLabel}>Peak Power</Text>
-                <Text style={styles.dataValue}>-</Text>
-              </View>
-            </>
-          )}
-        </View>
-
-        {/* レップ毎の平均速度推移グラフ */}
-        {isSessionActive && repHistory && repHistory.length > 0 && (
-          <RepVelocityChart
-            reps={repHistory}
-            setIndex={currentSetIndex}
-            lift={currentLift ?? undefined}
-          />
-        )}
-
-        {isSessionActive && liveVelocityLossDecision && (
-          <View
-            style={[
-              styles.vbtDecisionCard,
-              liveVelocityLossDecision.status === "watch" &&
-                styles.vbtDecisionWarn,
-              liveVelocityLossDecision.status === "stop" &&
-                styles.vbtDecisionDanger,
-            ]}
-          >
-            <View style={styles.vbtDecisionHeader}>
-              <Text style={styles.protocolKicker}>VELOCITY LOSS</Text>
-              <Text style={styles.protocolPhase}>
-                {liveVelocityLossDecision.velocityLoss.toFixed(1)} /{" "}
-                {liveVelocityLossDecision.threshold}%
-              </Text>
-            </View>
-            <Text style={styles.protocolTitle}>
-              {liveVelocityLossDecision.message}
-            </Text>
-            <Text style={styles.protocolBody}>
-              {liveVelocityLossDecision.nextSetMessage}
-            </Text>
-          </View>
-        )}
-
-        {/* Action Buttons */}
-        <View style={styles.buttonContainer}>
-          <TouchableOpacity
-            style={[
-              styles.warmupButton,
-              isWarmupMode && styles.warmupButtonActive,
-            ]}
-            onPress={() => {
-              const newMode = !isWarmupMode;
-              setIsWarmupMode(newMode);
-              setWarmupMode(newMode);
-            }}
-          >
-            <Text style={styles.warmupButtonText}>
-              {isWarmupMode ? "ウォームアップON" : "ウォームアップ"}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.button, styles.recordButton]}
-            onPress={handleFinishSet}
-          >
-            <Text style={styles.buttonText}>SET COMPLETE</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* AIコーチアドバイスカード */}
-        {setHistory.length > 0 &&
-          (() => {
-            const advice = AICoachService.getCoachingAdvice(
-              setHistory,
-              currentSetIndex,
-              currentExercise,
-            );
-            const colorMap = {
-              info: GarageTheme.info,
-              success: GarageTheme.success,
-              warning: GarageTheme.warning,
-              alert: GarageTheme.danger,
-            };
-            return (
-              <View
-                style={[
-                  styles.coachCard,
-                  { borderColor: colorMap[advice.severity] },
-                ]}
-              >
-                <View
-                  style={[
-                    styles.coachBadge,
-                    { borderColor: colorMap[advice.severity] },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.coachBadgeText,
-                      { color: colorMap[advice.severity] },
-                    ]}
-                  >
-                    {advice.emoji}
-                  </Text>
                 </View>
-                <View style={styles.coachContent}>
-                  <Text
-                    style={[
-                      styles.coachMessage,
-                      { color: colorMap[advice.severity] },
-                    ]}
-                  >
-                    {advice.message}
-                  </Text>
-                  {advice.suggestedAction && (
-                    <Text style={styles.coachAction}>
-                      {advice.suggestedAction}
-                    </Text>
-                  )}
-                </View>
-              </View>
-            );
-          })()}
-
-        {/* 直近同重量の速度履歴 */}
-        {sameLoadRecentHistory.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>
-              直近同重量 {formatLoadKg(currentLoad)}kg の速度履歴
-            </Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={styles.recentHistoryScroll}
-              contentContainerStyle={styles.recentHistoryContent}
-            >
-              {sameLoadRecentHistory.map((set) => {
-                const zone = set.avg_velocity
-                  ? AICoachService.getZone(set.avg_velocity)
-                  : null;
-                return (
-                  <TouchableOpacity
-                    key={`same-${set.session_id}-${set.set_index}`}
-                    style={[
-                      styles.recentHistoryCard,
-                      { borderColor: zone?.color ?? GarageTheme.border },
-                    ]}
-                    onPress={() => openRepDetail(set)}
-                  >
-                    <Text style={styles.recentHistoryDate}>
-                      {new Date(set.timestamp).toLocaleDateString("ja-JP", {
-                        month: "short",
-                        day: "numeric",
-                      })}
-                    </Text>
-                    <View style={styles.recentHistoryStats}>
-                      <View style={styles.recentHistoryStat}>
-                        <Text style={styles.recentHistoryStatLabel}>回数</Text>
-                        <Text style={styles.recentHistoryStatValue}>
-                          {set.reps}
-                        </Text>
-                      </View>
-                      {set.avg_velocity ? (
-                        <View style={styles.recentHistoryStat}>
-                          <Text style={styles.recentHistoryStatLabel}>
-                            平均速度
-                          </Text>
-                          <Text style={styles.recentHistoryStatValue}>
-                            {set.avg_velocity.toFixed(2)}
-                          </Text>
-                        </View>
-                      ) : null}
-                      {set.velocity_loss != null ? (
-                        <View style={styles.recentHistoryStat}>
-                          <Text style={styles.recentHistoryStatLabel}>VL</Text>
-                          <Text style={styles.recentHistoryStatValue}>
-                            {set.velocity_loss.toFixed(1)}%
-                          </Text>
-                        </View>
-                      ) : null}
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-          </View>
-        )}
-
-        {/* 最近の種目履歴 */}
-        {recentExerciseHistory.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>最近の{currentLift}履歴</Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={styles.recentHistoryScroll}
-              contentContainerStyle={styles.recentHistoryContent}
-            >
-              {recentExerciseHistory.map((set) => {
-                const zone = set.avg_velocity
-                  ? AICoachService.getZone(set.avg_velocity)
-                  : null;
-                return (
-                  <TouchableOpacity
-                    key={`${set.session_id}-${set.set_index}`}
-                    style={[
-                      styles.recentHistoryCard,
-                      { borderColor: zone?.color ?? GarageTheme.border },
-                    ]}
-                    onPress={() => openRepDetail(set)}
-                  >
-                    <Text style={styles.recentHistoryDate}>
-                      {new Date(set.timestamp).toLocaleDateString("ja-JP", {
-                        month: "short",
-                        day: "numeric",
-                      })}
-                    </Text>
-                    <View style={styles.recentHistoryStats}>
-                      <View style={styles.recentHistoryStat}>
-                        <Text style={styles.recentHistoryStatLabel}>重量</Text>
-                        <Text style={styles.recentHistoryStatValue}>
-                          {formatLoadKg(set.load_kg)}
-                        </Text>
-                      </View>
-                      <View style={styles.recentHistoryStat}>
-                        <Text style={styles.recentHistoryStatLabel}>回数</Text>
-                        <Text style={styles.recentHistoryStatValue}>
-                          {set.reps}
-                        </Text>
-                      </View>
-                      {set.avg_velocity && (
-                        <View style={styles.recentHistoryStat}>
-                          <Text style={styles.recentHistoryStatLabel}>
-                            速度
-                          </Text>
-                          <Text style={styles.recentHistoryStatValue}>
-                            {set.avg_velocity.toFixed(2)}
-                          </Text>
-                        </View>
-                      )}
-                    </View>
-                    {set.e1rm && (
-                      <Text style={styles.recentHistoryE1RM}>
-                        e1RM: {formatLoadKg(set.e1rm)}
-                      </Text>
-                    )}
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-          </View>
-        )}
-
-        {/* セッション履歴 */}
-        {setHistory.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>SESSION HISTORY</Text>
-            {setHistory.map((set, idx) => {
-              const zone = set.avg_velocity
-                ? AICoachService.getZone(set.avg_velocity)
-                : null;
-              const setReps =
-                repsBySetKey.get(getSetKey(set.lift, set.set_index)) ?? [];
-              const trackedReps = setReps.filter(
-                (rep) => !rep.is_excluded && !rep.is_failed && rep.is_valid_rep,
-              );
-              const repPowerValues = trackedReps
-                .map((rep) =>
-                  getDisplayPower(
-                    rep.mean_power_w,
-                    rep.mean_velocity,
-                    rep.load_kg || set.load_kg,
-                  ),
-                )
-                .filter((power): power is number => power != null && power > 0);
-              const storedSetAvgPower =
-                set.avg_power_w != null && set.avg_power_w > 0
-                  ? set.avg_power_w
-                  : null;
-              const avgPower =
-                repPowerValues.length > 0
-                  ? repPowerValues.reduce((sum, power) => sum + power, 0) /
-                    repPowerValues.length
-                  : storedSetAvgPower ??
-                    (set.avg_velocity != null
-                      ? VBTLogic.calculatePower(set.load_kg, set.avg_velocity)
-                      : null);
-              const estimatedRPE =
-                set.velocity_loss != null
-                  ? estimateRPEFromVelocityLoss(set.velocity_loss, set.reps)
-                  : null;
-
-              return (
-                <View
-                  key={`${set.lift}_${set.set_index}_${idx}`}
-                  style={styles.setCard}
+                <TouchableOpacity
+                  style={[styles.button, styles.startSessionButton]}
+                  onPress={handleStartSession}
                 >
+                  <Text style={styles.buttonText}>セッション開始</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={styles.sessionActiveBanner}>
+                <View style={styles.sessionActiveBannerLeft}>
+                  <View
+                    style={[
+                      styles.sessionActiveIndicator,
+                      isPaused && styles.sessionActiveIndicatorPaused,
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.sessionActiveIndicatorDot,
+                        isPaused && styles.sessionActiveIndicatorDotPaused,
+                      ]}
+                    />
+                  </View>
+                  <View style={styles.sessionActiveTextContainer}>
+                    <Text style={styles.sessionActiveTitle}>
+                      {isPaused
+                        ? `SET ${Math.max(1, currentSetIndex - 1)} PAUSED`
+                        : sensorInputMuted
+                          ? `SET ${currentSetIndex} SENSOR MUTED`
+                          : `SET ${currentSetIndex} RECORDING`}
+                    </Text>
+                    <Text style={styles.sessionActiveSubtitle}>
+                      {isPaused
+                        ? "一時停止中"
+                        : sensorInputMuted
+                          ? "ラック調整中・入力無視"
+                          : "レコーディング中"}
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.sessionActiveActions}>
                   <TouchableOpacity
-                    activeOpacity={0.8}
+                    style={[
+                      styles.sensorMuteButton,
+                      sensorInputMuted && styles.sensorMuteButtonActive,
+                    ]}
+                    onPress={handleToggleSensorInputMuted}
+                  >
+                    <Text
+                      style={[
+                        styles.sensorMuteButtonText,
+                        sensorInputMuted && styles.sensorMuteButtonTextActive,
+                      ]}
+                    >
+                      {sensorInputMuted ? "入力ON" : "入力OFF"}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.pauseBtn,
+                      isPaused && styles.pausedBtnActive,
+                    ]}
                     onPress={() => {
-                      void openRepDetail(set);
+                      if (isPaused) {
+                        // 再開時：履歴を保持するため resumeSet を使用
+                        resumeSet();
+                      } else {
+                        // 一時停止時はsetPausedを使用
+                        setPaused(true, "manual");
+                      }
                     }}
                   >
-                    <View style={styles.setHeader}>
-                      <Text style={styles.setExerciseName}>{set.lift}</Text>
-                      <Text style={styles.setNumberText}>
-                        Set {set.set_index}
+                    <View style={styles.pauseBtnContent}>
+                      <Text style={styles.pauseBtnIcon}>
+                        {isPaused ? "▶" : "⏸"}
+                      </Text>
+                      <Text style={styles.pauseBtnText}>
+                        {isPaused ? "再開" : "一時停止"}
                       </Text>
                     </View>
-                    <View style={styles.setMetaRow}>
-                      <Text style={styles.setLoad}>
-                        {formatLoadKg(set.load_kg)} kg × {set.reps}
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
+
+          {/* CNS Battery & VBT Intelligence Summary */}
+          {showAdviceDisplay &&
+            settings.session_display_intelligence &&
+            isSessionActive && (
+              <View style={styles.intelligenceRow}>
+                <View style={styles.cnsBatteryContainer}>
+                  <Text style={styles.cnsLabel}>CNS BATTERY™</Text>
+                  <View style={styles.batteryGageBg}>
+                    <View
+                      style={[
+                        styles.batteryGageFill,
+                        {
+                          width: `${cnsBattery}%`,
+                          backgroundColor:
+                            cnsBattery > 70
+                              ? GarageTheme.success
+                              : cnsBattery > 40
+                                ? GarageTheme.warning
+                                : GarageTheme.danger,
+                        },
+                      ]}
+                    />
+                  </View>
+                  <Text style={styles.cnsValue}>{cnsBattery}%</Text>
+                </View>
+
+                {estimated1RM !== null && (
+                  <View style={styles.intelligenceBadge}>
+                    <Text style={styles.intelligenceLabel}>
+                      本日予想1RM（参考）
+                    </Text>
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "baseline",
+                        gap: 4,
+                      }}
+                    >
+                      <Text style={styles.intelligenceValue}>
+                        {estimated1RM}
                       </Text>
-                      {zone ? (
+                      <Text style={styles.unitSmall}>kg</Text>
+                    </View>
+                    {estimated1RM_confidence && (
+                      <View
+                        style={[
+                          styles.confidenceIndicator,
+                          {
+                            backgroundColor:
+                              estimated1RM_confidence === "high"
+                                ? GarageTheme.success
+                                : estimated1RM_confidence === "medium"
+                                  ? GarageTheme.warning
+                                  : GarageTheme.danger,
+                          },
+                        ]}
+                      >
+                        <Text style={styles.confidenceText}>
+                          {estimated1RM_confidence === "high"
+                            ? "High"
+                            : estimated1RM_confidence === "medium"
+                              ? "Med"
+                              : "Low"}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                )}
+              </View>
+            )}
+
+          {showAdviceDisplay &&
+            settings.session_display_attempt_guide &&
+            isSessionActive &&
+            attemptPlan &&
+            isBig3(currentExercise?.category) && (
+              <View style={styles.vbtDecisionCard}>
+                <View style={styles.vbtDecisionHeader}>
+                  <Text style={styles.protocolKicker}>ATTEMPT GUIDE</Text>
+                  <Text style={styles.protocolPhase}>e1RM参考</Text>
+                </View>
+                <View style={styles.attemptGrid}>
+                  <View style={styles.attemptCell}>
+                    <Text style={styles.protocolMetricLabel}>第1</Text>
+                    <Text style={styles.attemptValue}>
+                      {formatLoadKg(attemptPlan.opener)}kg
+                    </Text>
+                  </View>
+                  <View style={styles.attemptCell}>
+                    <Text style={styles.protocolMetricLabel}>第2</Text>
+                    <Text style={styles.attemptValue}>
+                      {formatLoadKg(attemptPlan.second)}kg
+                    </Text>
+                  </View>
+                  <View style={styles.attemptCell}>
+                    <Text style={styles.protocolMetricLabel}>第3</Text>
+                    <Text style={styles.attemptValue}>
+                      {formatLoadKg(attemptPlan.thirdLow)}〜
+                      {formatLoadKg(attemptPlan.thirdHigh)}kg
+                    </Text>
+                  </View>
+                </View>
+                <Text style={styles.protocolBody}>
+                  第1は確実に成功する重量。{attemptPlan.note}
+                </Text>
+              </View>
+            )}
+
+          {showAdviceDisplay &&
+            settings.session_display_suggestions &&
+            isSessionActive &&
+            setHistory.length > 0 && (
+              <View
+                style={[
+                  styles.vbtDecisionCard,
+                  sessionDecision.trendFlags.romDrop ||
+                  sessionDecision.trendFlags.hrHigh
+                    ? styles.vbtDecisionDanger
+                    : sessionDecision.fatigueStatus === "watch" ||
+                        sessionDecision.trendFlags.sameLoadAVDrop
+                      ? styles.vbtDecisionWarn
+                      : styles.vbtDecisionPositive,
+                ]}
+              >
+                <View style={styles.vbtDecisionHeader}>
+                  <Text style={styles.protocolKicker}>NEXT SET DECISION</Text>
+                  <Text style={styles.protocolPhase}>
+                    {getDecisionLabel(sessionDecision.formStatus)} /{" "}
+                    {getDecisionLabel(sessionDecision.fatigueStatus)}
+                  </Text>
+                </View>
+
+                <View style={styles.purposeChipRow}>
+                  {NEXT_SET_PURPOSE_OPTIONS.map((option) => (
+                    <TouchableOpacity
+                      key={option.value}
+                      style={[
+                        styles.purposeChip,
+                        nextSetPurpose === option.value &&
+                          styles.purposeChipActive,
+                      ]}
+                      onPress={() => setNextSetPurpose(option.value)}
+                    >
+                      <Text
+                        style={[
+                          styles.purposeChipText,
+                          nextSetPurpose === option.value &&
+                            styles.purposeChipTextActive,
+                        ]}
+                      >
+                        {option.shortLabel}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <View style={styles.nextSetSummaryRow}>
+                  <View style={styles.nextSetSummaryCell}>
+                    <Text style={styles.protocolMetricLabel}>次セット</Text>
+                    <Text style={styles.attemptValue}>
+                      {sessionDecision.recommendedNextLoad != null
+                        ? `${formatLoadKg(sessionDecision.recommendedNextLoad)}kg × ${currentReps}`
+                        : "-"}
+                    </Text>
+                  </View>
+                  <View style={styles.nextSetSummaryCell}>
+                    <Text style={styles.protocolMetricLabel}>休憩</Text>
+                    <Text style={styles.attemptValue}>
+                      HR
+                      {sessionDecision.waitUntilHRBelow ?? "-"}以下
+                    </Text>
+                  </View>
+                  <View style={styles.nextSetSummaryCell}>
+                    <Text style={styles.protocolMetricLabel}>ROM差</Text>
+                    <Text style={styles.attemptValue}>
+                      {formatNumber(sessionDecision.romDiff, 1, "cm")}
+                    </Text>
+                  </View>
+                </View>
+
+                <Text style={styles.protocolBody}>
+                  目的: {nextSetPurposeLabel} / 作業AV{" "}
+                  {formatNumber(sessionDecision.workingSetAvgAV)} / 直近3{" "}
+                  {formatNumber(sessionDecision.recent3WorkingSetAvgAV)}
+                </Text>
+                {sessionDecision.reasonBullets.slice(0, 3).map((reason) => (
+                  <Text key={reason} style={styles.liveHintText}>
+                    ・{reason}
+                  </Text>
+                ))}
+                <Text style={styles.liveHintText}>
+                  合格: {sessionDecision.passCriteria.join(" / ")}
+                </Text>
+                <Text style={styles.liveHintText}>
+                  終了条件: {sessionDecision.stopCriteria.join(" / ")}
+                </Text>
+              </View>
+            )}
+
+          {/* Adaptive Load Suggestion */}
+          {showAdviceDisplay &&
+            settings.session_display_suggestions &&
+            isSessionActive &&
+            suggestedLoad !== null &&
+            suggestedLoad !== currentLoad && (
+              <TouchableOpacity
+                style={styles.suggestionBanner}
+                onPress={() => handleLoadChange(suggestedLoad.toString())}
+              >
+                <View style={styles.suggestionContent}>
+                  <Text style={styles.suggestionText}>
+                    推奨重量:{" "}
+                    <Text style={styles.suggestionWeight}>
+                      {formatLoadKg(suggestedLoad)}kg
+                    </Text>{" "}
+                    に変更しますか？
+                  </Text>
+                </View>
+                <Text style={styles.applyText}>適用する</Text>
+              </TouchableOpacity>
+            )}
+
+          {showAdviceDisplay &&
+            settings.session_display_suggestions &&
+            !isSessionActive &&
+            currentLift && (
+              <TouchableOpacity
+                style={styles.optimizeMvtButton}
+                onPress={() => void calculateAndProposeMVT()}
+              >
+                <Text style={styles.optimizeMvtButtonText}>
+                  履歴から V@1RM を最適化
+                </Text>
+              </TouchableOpacity>
+            )}
+
+          {/* MVT Proposal Banner */}
+          {showAdviceDisplay &&
+            settings.session_display_suggestions &&
+            !isSessionActive &&
+            proposedMVT !== null &&
+            currentLift && (
+              <View
+                style={[
+                  styles.suggestionBanner,
+                  {
+                    backgroundColor: GarageTheme.surface,
+                    borderLeftColor: GarageTheme.accentSoft,
+                  },
+                ]}
+              >
+                <View style={styles.suggestionContent}>
+                  <View>
+                    <Text style={styles.suggestionText}>
+                      {currentLift}の新しい限界速度(MVT)候補:
+                    </Text>
+                    <Text
+                      style={[
+                        styles.suggestionWeight,
+                        { color: GarageTheme.accentSoft, fontSize: 16 },
+                      ]}
+                    >
+                      {proposedMVT} m/s
+                    </Text>
+                  </View>
+                </View>
+                <View style={{ flexDirection: "row", gap: 12 }}>
+                  <TouchableOpacity onPress={() => setProposedMVT(null)}>
+                    <Text
+                      style={[
+                        styles.applyText,
+                        { color: GarageTheme.textMuted },
+                      ]}
+                    >
+                      無視
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={handleAcceptMVT}>
+                    <Text
+                      style={[
+                        styles.applyText,
+                        { color: GarageTheme.accentSoft, fontSize: 14 },
+                      ]}
+                    >
+                      更新する
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+
+          {/* Rest Timer Banner */}
+          {settings.session_display_rest_timer &&
+            isSessionActive &&
+            isPaused &&
+            pauseReason === "rest" && (
+              <View style={styles.restBanner}>
+                <View style={styles.restHeader}>
+                  <Text style={styles.restLabel}>RESTING...</Text>
+                  <RestTimer
+                    startTime={restStartTime || 0}
+                    hr={currentHeartRate}
+                    peakHr={
+                      setHistory.length > 0
+                        ? setHistory[setHistory.length - 1].peak_hr
+                        : null
+                    }
+                  />
+                </View>
+                <TouchableOpacity
+                  style={styles.startNextSetButton}
+                  onPress={startSet}
+                >
+                  <Text style={styles.startNextSetText}>次のセットを開始</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+          {/* Target Weight Input (Big 3 Only) */}
+          {settings.session_display_target_weight &&
+            isBig3(currentExercise?.category) &&
+            isSessionActive && (
+              <View style={styles.targetWeightCard}>
+                <Text style={styles.targetWeightLabel}>
+                  今日の目標重量 (Top Set)
+                </Text>
+                <View style={styles.targetInputRow}>
+                  <TextInput
+                    style={styles.targetInput}
+                    value={inputTargetWeight}
+                    onChangeText={handleTargetWeightChange}
+                    placeholder="最高重量を入力"
+                    placeholderTextColor="#666"
+                    keyboardType="decimal-pad"
+                    returnKeyType="done"
+                    selectTextOnFocus
+                  />
+                  <Text style={styles.unitText}>kg</Text>
+                </View>
+              </View>
+            )}
+
+          {/* Warmup Guide */}
+          {showAdviceDisplay &&
+            settings.session_display_warmup_guide &&
+            isBig3(currentExercise?.category) &&
+            targetWeight &&
+            isSessionActive &&
+            settings.enable_warmup_recommendations && (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>WARMUP GUIDE</Text>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={styles.warmupScroll}
+                >
+                  {calculateWarmupSteps(targetWeight).map((step, idx) => {
+                    const isCurrent = currentLoad === step.load_kg;
+                    return (
+                      <TouchableOpacity
+                        key={idx}
+                        style={[
+                          styles.warmupStep,
+                          isCurrent && styles.warmupStepActive,
+                        ]}
+                        onPress={() =>
+                          handleLoadChange(step.load_kg.toString())
+                        }
+                      >
                         <Text
                           style={[
-                            styles.setZoneTag,
+                            styles.warmupStepLabel,
+                            isCurrent && styles.warmupStepLabelActive,
+                          ]}
+                        >
+                          {step.label}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.warmupWeight,
+                            isCurrent && styles.warmupWeightActive,
+                          ]}
+                        >
+                          {formatLoadKg(step.load_kg)}kg
+                        </Text>
+                        <Text
+                          style={[
+                            styles.warmupReps,
+                            isCurrent && styles.warmupRepsActive,
+                          ]}
+                        >
+                          {step.reps > 0 ? `${step.reps} reps` : "Main"}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+            )}
+
+          {showAdviceDisplay &&
+            settings.session_display_readiness &&
+            isSessionActive &&
+            readinessDecision && (
+              <View
+                style={[
+                  styles.vbtDecisionCard,
+                  readinessDecision.decision.label === "excellent" &&
+                    styles.vbtDecisionPositive,
+                  readinessDecision.decision.label === "down" &&
+                    styles.vbtDecisionWarn,
+                  readinessDecision.decision.label === "fatigued" &&
+                    styles.vbtDecisionDanger,
+                ]}
+              >
+                <View style={styles.vbtDecisionHeader}>
+                  <Text style={styles.protocolKicker}>WARMUP READINESS</Text>
+                  <Text style={styles.protocolPhase}>
+                    基準比{" "}
+                    {readinessDecision.decision.deltaVelocity >= 0 ? "+" : ""}
+                    {readinessDecision.decision.deltaVelocity.toFixed(2)} m/s
+                  </Text>
+                </View>
+                <Text style={styles.protocolTitle}>
+                  {readinessDecision.decision.message}
+                </Text>
+                <Text style={styles.protocolBody}>
+                  同程度の重量 {readinessDecision.sampleCount}セットの中央値{" "}
+                  {readinessDecision.baselineVelocity.toFixed(2)} m/s
+                  と比較しています。
+                </Text>
+              </View>
+            )}
+
+          {/* Set Configuration */}
+          {settings.session_display_set_config && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>SET CONFIGURATION</Text>
+              <View style={styles.loadControlContainer}>
+                <Text style={styles.loadControlLabel}>Load (kg)</Text>
+                <View style={styles.loadControlWrapper}>
+                  <View style={styles.loadAdjustRow}>
+                    <TouchableOpacity
+                      style={styles.adjustBtn}
+                      onPress={() => adjustLoad(-5)}
+                    >
+                      <Text style={styles.adjustBtnText}>-5</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.adjustBtn}
+                      onPress={() => adjustLoad(-1)}
+                    >
+                      <Text style={styles.adjustBtnText}>-1</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.adjustBtn}
+                      onPress={() => adjustLoad(-0.5)}
+                    >
+                      <Text style={styles.adjustBtnText}>-0.5</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <View style={styles.loadDisplayValue}>
+                    <Text style={styles.loadDisplayValueText}>
+                      {formatLoadKg(currentLoad)}
+                    </Text>
+                  </View>
+                  <View style={styles.loadAdjustRow}>
+                    <TouchableOpacity
+                      style={styles.adjustBtn}
+                      onPress={() => adjustLoad(0.5)}
+                    >
+                      <Text style={styles.adjustBtnText}>+0.5</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.adjustBtn}
+                      onPress={() => adjustLoad(1)}
+                    >
+                      <Text style={styles.adjustBtnText}>+1</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.adjustBtn}
+                      onPress={() => adjustLoad(5)}
+                    >
+                      <Text style={styles.adjustBtnText}>+5</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+                <View style={styles.loadInputRow}>
+                  <TextInput
+                    style={styles.loadInput}
+                    value={inputLoad}
+                    onChangeText={setInputLoad}
+                    onEndEditing={(event) =>
+                      commitLoadInput(event.nativeEvent.text)
+                    }
+                    onBlur={() => commitLoadInput(inputLoad)}
+                    keyboardType="decimal-pad"
+                    placeholder="重量を入力"
+                    placeholderTextColor={GarageTheme.textSubtle}
+                    returnKeyType="done"
+                    selectTextOnFocus
+                  />
+                  <Text style={styles.unitText}>kg</Text>
+                </View>
+              </View>
+            </View>
+          )}
+
+          {/* Live データ表示 */}
+          {settings.session_display_live_data && (
+            <View style={styles.dataCard}>
+              <Text style={styles.dataTitle}>Live Data</Text>
+              {liveData ? (
+                <>
+                  {/* 速度ゾーンバッジ */}
+                  {(() => {
+                    const zone = VBTGuideService.getZone(liveData.mean_velocity);
+                    return (
+                      <View
+                        style={[styles.zoneBadge, { borderColor: zone.color }]}
+                      >
+                        <Text
+                          style={[
+                            styles.zoneTag,
                             { color: zone.color, borderColor: zone.color },
                           ]}
                         >
                           {zone.emoji}
                         </Text>
-                      ) : null}
-                    </View>
-                    <View style={styles.setRowDetail}>
-                      <Text
-                        style={[
-                          styles.setVelocity,
-                          zone ? { color: zone.color } : {},
-                        ]}
-                      >
-                        Avg Vel {set.avg_velocity?.toFixed(2) ?? "-"} m/s
-                      </Text>
-                      <Text style={styles.setMetricChipText}>
-                        Power{" "}
-                        {avgPower != null ? `${Math.round(avgPower)} W` : "-"}
-                      </Text>
-                      <Text style={styles.setMetricChipText}>
-                        VL{" "}
-                        {set.velocity_loss != null
-                          ? `${set.velocity_loss.toFixed(1)}%`
-                          : "-"}
-                      </Text>
-                      <Text style={styles.setMetricChipText}>
-                        心拍{" "}
-                        {set.avg_hr != null
-                          ? `${Math.round(set.avg_hr)} bpm`
-                          : "-"}
-                      </Text>
-                      <Text style={styles.setMetricChipText}>
-                        推定RPE{" "}
-                        {estimatedRPE ? estimatedRPE.rpe.toFixed(1) : "-"}
-                      </Text>
-                    </View>
-                    <SetVelocityMiniChart reps={trackedReps} />
+                        <Text style={[styles.zoneName, { color: zone.color }]}>
+                          {zone.name}
+                        </Text>
+                      </View>
+                    );
+                  })()}
+                  <TouchableOpacity
+                    style={styles.dataRow}
+                    onPress={() =>
+                      showTooltip("MEAN_VELOCITY", liveData.mean_velocity)
+                    }
+                  >
+                    <Text style={styles.dataLabel}>Mean Velocity</Text>
+                    <Text
+                      style={[
+                        styles.dataValue,
+                        {
+                          color: VBTGuideService.getZone(liveData.mean_velocity)
+                            .color,
+                        },
+                      ]}
+                    >
+                      {liveData.mean_velocity.toFixed(2)} m/s
+                    </Text>
+                    <Text style={styles.helpIcon}>❓</Text>
                   </TouchableOpacity>
-                  <View style={styles.setCardActions}>
-                    <TouchableOpacity
-                      style={styles.setActionButton}
-                      onPress={() => {
-                        void openRepDetail(set);
-                      }}
-                    >
-                      <Text style={styles.setActionButtonText}>詳細</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.setActionButton}
-                      onPress={() => handleEditSetLoad(set)}
-                    >
-                      <Text style={styles.setActionButtonText}>編集</Text>
-                    </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.dataRow}
+                    onPress={() =>
+                      showTooltip("PEAK_VELOCITY", liveData.peak_velocity)
+                    }
+                  >
+                    <Text style={styles.dataLabel}>Peak Velocity</Text>
+                    <Text style={styles.dataValue}>
+                      {liveData.peak_velocity.toFixed(2)} m/s
+                    </Text>
+                    <Text style={styles.helpIcon}>❓</Text>
+                  </TouchableOpacity>
+                  <View style={styles.dataRow}>
+                    <Text style={styles.dataLabel}>Mean Power</Text>
+                    <Text style={styles.dataValue}>
+                      {liveMeanPower != null
+                        ? `${Math.round(liveMeanPower)} W`
+                        : "-"}
+                    </Text>
                   </View>
+                  <View style={styles.dataRow}>
+                    <Text style={styles.dataLabel}>Peak Power</Text>
+                    <Text style={styles.dataValue}>
+                      {livePeakPower != null
+                        ? `${Math.round(livePeakPower)} W`
+                        : "-"}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.dataRow}
+                    onPress={() => showTooltip("ROM", liveData.rom_cm)}
+                  >
+                    <Text style={styles.dataLabel}>ROM</Text>
+                    <Text style={styles.dataValue}>
+                      {liveData.rom_cm.toFixed(0)} cm
+                    </Text>
+                    <Text style={styles.helpIcon}>❓</Text>
+                  </TouchableOpacity>
+                  {romConsistencyMessage && (
+                    <Text style={styles.liveHintText}>
+                      {romConsistencyMessage}
+                    </Text>
+                  )}
+                </>
+              ) : (
+                <>
+                  <Text style={styles.noDataText}>
+                    {sensorInputMuted
+                      ? "SENSOR INPUT MUTED"
+                      : "REP INPUT WAITING"}
+                  </Text>
+                  <View style={styles.dataRow}>
+                    <Text style={styles.dataLabel}>Mean Power</Text>
+                    <Text style={styles.dataValue}>-</Text>
+                  </View>
+                  <View style={styles.dataRow}>
+                    <Text style={styles.dataLabel}>Peak Power</Text>
+                    <Text style={styles.dataValue}>-</Text>
+                  </View>
+                </>
+              )}
+            </View>
+          )}
+
+          {/* レップ毎の平均速度推移グラフ */}
+          {settings.session_display_velocity_chart &&
+            isSessionActive &&
+            repHistory &&
+            repHistory.length > 0 && (
+              <RepVelocityChart
+                reps={repHistory}
+                setIndex={currentSetIndex}
+                lift={currentLift ?? undefined}
+              />
+            )}
+
+          {showAdviceDisplay &&
+            settings.session_display_vl_decision &&
+            isSessionActive &&
+            liveVelocityLossDecision && (
+              <View
+                style={[
+                  styles.vbtDecisionCard,
+                  liveVelocityLossDecision.status === "watch" &&
+                    styles.vbtDecisionWarn,
+                  liveVelocityLossDecision.status === "stop" &&
+                    styles.vbtDecisionDanger,
+                ]}
+              >
+                <View style={styles.vbtDecisionHeader}>
+                  <Text style={styles.protocolKicker}>VELOCITY LOSS</Text>
+                  <Text style={styles.protocolPhase}>
+                    {liveVelocityLossDecision.velocityLoss.toFixed(1)} /{" "}
+                    {liveVelocityLossDecision.threshold}%
+                  </Text>
                 </View>
-              );
-            })}
-          </View>
-        )}
+                <Text style={styles.protocolTitle}>
+                  {liveVelocityLossDecision.message}
+                </Text>
+                <Text style={styles.protocolBody}>
+                  {liveVelocityLossDecision.nextSetMessage}
+                </Text>
+              </View>
+            )}
 
-        {/* End Session */}
-        <View style={styles.buttonContainer}>
-          <TouchableOpacity
-            style={[styles.button, styles.finishButton]}
-            onPress={handleFinishSession}
-          >
-            <Text style={styles.buttonText}>SESSION END</Text>
-          </TouchableOpacity>
-        </View>
+          {/* Action Buttons */}
+          {settings.session_display_action_buttons && (
+            <View style={styles.buttonContainer}>
+              {formRecordingAvailable && (
+                <TouchableOpacity
+                  style={[styles.button, styles.formVideoButton]}
+                  onPress={handleOpenFormVideoRecorder}
+                >
+                  <Text style={styles.buttonText}>フォーム録画</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                style={[
+                  styles.warmupButton,
+                  isWarmupMode && styles.warmupButtonActive,
+                ]}
+                onPress={() => {
+                  const newMode = !isWarmupMode;
+                  setIsWarmupMode(newMode);
+                  setWarmupMode(newMode);
+                }}
+              >
+                <Text style={styles.warmupButtonText}>
+                  {isWarmupMode ? "ウォームアップON" : "ウォームアップ"}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.button, styles.recordButton]}
+                onPress={handleFinishSet}
+              >
+                <Text style={styles.buttonText}>SET COMPLETE</Text>
+              </TouchableOpacity>
+            </View>
+          )}
 
-      </ScrollView>
+          {/* 直近同重量の速度履歴 */}
+          {settings.session_display_same_load_history &&
+            sameLoadRecentHistory.length > 0 && (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>
+                  直近同重量 {formatLoadKg(currentLoad)}kg の速度履歴
+                </Text>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={styles.recentHistoryScroll}
+                  contentContainerStyle={styles.recentHistoryContent}
+                >
+                  {sameLoadRecentHistory.map((set) => {
+                    const zone = set.avg_velocity
+                      ? VBTGuideService.getZone(set.avg_velocity)
+                      : null;
+                    return (
+                      <TouchableOpacity
+                        key={`same-${set.session_id}-${set.set_index}`}
+                        style={[
+                          styles.recentHistoryCard,
+                          { borderColor: zone?.color ?? GarageTheme.border },
+                        ]}
+                        onPress={() => openRepDetail(set)}
+                      >
+                        <Text style={styles.recentHistoryDate}>
+                          {new Date(set.timestamp).toLocaleDateString("ja-JP", {
+                            month: "short",
+                            day: "numeric",
+                          })}
+                        </Text>
+                        <View style={styles.recentHistoryStats}>
+                          <View style={styles.recentHistoryStat}>
+                            <Text style={styles.recentHistoryStatLabel}>
+                              回数
+                            </Text>
+                            <Text style={styles.recentHistoryStatValue}>
+                              {set.reps}
+                            </Text>
+                          </View>
+                          {set.avg_velocity ? (
+                            <View style={styles.recentHistoryStat}>
+                              <Text style={styles.recentHistoryStatLabel}>
+                                平均速度
+                              </Text>
+                              <Text style={styles.recentHistoryStatValue}>
+                                {set.avg_velocity.toFixed(2)}
+                              </Text>
+                            </View>
+                          ) : null}
+                          {set.velocity_loss != null ? (
+                            <View style={styles.recentHistoryStat}>
+                              <Text style={styles.recentHistoryStatLabel}>
+                                VL
+                              </Text>
+                              <Text style={styles.recentHistoryStatValue}>
+                                {set.velocity_loss.toFixed(1)}%
+                              </Text>
+                            </View>
+                          ) : null}
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+            )}
+
+          {/* 最近の種目履歴 */}
+          {settings.session_display_recent_history &&
+            recentExerciseHistory.length > 0 && (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>最近の{currentLift}履歴</Text>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={styles.recentHistoryScroll}
+                  contentContainerStyle={styles.recentHistoryContent}
+                >
+                  {recentExerciseHistory.map((set) => {
+                    const zone = set.avg_velocity
+                      ? VBTGuideService.getZone(set.avg_velocity)
+                      : null;
+                    return (
+                      <TouchableOpacity
+                        key={`${set.session_id}-${set.set_index}`}
+                        style={[
+                          styles.recentHistoryCard,
+                          { borderColor: zone?.color ?? GarageTheme.border },
+                        ]}
+                        onPress={() => openRepDetail(set)}
+                      >
+                        <Text style={styles.recentHistoryDate}>
+                          {new Date(set.timestamp).toLocaleDateString("ja-JP", {
+                            month: "short",
+                            day: "numeric",
+                          })}
+                        </Text>
+                        <View style={styles.recentHistoryStats}>
+                          <View style={styles.recentHistoryStat}>
+                            <Text style={styles.recentHistoryStatLabel}>
+                              重量
+                            </Text>
+                            <Text style={styles.recentHistoryStatValue}>
+                              {formatLoadKg(set.load_kg)}
+                            </Text>
+                          </View>
+                          <View style={styles.recentHistoryStat}>
+                            <Text style={styles.recentHistoryStatLabel}>
+                              回数
+                            </Text>
+                            <Text style={styles.recentHistoryStatValue}>
+                              {set.reps}
+                            </Text>
+                          </View>
+                          {set.avg_velocity && (
+                            <View style={styles.recentHistoryStat}>
+                              <Text style={styles.recentHistoryStatLabel}>
+                                速度
+                              </Text>
+                              <Text style={styles.recentHistoryStatValue}>
+                                {set.avg_velocity.toFixed(2)}
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+                        {set.e1rm && (
+                          <Text style={styles.recentHistoryE1RM}>
+                            e1RM: {formatLoadKg(set.e1rm)}
+                          </Text>
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+            )}
+
+          {/* セッション履歴 */}
+          {settings.session_display_session_history &&
+            setHistory.length > 0 && (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>SESSION HISTORY</Text>
+                {hiddenSetHistoryCount > 0 && (
+                  <Text style={styles.liveHintText}>
+                    軽量モード: 最新 {visibleSetHistory.length}/
+                    {setHistory.length} セットだけ表示中
+                  </Text>
+                )}
+                {timeAllocationSummary ? (
+                  <Text style={styles.liveHintText}>
+                    時間割: セット平均{" "}
+                    {timeAllocationSummary.averageSetS != null
+                      ? formatDurationSeconds(timeAllocationSummary.averageSetS)
+                      : "-"}{" "}
+                    / 休憩平均{" "}
+                    {timeAllocationSummary.averageRestS != null
+                      ? formatDurationSeconds(
+                          timeAllocationSummary.averageRestS,
+                        )
+                      : "-"}
+                    {timeAllocationSummary.nextSetStartAt
+                      ? ` / 次セット目安 ${formatClockTime(timeAllocationSummary.nextSetStartAt) ?? "-"}`
+                      : ""}
+                  </Text>
+                ) : null}
+                {visibleSetHistory.map((set, idx) => {
+                  const zone = set.avg_velocity
+                    ? VBTGuideService.getZone(set.avg_velocity)
+                    : null;
+                  const setReps =
+                    repsBySetKey.get(getSetKey(set.lift, set.set_index)) ?? [];
+                  const trackedReps = setReps.filter(
+                    (rep) =>
+                      !rep.is_excluded && !rep.is_failed && rep.is_valid_rep,
+                  );
+                  const repPowerValues = trackedReps
+                    .map((rep) =>
+                      getDisplayPower(
+                        rep.mean_power_w,
+                        rep.mean_velocity,
+                        rep.load_kg || set.load_kg,
+                      ),
+                    )
+                    .filter(
+                      (power): power is number => power != null && power > 0,
+                    );
+                  const storedSetAvgPower =
+                    set.avg_power_w != null && set.avg_power_w > 0
+                      ? set.avg_power_w
+                      : null;
+                  const avgPower =
+                    repPowerValues.length > 0
+                      ? repPowerValues.reduce((sum, power) => sum + power, 0) /
+                        repPowerValues.length
+                      : (storedSetAvgPower ??
+                        (set.avg_velocity != null
+                          ? VBTLogic.calculatePower(
+                              set.load_kg,
+                              set.avg_velocity,
+                            )
+                          : null));
+                  const estimatedRPE =
+                    set.velocity_loss != null
+                      ? estimateRPEFromVelocityLoss(set.velocity_loss, set.reps)
+                      : null;
+                  const trendSets = getSetTrendWindow(setHistory, set);
+
+                  return (
+                    <View
+                      key={`${set.lift}_${set.set_index}_${idx}`}
+                      style={styles.setCard}
+                    >
+                      <TouchableOpacity
+                        activeOpacity={0.8}
+                        onPress={() => {
+                          void openRepDetail(set);
+                        }}
+                      >
+                        <View style={styles.setHeader}>
+                          <Text style={styles.setExerciseName}>{set.lift}</Text>
+                          <Text style={styles.setNumberText}>
+                            Set {set.set_index}
+                          </Text>
+                        </View>
+                        <View style={styles.setMetaRow}>
+                          <Text style={styles.setLoad}>
+                            {formatLoadKg(set.load_kg)} kg × {set.reps}
+                          </Text>
+                          <View style={styles.setMetaRight}>
+                            <SetTrendMiniChart
+                              sets={trendSets}
+                              currentSet={set}
+                            />
+                            {zone ? (
+                              <Text
+                                style={[
+                                  styles.setZoneTag,
+                                  {
+                                    color: zone.color,
+                                    borderColor: zone.color,
+                                  },
+                                ]}
+                              >
+                                {zone.emoji}
+                              </Text>
+                            ) : null}
+                          </View>
+                        </View>
+                        <View style={styles.setRowDetail}>
+                          {settings.enable_video_recording &&
+                            formVideoCountsBySet[
+                              getSetKey(set.lift, set.set_index)
+                            ] > 0 && (
+                              <Text style={styles.setMetricChipText}>
+                                動画{" "}
+                                {
+                                  formVideoCountsBySet[
+                                    getSetKey(set.lift, set.set_index)
+                                  ]
+                                }
+                              </Text>
+                            )}
+                          <Text
+                            style={[
+                              styles.setVelocity,
+                              zone ? { color: zone.color } : {},
+                            ]}
+                          >
+                            Avg Vel {set.avg_velocity?.toFixed(2) ?? "-"} m/s
+                          </Text>
+                          <Text style={styles.setMetricChipText}>
+                            Power{" "}
+                            {avgPower != null
+                              ? `${Math.round(avgPower)} W`
+                              : "-"}
+                          </Text>
+                          <Text style={styles.setMetricChipText}>
+                            VL{" "}
+                            {set.velocity_loss != null
+                              ? `${set.velocity_loss.toFixed(1)}%`
+                              : "-"}
+                          </Text>
+                          <Text style={styles.setMetricChipText}>
+                            心拍{" "}
+                            {set.avg_hr != null
+                              ? `${Math.round(set.avg_hr)} bpm`
+                              : "-"}
+                          </Text>
+                          <Text style={styles.setMetricChipText}>
+                            HR→120{" "}
+                            {set.hr_recovery_to_120_s != null
+                              ? formatDurationSeconds(
+                                  set.hr_recovery_to_120_s,
+                                )
+                              : "-"}
+                          </Text>
+                          <Text style={styles.setMetricChipText}>
+                            終了{" "}
+                            {formatClockTime(
+                              set.end_timestamp ?? set.timestamp,
+                            ) ?? "-"}
+                          </Text>
+                          <Text style={styles.setMetricChipText}>
+                            推定RPE{" "}
+                            {estimatedRPE ? estimatedRPE.rpe.toFixed(1) : "-"}
+                          </Text>
+                        </View>
+                        <SetVelocityMiniChart reps={trackedReps} />
+                      </TouchableOpacity>
+                      <View style={styles.setCardActions}>
+                        <TouchableOpacity
+                          style={styles.setActionButton}
+                          onPress={() => {
+                            void openRepDetail(set);
+                          }}
+                        >
+                          <Text style={styles.setActionButtonText}>詳細</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.setActionButton}
+                          onPress={() => handleEditSetLoad(set)}
+                        >
+                          <Text style={styles.setActionButtonText}>編集</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[
+                            styles.setActionButton,
+                            styles.setDeleteActionButton,
+                          ]}
+                          onPress={() => handleDeleteSet(set)}
+                        >
+                          <Text
+                            style={[
+                              styles.setActionButtonText,
+                              styles.setDeleteActionButtonText,
+                            ]}
+                          >
+                            削除
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+
+          {/* End Session */}
+          {settings.session_display_end_session && (
+            <View style={styles.buttonContainer}>
+              <TouchableOpacity
+                style={[styles.button, styles.finishButton]}
+                onPress={handleFinishSession}
+              >
+                <Text style={styles.buttonText}>SESSION END</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </ScrollView>
       )}
 
       {/* モーダル - フォーカスモード時も表示 */}
@@ -2347,11 +3722,23 @@ export default function SessionScreen() {
 
       <RepDetailModal
         visible={repDetailVisible}
-        reps={historicalSessionReps?.reps ?? sessionAllReps}
+        reps={selectedSetReps ?? historicalSessionReps?.reps ?? sessionAllReps}
         setIndex={selectedSetIndex}
         lift={selectedSetLift}
-        loadKg={selectedSet?.load_kg}
-        onClose={() => setRepDetailVisible(false)}
+        loadKg={detailSet?.load_kg ?? selectedSet?.load_kg}
+        setStartedAt={detailSet?.start_timestamp}
+        setEndedAt={detailSet?.end_timestamp}
+        setCompletedAt={detailSet?.timestamp}
+        restDurationS={detailSet?.rest_duration_s}
+        formVideos={detailFormVideos}
+        onClose={() => {
+          setRepDetailVisible(false);
+          setSelectedSetReps(null);
+          setDetailFormVideos([]);
+        }}
+        onOpenVideo={handleOpenFormVideo}
+        onShareVideo={handleShareFormVideo}
+        onDeleteVideo={handleDeleteFormVideo}
         onEditSetLoad={
           selectedSet && !historicalSessionReps
             ? () => handleEditSetLoad(selectedSet)
@@ -2361,12 +3748,8 @@ export default function SessionScreen() {
         onMarkFailedRep={
           !historicalSessionReps ? handleMarkFailedRep : undefined
         }
-        onMarkSetupRep={
-          !historicalSessionReps ? handleMarkSetupRep : undefined
-        }
-        onAddMissedRep={
-          !historicalSessionReps ? handleAddMissedRep : undefined
-        }
+        onMarkSetupRep={!historicalSessionReps ? handleMarkSetupRep : undefined}
+        onAddMissedRep={!historicalSessionReps ? handleAddMissedRep : undefined}
       />
 
       <SetEditModal
@@ -2426,6 +3809,78 @@ function SetVelocityMiniChart({ reps }: { reps: RepData[] }) {
               styles.setMiniBar,
               { height },
               (rep.is_excluded || rep.is_failed) && styles.setMiniBarMuted,
+            ]}
+          />
+        );
+      })}
+    </View>
+  );
+}
+
+const getTrendSetKey = (set: SetData) =>
+  `${set.lift}_${set.set_index}_${set.timestamp ?? set.end_timestamp ?? ""}`;
+
+function getSetTrendWindow(allSets: SetData[], currentSet: SetData) {
+  const sameLiftSets = allSets
+    .filter(
+      (set) =>
+        set.lift === currentSet.lift &&
+        typeof set.avg_velocity === "number" &&
+        set.avg_velocity > 0,
+    )
+    .sort(
+      (a, b) =>
+        new Date(a.timestamp ?? a.end_timestamp ?? 0).getTime() -
+        new Date(b.timestamp ?? b.end_timestamp ?? 0).getTime(),
+    );
+
+  const currentKey = getTrendSetKey(currentSet);
+  const currentIndex = sameLiftSets.findIndex(
+    (set) => getTrendSetKey(set) === currentKey,
+  );
+  const endIndex =
+    currentIndex >= 0 ? currentIndex + 1 : Math.min(sameLiftSets.length, 6);
+  return sameLiftSets.slice(Math.max(0, endIndex - 6), endIndex);
+}
+
+/**
+ * セット履歴カード用の同一種目AV推移ミニグラフ
+ */
+function SetTrendMiniChart({
+  sets,
+  currentSet,
+}: {
+  sets: SetData[];
+  currentSet: SetData;
+}) {
+  if (sets.length <= 1) {
+    return null;
+  }
+
+  const velocities = sets
+    .map((set) => set.avg_velocity ?? 0)
+    .filter((value) => value > 0);
+  const maxVelocity = Math.max(...velocities, 0.4);
+  const minVelocity = Math.min(...velocities, maxVelocity);
+  const range = Math.max(0.05, maxVelocity - minVelocity);
+  const currentKey = getTrendSetKey(currentSet);
+
+  return (
+    <View style={styles.setTrendMiniChart}>
+      {sets.map((set) => {
+        const velocity = set.avg_velocity ?? minVelocity;
+        const height = Math.max(
+          6,
+          Math.round(((velocity - minVelocity) / range) * 18) + 6,
+        );
+        const isCurrent = getTrendSetKey(set) === currentKey;
+        return (
+          <View
+            key={getTrendSetKey(set)}
+            style={[
+              styles.setTrendMiniBar,
+              { height },
+              isCurrent && styles.setTrendMiniBarActive,
             ]}
           />
         );
@@ -2997,6 +4452,11 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: GarageTheme.success + "60",
   },
+  formVideoButton: {
+    backgroundColor: GarageTheme.danger,
+    borderWidth: 2,
+    borderColor: GarageTheme.danger + "60",
+  },
   finishButton: {
     backgroundColor: GarageTheme.warning,
     borderWidth: 2,
@@ -3066,6 +4526,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 12,
   },
+  setMetaRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
   setNumberText: {
     fontSize: 14,
     fontWeight: "800",
@@ -3113,6 +4578,27 @@ const styles = StyleSheet.create({
     opacity: 0.3,
     backgroundColor: GarageTheme.textSubtle,
   },
+  setTrendMiniChart: {
+    height: 28,
+    minWidth: 48,
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: GarageTheme.background,
+    borderWidth: 1,
+    borderColor: GarageTheme.border,
+  },
+  setTrendMiniBar: {
+    width: 4,
+    borderRadius: 2,
+    backgroundColor: GarageTheme.textMuted,
+  },
+  setTrendMiniBarActive: {
+    backgroundColor: GarageTheme.accent,
+  },
   setCardActions: {
     flexDirection: "row",
     gap: 10,
@@ -3131,11 +4617,18 @@ const styles = StyleSheet.create({
     borderColor: GarageTheme.borderStrong,
     backgroundColor: GarageTheme.chip,
   },
+  setDeleteActionButton: {
+    borderColor: "#ff4d4f",
+    backgroundColor: "rgba(255, 77, 79, 0.08)",
+  },
   setActionButtonText: {
     color: GarageTheme.textStrong,
     fontSize: 13,
     fontWeight: "800",
     letterSpacing: 0.4,
+  },
+  setDeleteActionButtonText: {
+    color: "#ff6b6b",
   },
   setVelocity: {
     fontSize: 14,
@@ -3187,6 +4680,32 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 3 },
     elevation: 2,
+  },
+  sessionActiveActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  sensorMuteButton: {
+    backgroundColor: GarageTheme.surfaceAlt,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 22,
+    borderWidth: 2,
+    borderColor: GarageTheme.borderStrong,
+  },
+  sensorMuteButtonActive: {
+    backgroundColor: GarageTheme.danger,
+    borderColor: GarageTheme.danger,
+  },
+  sensorMuteButtonText: {
+    color: GarageTheme.textMuted,
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 0.3,
+  },
+  sensorMuteButtonTextActive: {
+    color: GarageTheme.textStrong,
   },
   pauseBtn: {
     backgroundColor: GarageTheme.panel,
@@ -3341,42 +4860,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   zoneName: { fontSize: 16, fontWeight: "bold" },
-  // AIコーチカード
-  coachCard: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    marginHorizontal: 16,
-    marginBottom: 16,
-    padding: 18,
-    backgroundColor: GarageTheme.surface,
-    borderRadius: 16,
-    borderWidth: 2,
-    gap: 14,
-    shadowColor: GarageTheme.textStrong,
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
-  },
-  coachBadge: {
-    minWidth: 64,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 999,
-    borderWidth: 2,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  coachBadgeText: { fontSize: 11, fontWeight: "800", letterSpacing: 1 },
-  coachContent: { flex: 1 },
-  coachMessage: {
-    fontSize: 15,
-    fontWeight: "700",
-    marginBottom: 6,
-    lineHeight: 20,
-  },
-  coachAction: { fontSize: 13, color: GarageTheme.textMuted, lineHeight: 18 },
-  // AIコーチボタン（ヘッダー）
+  // ChatGPT用コンテキストコピー（ヘッダー）
   coachNavButton: {
     paddingHorizontal: 12,
     paddingVertical: 6,
@@ -3390,6 +4874,39 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "700",
     letterSpacing: 0.8,
+  },
+  diagnosticBar: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: GarageTheme.border,
+    backgroundColor: GarageTheme.surfaceAlt,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  diagnosticBarText: {
+    color: GarageTheme.textSubtle,
+    fontSize: 12,
+    fontWeight: "700",
+    flex: 1,
+  },
+  diagnosticButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: GarageTheme.warning,
+    backgroundColor: GarageTheme.panel,
+  },
+  diagnosticButtonText: {
+    color: GarageTheme.warning,
+    fontSize: 12,
+    fontWeight: "800",
   },
   // Target Weight & Warmup UI
   targetWeightCard: {
@@ -3903,6 +5420,43 @@ const styles = StyleSheet.create({
     color: GarageTheme.textStrong,
     fontWeight: "800",
   },
+  purposeChipRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  purposeChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: GarageTheme.surface,
+    borderWidth: 1,
+    borderColor: GarageTheme.border,
+  },
+  purposeChipActive: {
+    backgroundColor: GarageTheme.accent,
+    borderColor: GarageTheme.accent,
+  },
+  purposeChipText: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: GarageTheme.textMuted,
+  },
+  purposeChipTextActive: {
+    color: "#fff4ec",
+  },
+  nextSetSummaryRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  nextSetSummaryCell: {
+    flex: 1,
+    padding: 10,
+    borderRadius: 10,
+    backgroundColor: GarageTheme.surface,
+    borderWidth: 1,
+    borderColor: GarageTheme.border,
+  },
   liveHintText: {
     marginTop: 8,
     fontSize: 12,
@@ -3937,6 +5491,20 @@ const styles = StyleSheet.create({
     color: GarageTheme.textStrong,
     letterSpacing: 2,
   },
+  focusModeSensorButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: GarageTheme.borderStrong,
+    backgroundColor: GarageTheme.surface,
+  },
+  focusModeSensorButtonText: {
+    color: GarageTheme.textMuted,
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 0.4,
+  },
   focusModeCompleteButton: {
     paddingHorizontal: 20,
     paddingVertical: 10,
@@ -3962,6 +5530,29 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+  },
+  sensorMutedBanner: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: GarageTheme.danger,
+    backgroundColor: "rgba(255, 77, 79, 0.14)",
+  },
+  sensorMutedTitle: {
+    color: GarageTheme.textStrong,
+    fontSize: 13,
+    fontWeight: "900",
+    letterSpacing: 0.5,
+    marginBottom: 3,
+  },
+  sensorMutedBody: {
+    color: GarageTheme.text,
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: "600",
   },
   focusModeSimulatorTitle: {
     fontSize: 13,

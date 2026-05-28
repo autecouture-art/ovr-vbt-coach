@@ -4,14 +4,19 @@
  */
 
 import { useEffect, useCallback, useRef } from "react";
+import { shallow } from "zustand/shallow";
 import { useTrainingStore } from "../store/trainingStore";
 import BLEService from "../services/BLEService";
 import AudioService from "../services/AudioService";
 import { VBTLogic } from "../services/VBTLogic";
-import VBTCalculations, { getVelocityAt1RM, estimate1RMFourPoint } from "../utils/VBTCalculations";
+import VBTCalculations, {
+  getVelocityAt1RM,
+  estimate1RMFourPoint,
+} from "../utils/VBTCalculations";
 import DatabaseService from "../services/DatabaseService";
 import ExerciseService from "../services/ExerciseService";
-import AICoachService from "../services/AICoachService";
+import LiveShareService from "../services/LiveShareService";
+import VBTGuideService from "../services/VBTGuideService";
 import HealthService from "../services/HealthService";
 import { loadAppSettings } from "../services/AppSettingsService";
 import type {
@@ -19,6 +24,7 @@ import type {
   RepData,
   SetData,
   PRRecord,
+  LVPData,
 } from "../types/index";
 
 // === 定数定義 ===
@@ -26,6 +32,14 @@ import type {
 const REP_DEDUP_WINDOW_MS = 800;
 // 自動完了のタイムアウト（ミリ秒）
 const AUTO_FINISH_TIMEOUT_MS = 10000;
+// セット開始後、最初のレップが入るまで鳴らす開始確認キューの間隔
+const SET_START_REMINDER_INTERVAL_MS = 6000;
+const HR_READY_THRESHOLD_BPM = 120;
+const HR_RECOVERY_MIN_PEAK_OVER_READY_BPM = 5;
+const HR_RECOVERY_MIN_VALID_SECONDS = 15;
+const HR_RECOVERY_MAX_TRACK_SECONDS = 15 * 60;
+const SPEED_PR_MIN_IMPROVEMENT_MPS = 0.01;
+const E1RM_PR_MIN_IMPROVEMENT_KG = 0.5;
 // 最小ROMのデフォルト値（cm）
 const MIN_ROM_DEFAULT_CM = 10.0;
 // 負荷の下限比率（baseline1RMの30%未満は予測のブレが大きいため除外）
@@ -38,7 +52,10 @@ type PRCallback = (pr: PRRecord) => void;
 // 自動スタートコールバック型
 type AutoStartCallback = () => void;
 
-export const useSessionLogic = (onPRDetected?: PRCallback, onAutoStart?: AutoStartCallback) => {
+export const useSessionLogic = (
+  onPRDetected?: PRCallback,
+  onAutoStart?: AutoStartCallback,
+) => {
   // Store State & Actions
   const {
     currentSession,
@@ -51,6 +68,7 @@ export const useSessionLogic = (onPRDetected?: PRCallback, onAutoStart?: AutoSta
     setHistory,
     settings,
     currentHeartRate,
+    sensorInputMuted,
     setHRPoints,
     restStartTime,
     setStartTimeStamp,
@@ -72,7 +90,41 @@ export const useSessionLogic = (onPRDetected?: PRCallback, onAutoStart?: AutoSta
     startSet,
     resumeSet,
     updateSettings,
-  } = useTrainingStore();
+  } = useTrainingStore(
+    (state) => ({
+      currentSession: state.currentSession,
+      isSessionActive: state.isSessionActive,
+      currentSetIndex: state.currentSetIndex,
+      currentLift: state.currentLift,
+      currentLoad: state.currentLoad,
+      currentExercise: state.currentExercise,
+      repHistory: state.repHistory,
+      setHistory: state.setHistory,
+      settings: state.settings,
+      currentHeartRate: state.currentHeartRate,
+      sensorInputMuted: state.sensorInputMuted,
+      setHRPoints: state.setHRPoints,
+      restStartTime: state.restStartTime,
+      setStartTimeStamp: state.setStartTimeStamp,
+      pauseReason: state.pauseReason,
+      setConnectionStatus: state.setConnectionStatus,
+      setLiveData: state.setLiveData,
+      addRep: state.addRep,
+      completeSet: state.completeSet,
+      updateHeartRate: state.updateHeartRate,
+      startRest: state.startRest,
+      updateVBTIntelligence: state.updateVBTIntelligence,
+      removeRepFromHistory: state.removeRepFromHistory,
+      markRepFailedInHistory: state.markRepFailedInHistory,
+      updateSetHistory: state.updateSetHistory,
+      isPaused: state.isPaused,
+      setProposedMVT: state.setProposedMVT,
+      startSet: state.startSet,
+      resumeSet: state.resumeSet,
+      updateSettings: state.updateSettings,
+    }),
+    shallow,
+  );
 
   const isMounted = useRef(true);
   const lastNotifiedRestTime = useRef<number | null>(null);
@@ -88,27 +140,54 @@ export const useSessionLogic = (onPRDetected?: PRCallback, onAutoStart?: AutoSta
   const repHistoryRef = useRef(repHistory);
   const settingsRef = useRef(settings);
   const isPausedRef = useRef(isPaused);
+  const sensorInputMutedRef = useRef(sensorInputMuted);
   const currentExerciseRef = useRef(currentExercise);
   const currentLoadRef = useRef(currentLoad);
   const currentLiftRef = useRef(currentLift);
   const currentSetIndexRef = useRef(currentSetIndex);
   const currentSessionRef = useRef(currentSession);
   const currentHeartRateRef = useRef(currentHeartRate);
+  const currentHeartRateUpdatedAtRef = useRef<number>(
+    currentHeartRate != null ? Date.now() : 0,
+  );
   const setHRPointsRef = useRef(setHRPoints);
   const restStartTimeRef = useRef(restStartTime);
   const setStartTimeStampRef = useRef(setStartTimeStamp);
+  const lvpProfileRef = useRef<LVPData | null>(null);
+  const lvpProfileLiftRef = useRef<string | null>(null);
+  const persistenceQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const pendingHrRecoveryRef = useRef<{
+    sessionId: string;
+    lift: string;
+    setIndex: number;
+    setEndAtMs: number;
+  } | null>(null);
+
+  const enqueuePersistence = useCallback((task: () => Promise<void>) => {
+    const queuedTask = persistenceQueueRef.current
+      .catch(() => undefined)
+      .then(task);
+    persistenceQueueRef.current = queuedTask.catch((error) => {
+      console.error("[useSessionLogic] queued persistence failed:", error);
+    });
+    return queuedTask;
+  }, []);
 
   // refを最新の状態に保つ
   useEffect(() => {
     repHistoryRef.current = repHistory;
     settingsRef.current = settings;
     isPausedRef.current = isPaused;
+    sensorInputMutedRef.current = sensorInputMuted;
     currentExerciseRef.current = currentExercise;
     currentLoadRef.current = currentLoad;
     currentLiftRef.current = currentLift;
     currentSetIndexRef.current = currentSetIndex;
     currentSessionRef.current = currentSession;
     currentHeartRateRef.current = currentHeartRate;
+    if (currentHeartRate != null) {
+      currentHeartRateUpdatedAtRef.current = Date.now();
+    }
     setHRPointsRef.current = setHRPoints;
     restStartTimeRef.current = restStartTime;
     setStartTimeStampRef.current = setStartTimeStamp;
@@ -116,6 +195,7 @@ export const useSessionLogic = (onPRDetected?: PRCallback, onAutoStart?: AutoSta
     repHistory,
     settings,
     isPaused,
+    sensorInputMuted,
     currentExercise,
     currentLoad,
     currentLift,
@@ -126,6 +206,32 @@ export const useSessionLogic = (onPRDetected?: PRCallback, onAutoStart?: AutoSta
     restStartTime,
     setStartTimeStamp,
   ]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!currentLift) {
+      lvpProfileRef.current = null;
+      lvpProfileLiftRef.current = null;
+      return;
+    }
+
+    DatabaseService.getLVPProfile(currentLift)
+      .then((profile) => {
+        if (cancelled) return;
+        lvpProfileRef.current = profile;
+        lvpProfileLiftRef.current = currentLift;
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.error("[useSessionLogic] LVP cache refresh failed:", error);
+        lvpProfileRef.current = null;
+        lvpProfileLiftRef.current = currentLift;
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentLift]);
 
   // --- Setup finishSet for reuse ---
 
@@ -207,7 +313,9 @@ export const useSessionLogic = (onPRDetected?: PRCallback, onAutoStart?: AutoSta
         VBTLogic.calculateE1RM(currentLoad, validReps.length) ?? null;
 
       // 平均パワーの計算（パワー値が存在するレップのみで計算）
-      const repsWithPower = validReps.filter((r) => r.mean_power_w != null && r.mean_power_w > 0);
+      const repsWithPower = validReps.filter(
+        (r) => r.mean_power_w != null && r.mean_power_w > 0,
+      );
       const avgPower =
         repsWithPower.length > 0
           ? repsWithPower.reduce((sum, r) => sum + r.mean_power_w!, 0) /
@@ -229,6 +337,9 @@ export const useSessionLogic = (onPRDetected?: PRCallback, onAutoStart?: AutoSta
         restStartTime && setStartTimeStamp
           ? (new Date(setStartTimeStamp).getTime() - restStartTime) / 1000
           : undefined;
+      const shouldTrackHrRecovery =
+        peakHr != null &&
+        peakHr >= HR_READY_THRESHOLD_BPM + HR_RECOVERY_MIN_PEAK_OVER_READY_BPM;
 
       const newSet: SetData = {
         session_id: currentSession?.session_id || "offline",
@@ -248,6 +359,7 @@ export const useSessionLogic = (onPRDetected?: PRCallback, onAutoStart?: AutoSta
         rest_duration_s: restDuration,
         avg_hr: avgHr,
         peak_hr: peakHr,
+        hr_recovery_to_120_s: null,
         avg_power_w: avgPower,
         is_warmup: isWarmupSet.current,
       };
@@ -259,6 +371,38 @@ export const useSessionLogic = (onPRDetected?: PRCallback, onAutoStart?: AutoSta
       lastAcceptedRepSignature.current = null;
       lastAcceptedRepAt.current = 0;
       completeSet(newSet);
+      void LiveShareService.sendEvent("set_completed", {
+        session_id: newSet.session_id,
+        lift: newSet.lift,
+        set_index: newSet.set_index,
+        load_kg: newSet.load_kg,
+        reps: newSet.reps,
+        avg_velocity: newSet.avg_velocity,
+        peak_velocity: peakVel,
+        velocity_loss: newSet.velocity_loss,
+        avg_rom_cm: newSet.avg_rom_cm,
+        avg_power_w: newSet.avg_power_w,
+        avg_hr: newSet.avg_hr,
+        peak_hr: newSet.peak_hr,
+        rest_duration_s: newSet.rest_duration_s,
+        is_warmup: newSet.is_warmup,
+        start_timestamp: newSet.start_timestamp,
+        end_timestamp: newSet.end_timestamp,
+      });
+
+      if (
+        currentSession?.session_id &&
+        shouldTrackHrRecovery
+      ) {
+        pendingHrRecoveryRef.current = {
+          sessionId: currentSession.session_id,
+          lift: newSet.lift,
+          setIndex: newSet.set_index,
+          setEndAtMs: new Date(endTimestamp).getTime(),
+        };
+      } else {
+        pendingHrRecoveryRef.current = null;
+      }
 
       // === VBT Intelligence 更新 ===
       const updatedHistory = [...currentSetHistory, newSet];
@@ -268,7 +412,7 @@ export const useSessionLogic = (onPRDetected?: PRCallback, onAutoStart?: AutoSta
       // 次セットの推奨重量 (Adaptive Load Engine™)
       let suggestedLoad = currentLoad;
       if (avgVel) {
-        const suggestion = AICoachService.suggestNextLoad(
+        const suggestion = VBTGuideService.suggestNextLoad(
           avgVel,
           (currentSettings.target_training_phase as any) || "strength",
           currentLoad,
@@ -302,38 +446,77 @@ export const useSessionLogic = (onPRDetected?: PRCallback, onAutoStart?: AutoSta
 
             try {
               const lift = currentLift || "Unknown";
-              const sessionReps = await DatabaseService.getRepsForSession(
-                currentSession.session_id,
-              );
-              const oneRMEstimate = await estimate1RMFourPoint(
-                lift,
-                updatedHistory.filter(
-                  (set) => set.lift === lift && !set.is_warmup,
-                ),
-                sessionReps,
-                currentExercise?.mvt ?? 0.15,
-                async () =>
-                  await DatabaseService.getHistoricalVelocityData(lift, 12),
-              );
+              if (!currentSettings.enable_session_lightweight_mode) {
+                const sessionReps = await DatabaseService.getRepsForSession(
+                  currentSession.session_id,
+                );
+                const oneRMEstimate = await estimate1RMFourPoint(
+                  lift,
+                  updatedHistory.filter(
+                    (set) => set.lift === lift && !set.is_warmup,
+                  ),
+                  sessionReps,
+                  currentExercise?.mvt ?? 0.15,
+                  async () =>
+                    await DatabaseService.getHistoricalVelocityData(lift, 12),
+                );
 
-              if (oneRMEstimate.estimated1RM > 0) {
-                updateVBTIntelligence({
-                  estimated1RM: oneRMEstimate.estimated1RM,
-                  estimated1RM_confidence: oneRMEstimate.confidence,
-                });
+                if (oneRMEstimate.estimated1RM > 0) {
+                  updateVBTIntelligence({
+                    estimated1RM: oneRMEstimate.estimated1RM,
+                    estimated1RM_confidence: oneRMEstimate.confidence,
+                  });
+                }
               }
             } catch (estimateError) {
-              console.error("[finishSet] 4-point 1RM estimation failed:", estimateError);
+              console.error(
+                "[finishSet] 4-point 1RM estimation failed:",
+                estimateError,
+              );
             }
 
             // === PR検知 ===
             const today = new Date().toISOString().split("T")[0];
             const lift = currentLift || "Unknown";
+            const previousWorkingSets = currentSetHistory.filter(
+              (set) =>
+                set.lift === lift &&
+                !set.is_warmup &&
+                set.avg_rom_cm != null &&
+                set.avg_rom_cm > 0,
+            );
+            const baselineRom =
+              previousWorkingSets.length > 0
+                ? Math.max(
+                    ...previousWorkingSets.map((set) => set.avg_rom_cm ?? 0),
+                  )
+                : null;
+            const romTooShallowForPR =
+              baselineRom != null &&
+              newSet.avg_rom_cm != null &&
+              newSet.avg_rom_cm < baselineRom - 2;
+            const peakVelocityLooksInvalid = peakVel != null && peakVel > 2.0;
+            const prEligible =
+              !newSet.is_warmup &&
+              !romTooShallowForPR &&
+              !peakVelocityLooksInvalid;
 
             // 1. e1RM PR チェック
-            if (e1rm) {
+            if (e1rm && prEligible) {
               const bestE1RM = await DatabaseService.getBestPR(lift, "e1rm");
-              if (!bestE1RM || e1rm > bestE1RM.value) {
+              if (!bestE1RM) {
+                await DatabaseService.insertPRRecord({
+                  id: `pr_e1rm_${Date.now()}`,
+                  type: "e1rm",
+                  lift,
+                  value: e1rm,
+                  load_kg: currentLoad,
+                  reps: validReps.length,
+                  date: today,
+                  previous_value: undefined,
+                  improvement: 0,
+                });
+              } else if (e1rm > bestE1RM.value + E1RM_PR_MIN_IMPROVEMENT_KG) {
                 const prRecord: PRRecord = {
                   id: `pr_e1rm_${Date.now()}`,
                   type: "e1rm",
@@ -342,8 +525,8 @@ export const useSessionLogic = (onPRDetected?: PRCallback, onAutoStart?: AutoSta
                   load_kg: currentLoad,
                   reps: validReps.length,
                   date: today,
-                  previous_value: bestE1RM?.value,
-                  improvement: bestE1RM ? e1rm - bestE1RM.value : e1rm,
+                  previous_value: bestE1RM.value,
+                  improvement: e1rm - bestE1RM.value,
                 };
                 await DatabaseService.insertPRRecord(prRecord);
                 onPRDetected?.(prRecord);
@@ -352,18 +535,34 @@ export const useSessionLogic = (onPRDetected?: PRCallback, onAutoStart?: AutoSta
             }
 
             // 2. 最高速度 PR チェック
-            if (peakVel) {
-              const bestSpeed = await DatabaseService.getBestPR(lift, "speed");
-              if (!bestSpeed || peakVel > bestSpeed.value) {
+            if (peakVel && prEligible) {
+              const bestSpeed = await DatabaseService.getBestSpeedPRForLoad(
+                lift,
+                currentLoad,
+              );
+              if (!bestSpeed) {
+                await DatabaseService.insertPRRecord({
+                  id: `pr_speed_${Date.now()}`,
+                  type: "speed",
+                  lift,
+                  value: peakVel,
+                  load_kg: currentLoad,
+                  reps: validReps.length,
+                  date: today,
+                  previous_value: undefined,
+                  improvement: 0,
+                });
+              } else if (peakVel > bestSpeed.value + SPEED_PR_MIN_IMPROVEMENT_MPS) {
                 const prRecord: PRRecord = {
                   id: `pr_speed_${Date.now()}`,
                   type: "speed",
                   lift,
                   value: peakVel,
                   load_kg: currentLoad,
+                  reps: validReps.length,
                   date: today,
-                  previous_value: bestSpeed?.value,
-                  improvement: bestSpeed ? peakVel - bestSpeed.value : peakVel,
+                  previous_value: bestSpeed.value,
+                  improvement: peakVel - bestSpeed.value,
                 };
                 await DatabaseService.insertPRRecord(prRecord);
                 onPRDetected?.(prRecord);
@@ -390,10 +589,18 @@ export const useSessionLogic = (onPRDetected?: PRCallback, onAutoStart?: AutoSta
                   ...lvp,
                   lift,
                 });
+                if (lvpProfileLiftRef.current === lift) {
+                  lvpProfileRef.current = {
+                    ...lvp,
+                    lift,
+                  };
+                }
               }
             }
 
-            await ExerciseService.inferRomRangeForLift(lift);
+            if (!currentSettings.enable_session_lightweight_mode) {
+              await ExerciseService.inferRomRangeForLift(lift);
+            }
           }
         } catch (e) {
           console.error("セット保存失敗:", e);
@@ -405,7 +612,7 @@ export const useSessionLogic = (onPRDetected?: PRCallback, onAutoStart?: AutoSta
 
       // ガードフラグをクリア（次のセット用）
       isFinishingSet.current = false;
-      void persistCompletedSet();
+      void enqueuePersistence(persistCompletedSet);
     },
     [
       completeSet,
@@ -414,6 +621,7 @@ export const useSessionLogic = (onPRDetected?: PRCallback, onAutoStart?: AutoSta
       startRest,
       onPRDetected,
       isSessionActive,
+      enqueuePersistence,
     ],
   );
 
@@ -425,22 +633,42 @@ export const useSessionLogic = (onPRDetected?: PRCallback, onAutoStart?: AutoSta
       // refから最新の状態を取得（パフォーマンス最適化）
       const currentSettings = settingsRef.current;
       let currentIsPaused = isPausedRef.current;
+      const currentSensorInputMuted = sensorInputMutedRef.current;
       const currentExercise = currentExerciseRef.current;
+
+      if (currentSensorInputMuted) {
+        console.log(
+          "[handleDataReceived] Sensor input muted, discarding input",
+        );
+        return;
+      }
 
       const autoStartRomThreshold =
         currentExercise?.auto_start_rom_cm ??
         currentSettings.auto_start_rom_cm ??
         AUTO_START_ROM_DEFAULT_CM; // デフォルト値5cm
 
-      if (!isSessionActive && currentSettings.enable_auto_start_session && data.rom_cm > autoStartRomThreshold) {
-        console.log("[handleDataReceived] Auto-starting session on movement detection");
+      if (
+        !isSessionActive &&
+        currentSettings.enable_auto_start_session &&
+        data.rom_cm > autoStartRomThreshold
+      ) {
+        console.log(
+          "[handleDataReceived] Auto-starting session on movement detection",
+        );
         onAutoStart?.();
         return;
       }
 
       // セット間のオートスタート（休憩中に動きが検出されたら自動的にセット再開）
-      if (currentIsPaused && pauseReason === "rest" && data.rom_cm > autoStartRomThreshold) {
-        console.log("[handleDataReceived] Auto-resuming set on movement detection");
+      if (
+        currentIsPaused &&
+        pauseReason === "rest" &&
+        data.rom_cm > autoStartRomThreshold
+      ) {
+        console.log(
+          "[handleDataReceived] Auto-resuming set on movement detection",
+        );
         resumeSet();
         currentIsPaused = false;
         // 休憩解除後、このレップを通常通り処理する
@@ -499,7 +727,10 @@ export const useSessionLogic = (onPRDetected?: PRCallback, onAutoStart?: AutoSta
         repSignature === lastAcceptedRepSignature.current &&
         now - lastAcceptedRepAt.current < REP_DEDUP_WINDOW_MS
       ) {
-        console.log("[handleDataReceived] Duplicate rep payload ignored", repSignature);
+        console.log(
+          "[handleDataReceived] Duplicate rep payload ignored",
+          repSignature,
+        );
         return;
       }
 
@@ -514,16 +745,23 @@ export const useSessionLogic = (onPRDetected?: PRCallback, onAutoStart?: AutoSta
 
       // 10秒後に自動完了するタイマーをセット（ウォームアップセットでない場合）
       const currentRepHistory = repHistoryRef.current;
-      if (!isWarmupSet.current && !currentIsPaused && currentRepHistory.length > 0) {
+      if (
+        !isWarmupSet.current &&
+        !currentIsPaused &&
+        currentRepHistory.length > 0
+      ) {
         autoFinishTimer.current = setTimeout(() => {
-          console.log("[useSessionLogic] Auto-finishing set due to no movement");
+          console.log(
+            "[useSessionLogic] Auto-finishing set due to no movement",
+          );
           finishSet();
         }, AUTO_FINISH_TIMEOUT_MS);
       }
 
       if (isValidRep) {
         const isAutoSetupRep = Boolean(
-          currentExercise?.ignore_first_rep_as_setup && currentRepHistory.length === 0,
+          currentExercise?.ignore_first_rep_as_setup &&
+          currentRepHistory.length === 0,
         );
 
         // 3. Audio Feedback (Velocity Sense™)
@@ -551,12 +789,10 @@ export const useSessionLogic = (onPRDetected?: PRCallback, onAutoStart?: AutoSta
         const firstRepVel =
           firstTrackedRep?.mean_velocity ?? data.mean_velocity;
         // VL計算：firstRepVelが0の場合は0除算を防ぐためにvLossを0に設定
-        const vLoss = firstRepVel > 0
-          ? VBTLogic.calculateVelocityLoss(
-              firstRepVel,
-              data.mean_velocity,
-            )
-          : 0;
+        const vLoss =
+          firstRepVel > 0
+            ? VBTLogic.calculateVelocityLoss(firstRepVel, data.mean_velocity)
+            : 0;
 
         const isShort = currentExercise
           ? VBTCalculations.isShortROM(data.rom_cm, currentExercise)
@@ -578,6 +814,7 @@ export const useSessionLogic = (onPRDetected?: PRCallback, onAutoStart?: AutoSta
           rom_cm: data.rom_cm,
           rep_duration_ms: data.rep_duration_ms,
           mean_power_w: meanPower,
+          peak_power_w: peakPower,
           load_kg: currentLoad,
           device_type: "OVR Velocity",
           timestamp: new Date().toISOString(),
@@ -593,12 +830,32 @@ export const useSessionLogic = (onPRDetected?: PRCallback, onAutoStart?: AutoSta
         lastAcceptedRepSignature.current = repSignature;
         lastAcceptedRepAt.current = now;
         addRep(newRep);
+        void LiveShareService.sendEvent("rep_recorded", {
+          session_id: newRep.session_id,
+          lift: newRep.lift,
+          set_index: newRep.set_index,
+          rep_index: newRep.rep_index,
+          load_kg: newRep.load_kg,
+          mean_velocity: newRep.mean_velocity,
+          peak_velocity: newRep.peak_velocity,
+          rom_cm: newRep.rom_cm,
+          mean_power_w: newRep.mean_power_w,
+          peak_power_w: newRep.peak_power_w,
+          hr_bpm: newRep.hr_bpm,
+          is_valid_rep: newRep.is_valid_rep,
+          is_short_rom: newRep.is_short_rom,
+          is_excluded: newRep.is_excluded,
+          timestamp: newRep.timestamp,
+        });
 
         // 6. Intelligent 1RM Estimator (セッション中の全レップデータを活用)
         const allReps = [...currentRepHistory, newRep];
 
         if (data.mean_velocity > 0) {
-          const lvp = await DatabaseService.getLVPProfile(currentLift || "");
+          const lvp =
+            lvpProfileLiftRef.current === currentLift
+              ? lvpProfileRef.current
+              : null;
           if (lvp && lvp.slope < 0) {
             // MVT基準のbaseline 1RMを計算（getVelocityAt1RM経由でmvtを優先）
             const velocityAt1RM = getVelocityAt1RM(lvp);
@@ -608,14 +865,15 @@ export const useSessionLogic = (onPRDetected?: PRCallback, onAutoStart?: AutoSta
             if (currentLoad >= baseline1RM * LOAD_LOWER_BOUND_RATIO) {
               // セッション中の有効なレップデータを収集（高速なレップを優先）
               const validReps = allReps.filter(
-                (rep) => rep.mean_velocity !== null && rep.mean_velocity > 0
+                (rep) => rep.mean_velocity !== null && rep.mean_velocity > 0,
               );
 
               if (validReps.length > 0) {
                 // 最新のレップ、最高速度のレップ、高負荷のレップを優先的に分析
                 const sortedReps = [...validReps].sort((a, b) => {
                   // 1. 速度で降順ソート（より良いパフォーマンスを優先）
-                  const velocityDiff = (b.mean_velocity || 0) - (a.mean_velocity || 0);
+                  const velocityDiff =
+                    (b.mean_velocity || 0) - (a.mean_velocity || 0);
                   // 2. 速度が同じ場合は負荷で降順（高負荷を優先）
                   if (Math.abs(velocityDiff) < 0.01) {
                     return b.load_kg - a.load_kg;
@@ -624,19 +882,24 @@ export const useSessionLogic = (onPRDetected?: PRCallback, onAutoStart?: AutoSta
                 });
 
                 // 上位3つのレップで1eRMを推定（平均化して安定性向上）
-                const topReps = sortedReps.slice(0, Math.min(3, sortedReps.length));
+                const topReps = sortedReps.slice(
+                  0,
+                  Math.min(3, sortedReps.length),
+                );
                 const e1rmEstimates = topReps.map((rep) =>
                   VBTCalculations.estimateCurrentDay1RM(
                     rep.load_kg,
                     rep.mean_velocity!,
                     lvp,
-                  )
+                  ),
                 );
 
                 // 中央値を使用して外れ値の影響を低減
                 // 配列が空の場合はスキップ（安全性確保）
                 if (e1rmEstimates.length > 0) {
-                  const sortedEstimates = [...e1rmEstimates].sort((a, b) => a - b);
+                  const sortedEstimates = [...e1rmEstimates].sort(
+                    (a, b) => a - b,
+                  );
                   const medianIndex = Math.floor(sortedEstimates.length / 2);
                   const e1rm = sortedEstimates[medianIndex];
 
@@ -647,9 +910,15 @@ export const useSessionLogic = (onPRDetected?: PRCallback, onAutoStart?: AutoSta
                     let confidence: "high" | "medium" | "low" = "low";
                     const sampleBonus = validReps.length >= 3 ? 0.1 : 0; // 複数レップで信頼度アップ
 
-                    if (lvp.r_squared >= 0.8 && diffRatio <= 0.1 - sampleBonus) {
+                    if (
+                      lvp.r_squared >= 0.8 &&
+                      diffRatio <= 0.1 - sampleBonus
+                    ) {
                       confidence = "high";
-                    } else if (lvp.r_squared >= 0.6 && diffRatio <= 0.2 - sampleBonus) {
+                    } else if (
+                      lvp.r_squared >= 0.6 &&
+                      diffRatio <= 0.2 - sampleBonus
+                    ) {
                       confidence = "medium";
                     }
 
@@ -665,7 +934,7 @@ export const useSessionLogic = (onPRDetected?: PRCallback, onAutoStart?: AutoSta
         }
 
         // 7. Velocity Loss 警告 (最新論文基準: S:20%, B:10%, D:5%)
-        const paperVL = AICoachService.getVlThresholdByExercise(
+        const paperVL = VBTGuideService.getVlThresholdByExercise(
           currentExercise?.category || "",
           currentSettings.target_training_phase,
         );
@@ -763,7 +1032,35 @@ export const useSessionLogic = (onPRDetected?: PRCallback, onAutoStart?: AutoSta
   // --- Audio Volume Update on Settings Change ---
   useEffect(() => {
     AudioService.setVolume(settings.audio_volume);
-  }, [settings.audio_volume]);
+    AudioService.setEnabled(settings.enable_audio_feedback);
+  }, [settings.audio_volume, settings.enable_audio_feedback]);
+
+  useEffect(() => {
+    if (
+      !isSessionActive ||
+      isPaused ||
+      sensorInputMuted ||
+      repHistory.length > 0 ||
+      !settings.enable_audio_feedback ||
+      !settings.enable_set_start_reminder
+    ) {
+      return;
+    }
+
+    void AudioService.announceSetStartReminder();
+    const reminderTimer = setInterval(() => {
+      void AudioService.announceSetStartReminder();
+    }, SET_START_REMINDER_INTERVAL_MS);
+
+    return () => clearInterval(reminderTimer);
+  }, [
+    isSessionActive,
+    isPaused,
+    repHistory.length,
+    sensorInputMuted,
+    settings.enable_audio_feedback,
+    settings.enable_set_start_reminder,
+  ]);
 
   // --- Heart Rate Monitoring (Polling when Active) ---
   useEffect(() => {
@@ -804,13 +1101,12 @@ export const useSessionLogic = (onPRDetected?: PRCallback, onAutoStart?: AutoSta
       // 重複通知防止: 既に現在の休憩時間で通知済みなら何もしない
       if (lastNotifiedRestTime.current === restStartTime) return;
 
-      const readyThreshold = 120;
       const peakHr =
         setHistory.length > 0
           ? setHistory[setHistory.length - 1].peak_hr || 180
           : 180;
 
-      const isReadyByAbsolute = currentHeartRate < readyThreshold;
+      const isReadyByAbsolute = currentHeartRate < HR_READY_THRESHOLD_BPM;
       const isReadyByRecovery = currentHeartRate < peakHr * 0.8;
 
       if (isReadyByAbsolute || isReadyByRecovery) {
@@ -819,6 +1115,38 @@ export const useSessionLogic = (onPRDetected?: PRCallback, onAutoStart?: AutoSta
       }
     }
   }, [isPaused, pauseReason, currentHeartRate, restStartTime, setHistory]);
+
+  // --- Heart Rate Recovery Tracking ---
+  useEffect(() => {
+    const pending = pendingHrRecoveryRef.current;
+    if (!pending || !currentHeartRate) return;
+    const recoverySeconds = Math.max(
+      0,
+      (Date.now() - pending.setEndAtMs) / 1000,
+    );
+
+    if (recoverySeconds > HR_RECOVERY_MAX_TRACK_SECONDS) {
+      pendingHrRecoveryRef.current = null;
+      return;
+    }
+
+    if (currentHeartRate > HR_READY_THRESHOLD_BPM) return;
+    if (recoverySeconds < HR_RECOVERY_MIN_VALID_SECONDS) return;
+    if (currentHeartRateUpdatedAtRef.current < pending.setEndAtMs) return;
+
+    pendingHrRecoveryRef.current = null;
+    updateSetHistory(pending.setIndex, pending.lift, {
+      hr_recovery_to_120_s: recoverySeconds,
+    });
+    void enqueuePersistence(async () => {
+      await DatabaseService.updateSetHeartRateRecovery(
+        pending.sessionId,
+        pending.lift,
+        pending.setIndex,
+        recoverySeconds,
+      );
+    });
+  }, [currentHeartRate, enqueuePersistence, updateSetHistory]);
 
   // --- User Actions ---
 
@@ -940,7 +1268,9 @@ export const useSessionLogic = (onPRDetected?: PRCallback, onAutoStart?: AutoSta
     handleExcludeRep,
     handleMarkFailedRep,
     calculateAndProposeMVT,
-    setWarmupMode: (warmup: boolean) => { isWarmupSet.current = warmup; },
+    setWarmupMode: (warmup: boolean) => {
+      isWarmupSet.current = warmup;
+    },
     // Expose store state for UI to consume directly if needed,
     // but preferably UI uses useTrainingStore() directly for reading state.
   };

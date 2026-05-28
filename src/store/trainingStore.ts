@@ -14,6 +14,16 @@ import type {
 } from "../types/index";
 import { DEFAULT_APP_SETTINGS } from "../services/AppSettingsService";
 
+const nearlyEqual = (
+  a: number | null | undefined,
+  b: number | null | undefined,
+  epsilon: number = 0.001,
+) => {
+  if (a == null && b == null) return true;
+  if (a == null || b == null) return false;
+  return Math.abs(a - b) <= epsilon;
+};
+
 interface TrainingState {
   // Session State
   currentSession: TrainingSession | null;
@@ -35,6 +45,7 @@ interface TrainingState {
 
   // Live Data State
   isConnected: boolean;
+  sensorInputMuted: boolean;
   liveData: RepVeloData | null;
   repHistory: RepData[]; // Current set reps
   currentHeartRate: number | null;
@@ -55,8 +66,20 @@ interface TrainingState {
 
   // Actions
   startSession: (sessionId: string) => void;
+  restoreRecoveredSession: (data: {
+    session: TrainingSession;
+    setHistory: SetData[];
+    currentExercise: Exercise | null;
+    currentLift: string | null;
+    currentLoad: number;
+    currentReps: number;
+    currentSetIndex?: number | null;
+    sessionStartTime: number | null;
+    sessionStartTimeStamp: string | null;
+  }) => void;
   endSession: () => void;
   setConnectionStatus: (status: boolean) => void;
+  setSensorInputMuted: (muted: boolean) => void;
   setLiveData: (data: RepVeloData | null) => void;
   addRep: (rep: RepData) => void;
   completeSet: (setData: SetData) => void;
@@ -71,6 +94,7 @@ interface TrainingState {
     lift: string,
     setData: Partial<SetData>,
   ) => void;
+  removeSetFromHistory: (setIndex: number, lift: string) => void;
 
   // New Actions for VBT Intelligence
   updateVBTIntelligence: (data: {
@@ -108,6 +132,7 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
   restStartTime: null,
 
   isConnected: false,
+  sensorInputMuted: false,
   liveData: null,
   repHistory: [],
   currentHeartRate: null,
@@ -128,33 +153,71 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
 
   // Actions
   startSession: (sessionId: string) => {
+    const startedAt = new Date().toISOString();
     set({
       currentSession: {
         session_id: sessionId,
         id: sessionId,
-        date: new Date().toISOString(),
+        date: startedAt,
         exercises: [],
         sets: [],
         total_volume: 0,
-        start_timestamp: new Date().toISOString(),
+        start_timestamp: startedAt,
       },
       isSessionActive: true,
       isPaused: false,
       pauseReason: undefined,
       sessionStartTime: Date.now(),
-      sessionStartTimeStamp: new Date().toISOString(),
+      sessionStartTimeStamp: startedAt,
       setHistory: [],
       currentSetIndex: 1,
       repHistory: [],
+      sensorInputMuted: false,
       targetWeight: null,
       sessionHRPoints: [],
-      setStartTimeStamp: new Date().toISOString(),
+      setStartTimeStamp: startedAt,
       restStartTime: null,
       cnsBattery: 100,
       estimated1RM: null,
       estimated1RM_confidence: null,
       suggestedLoad: null,
       proposedMVT: null,
+    });
+  },
+
+  restoreRecoveredSession: (data) => {
+    const dbNextSetIndex =
+      data.setHistory
+        .filter((setItem) => setItem.lift === data.currentLift)
+        .reduce(
+          (maxIndex, setItem) => Math.max(maxIndex, setItem.set_index),
+          0,
+        ) + 1;
+    set({
+      currentSession: data.session,
+      isSessionActive: true,
+      isPaused: true,
+      pauseReason: "manual",
+      sessionStartTime: data.sessionStartTime,
+      sessionStartTimeStamp: data.sessionStartTimeStamp,
+      currentExercise: data.currentExercise,
+      currentLift: data.currentLift,
+      currentLoad: data.currentLoad,
+      currentReps: data.currentReps,
+      currentSetIndex: Math.max(
+        1,
+        data.currentSetIndex ?? dbNextSetIndex,
+        dbNextSetIndex,
+      ),
+      setHistory: data.setHistory.slice(-50),
+      repHistory: [],
+      liveData: null,
+      sensorInputMuted: false,
+      currentHeartRate: null,
+      sessionHRPoints: [],
+      setHRPoints: [],
+      restStartTime: null,
+      setStartTimeStamp: null,
     });
   },
 
@@ -167,6 +230,7 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
       sessionStartTime: null,
       sessionStartTimeStamp: null,
       liveData: null,
+      sensorInputMuted: false,
       currentHeartRate: null,
       restStartTime: null,
       cnsBattery: 100,
@@ -180,8 +244,27 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
     set({ isConnected: status });
   },
 
+  setSensorInputMuted: (muted: boolean) => {
+    set({
+      sensorInputMuted: muted,
+      liveData: muted ? null : get().liveData,
+    });
+  },
+
   setLiveData: (data: RepVeloData | null) => {
-    set({ liveData: data });
+    set((state) => {
+      if (!data && !state.liveData) return state;
+      if (data && state.liveData) {
+        const isSame =
+          nearlyEqual(data.mean_velocity, state.liveData.mean_velocity) &&
+          nearlyEqual(data.peak_velocity, state.liveData.peak_velocity) &&
+          nearlyEqual(data.rom_cm, state.liveData.rom_cm, 0.1) &&
+          nearlyEqual(data.mean_power_w, state.liveData.mean_power_w, 0.5) &&
+          nearlyEqual(data.peak_power_w, state.liveData.peak_power_w, 0.5);
+        if (isSame) return state;
+      }
+      return { liveData: data };
+    });
   },
 
   addRep: (rep: RepData) => {
@@ -200,6 +283,7 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
       currentSetIndex: state.currentSetIndex + 1,
       repHistory: [], // Clear reps for next set
       liveData: null,
+      sensorInputMuted: false,
       setStartTimeStamp: null, // Reset set timestamp for next set
       setHRPoints: [], // Reset HR points for next set
     }));
@@ -261,6 +345,28 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
     }));
   },
 
+  removeSetFromHistory: (setIndex: number, lift: string) => {
+    set((state) => {
+      const nextHistory = state.setHistory.filter(
+        (setItem) => !(setItem.set_index === setIndex && setItem.lift === lift),
+      );
+      const sameLiftMaxSetIndex = nextHistory
+        .filter((setItem) => setItem.lift === lift)
+        .reduce(
+          (maxIndex, setItem) => Math.max(maxIndex, setItem.set_index),
+          0,
+        );
+
+      return {
+        setHistory: nextHistory,
+        currentSetIndex:
+          state.currentLift === lift
+            ? sameLiftMaxSetIndex + 1
+            : state.currentSetIndex,
+      };
+    });
+  },
+
   updateLoad: (load: number) => {
     set({ currentLoad: load });
   },
@@ -295,12 +401,17 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
 
   updateHeartRate: (bpm: number | null) => {
     if (bpm) {
-      set((state) => ({
-        currentHeartRate: bpm,
-        sessionHRPoints: [...state.sessionHRPoints, bpm].slice(-100),
-      }));
+      set((state) => {
+        if (state.currentHeartRate === bpm) return state;
+        return {
+          currentHeartRate: bpm,
+          sessionHRPoints: [...state.sessionHRPoints, bpm].slice(-100),
+        };
+      });
     } else {
-      set({ currentHeartRate: null });
+      set((state) =>
+        state.currentHeartRate == null ? state : { currentHeartRate: null },
+      );
     }
   },
 
@@ -310,6 +421,7 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
       setHRPoints: [],
       repHistory: [], // 新セット開始時はレップ履歴をクリア
       liveData: null,
+      sensorInputMuted: false,
       isPaused: false,
       pauseReason: undefined,
       // restStartTime はクリアせず保持する（完了時の restDuration 計算のため）

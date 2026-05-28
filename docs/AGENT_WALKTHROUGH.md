@@ -1,41 +1,47 @@
 # Agent Walkthrough Log
 
 ## 2026-05-12 (Codex / GPT-5)
+
 Scope: Manual-entry support for deterministic VBT coach metrics.
 Actions:
+
 - Created backup at `.ai-backups/pre-manual-vbt-metrics-20260512-052606`.
 - Added optional manual fields for Average Velocity, Velocity Loss, and ROM in `src/screens/ManualEntryScreen.tsx`.
 - Added live deterministic coach preview for manual entries when Average Velocity is provided.
 - Saved manual Average Velocity / Velocity Loss onto `SetData` and manual ROM onto generated `RepData`.
 - Added optional `avg_rom_cm` to `SetData`, populated it from sensor reps in `useSessionLogic`, and added a ROM quality gate to `DeterministicVBTCoach`.
 - Updated `docs/IMPROVEMENT_TRACKER.md` for `2026-05-11-03`.
-Results:
+  Results:
 - `pnpm -s vitest run src/services/__tests__/DeterministicVBTCoach.test.ts` passed.
 - `pnpm -s check` passed.
 - `pnpm -s test` passed: 18 tests passed, 1 skipped.
-Remaining:
+  Remaining:
 - Device/simulator UI verification for the new manual metrics card and text fit.
 - Consider deriving set-level average ROM from persisted reps when reading old DB-backed histories.
 
 ## 2026-05-12 (Codex / GPT-5)
+
 Scope: Implement deterministic VBT coach engine for API-free coaching.
 Actions:
+
 - Created backup at `.ai-backups/pre-deterministic-vbt-coach-20260512-051350`.
 - Added `src/services/DeterministicVBTCoach.ts` as a pure decision service for Average Velocity, Velocity Loss, MVT-based top singles, and backoff stop/watch/continue decisions.
 - Connected `AICoachService.getCoachingAdvice()` to prefer deterministic VBT decisions before the older trend-only advice.
 - Added focused unit tests in `src/services/__tests__/DeterministicVBTCoach.test.ts`.
 - Updated `docs/IMPROVEMENT_TRACKER.md` for `2026-05-11-02`.
-Results:
+  Results:
 - `pnpm -s vitest run src/services/__tests__/DeterministicVBTCoach.test.ts` passed.
 - `pnpm -s check` passed.
 - `pnpm -s test` passed: 17 tests passed, 1 skipped.
-Remaining:
+  Remaining:
 - Implement `2026-05-11-03` so manual entry can provide velocity/VL/ROM data to the deterministic coach.
 - Add ROM quality/confidence gates to the deterministic coach when ROM is available on set-level or derived from reps.
 
 ## 2026-05-11 (Codex / GPT-5)
+
 Scope: GLM解約後のCodexサブスク運用化とCodex App Server Phase 1導入。
 Actions:
+
 - Confirmed the local `codex` CLI exposes `codex app-server` and schema generation commands.
 - Added `docs/CODEX_APP_SERVER_INTEGRATION.md` to define the safe integration direction: app runtime coaching remains deterministic/VBT-first, while Codex App Server is used for developer/admin automation.
 - Added `scripts/codex-app-server-check.mjs` and `pnpm codex:app-server:check` as a repo-local readiness check.
@@ -45,7 +51,7 @@ Actions:
 - Fixed the client protocol wiring so `thread/start` also receives repo `cwd`, `approvalPolicy`, and `sandbox: "read-only"` / `"workspace-write"` overrides.
 - Set the admin client default model to `gpt-5.4` after a real App Server turn reported that `gpt-5.5` requires a newer Codex CLI than the verified `codex-cli 0.101.0`.
 - Updated `docs/IMPROVEMENT_TRACKER.md` with the GLM-to-Codex migration item.
-Results:
+  Results:
 - Backup created at `.ai-backups/pre-codex-app-server-20260511-194122`.
 - Follow-up preset backup created at `.ai-backups/pre-codex-app-server-presets-20260511-203609`.
 - `pnpm codex:app-server:check` passed with `codex-cli 0.101.0`.
@@ -54,52 +60,59 @@ Results:
 - After defaulting the admin client to `gpt-5.4`, `pnpm codex:app-server:admin -- --preset vbt-plan --note "Read-only. Do not modify files. Keep the answer concise."` completed and produced a deterministic VBT plan.
 - Recorded the run output in `docs/CODEX_APP_SERVER_RUNS.md`.
 - `pnpm -s check` passed.
-Remaining:
+  Remaining:
 - Next implementation candidate: `2026-05-11-02` deterministic VBT coach engine, then `2026-05-11-03` manual-entry data support.
 - Keep app-facing AI optional; prioritize deterministic VBT guidance so normal use does not require API billing.
 
 ## 2026-03-26 (Codex)
+
 Scope: Repo stabilization, TestFlight workflow documentation, exercise selection fix.
 Actions:
+
 - Fixed exercise selection after category filter by dismissing keyboard and adjusting scroll view tap handling.
 - Fixed settings screen TypeScript errors (router import, style key conflict).
 - Resolved TypeScript build errors for ROM range display.
 - TestFlight upload stabilized using FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT/RETRIES, CFBundleVersion bumped to 66 for upload.
-Results:
+  Results:
 - TestFlight upload succeeded (build 66).
-Remaining:
+  Remaining:
 - Keep walkthrough log updated on every agent/model switch.
 - Record any new incidents and fixes.
 
 ## 2026-03-26 (Codex)
+
 Scope: TestFlight build/upload.
 Actions:
+
 - Bumped CFBundleVersion to 67 for TestFlight upload.
 - Ran fastlane beta via skill script with build settings timeout overrides.
-Results:
+  Results:
 - Upload succeeded to App Store Connect (TestFlight processing pending).
-Remaining:
+  Remaining:
 - Verify build 67 appears in TestFlight and run device testing.
 
 ## 2026-03-31 (Codex / GPT-5)
+
 Scope: Normalize agent handoff, replace stale status document, preserve latest working-tree context for any follow-on agent.
 Actions:
+
 - Reviewed canonical repo path, recent git history, current dirty files, version/build metadata, and agent rules.
 - Replaced stale CURRENT_STATUS.md, which still described the app as an early template build, with a current project status summary.
 - Added docs/AGENT_HANDOFF_2026-03-31.md as a restart guide for Codex/Claude/GLM/Gemini.
 - Recorded the active local risks: GLM status-check can pass while live send fails, latest GLM history-normalization fix is only type-checked so far, and app.config.ts build number is out of sync with ios/RepVeloCoach/Info.plist.
-Results:
+  Results:
 - Canonical continuation point is now documented in CURRENT_STATUS.md and docs/AGENT_HANDOFF_2026-03-31.md.
 - The repo now has explicit instructions for which path to use, what to build next, and what not to trust.
-Remaining:
+  Remaining:
 - Commit or amend the current working tree after deciding whether to keep the GLM send fix as-is.
 - Bump native build number above 71 and keep all build-number sources aligned before the next TestFlight upload.
 - Verify AI Coach live send on device after the next build.
 
-
 ## 2026-03-31 (Codex / GPT-5)
+
 Scope: Session history expansion, audio/warmup settings, direct-GLM send hardening.
 Actions:
+
 - Added app-level persisted settings defaults/service and hydrated them into the Zustand store so session logic reads the same settings the Settings tab edits.
 - Added settings toggles for warmup recommendations, rep count readout, velocity readout, and the "もっと速く" cue.
 - Added per-exercise `ignore_first_rep_as_setup` support in DB schema/service/catalog and exposed the toggle inside Settings > 種目マスタ.
@@ -109,79 +122,84 @@ Actions:
 - Updated rep detail modal to filter by `lift + set_index`, show setup/fail/excluded state, and allow marking a rep as setup.
 - Added HR display next to the rest timer when heart-rate data is available.
 - Hardened direct GLM chat send by compacting context/history and retrying once with a minimal prompt if the full payload fails.
-Results:
+  Results:
 - `pnpm -s tsc --noEmit` passed after these changes.
 - Session history and settings flow are materially improved and ready for device verification.
-Remaining:
+  Remaining:
 - AirPods heart-rate acquisition is still limited by the current `HealthService` stub; UI is ready but true HealthKit/AirPods ingestion is not yet implemented.
 - Direct GLM send should be re-tested on device to confirm the new minimal retry path resolves the remaining failure.
 - Build number still needs alignment/bump before the next TestFlight upload.
 
-
 ## 2026-03-31 (Codex / GPT-5)
+
 Scope: Commit current UX/coach improvements and ship a fresh TestFlight build.
 Actions:
+
 - Committed session-history, settings, setup-rep, and direct-GLM retry improvements as `fad5e6c`.
 - Aligned iOS build number sources and bumped the native/TestFlight build to `72` in `app.config.ts`, `Info.plist`, and Xcode project metadata.
 - Ran the documented Fastlane/TestFlight upload flow with App Store Connect API key auth.
-Results:
+  Results:
 - TestFlight/App Store Connect upload succeeded for version `2.3.5` build `72`.
 - Generated IPA: `ios/fastlane_export/RepVeloCoach.ipa`
-Remaining:
+  Remaining:
 - Confirm on-device that AI Coach live send now succeeds with the history-normalization/minimal-retry path.
 - Confirm music resumes correctly after voice prompts.
 - Implement real AirPods/HealthKit heart-rate ingestion beyond the current UI/stub layer.
 
-
 ## 2026-03-31 (Codex / GPT-5)
+
 Scope: Historical set editing and GLM auth-error clarification.
 Actions:
+
 - Added a reusable `SetEditModal` for editing set load, RPE, and notes.
 - Replaced the session-screen weight-only prompt with the shared edit modal.
 - Added the same edit flow to `app/session-detail.tsx`, so historical session sets can now be corrected from session detail.
 - Added `DatabaseService.updateSetEditableFields()` to keep `sets`, `reps`, and session aggregates aligned when editing a historical set.
 - Expanded direct-GLM 401 parsing to detect expired/invalid-token responses, including the Chinese error text returned by Z.AI.
-Results:
+  Results:
 - `pnpm -s tsc --noEmit` passed.
 - Historical session detail now has an edit button per set.
 - Current AI Coach screenshot indicates authentication failure (`401`, token invalid/expired), not a transport/connectivity failure.
-Remaining:
+  Remaining:
 - Re-enter or replace the Z.AI API key on device and re-test AI Coach send.
 - If GLM still fails after replacing the key, capture the new exact status text and request payload mode (`anthropic` or `paas/v4`).
 
-
 ## 2026-03-31 (Codex / GPT-5)
+
 Scope: TestFlight rebuild after GLM/session-detail fixes.
 Actions:
+
 - Bumped the app-side build number to `73` and updated the local native iOS build metadata used by Fastlane/archive.
 - Ran the documented Fastlane upload flow with App Store Connect API key auth.
-Results:
+  Results:
 - TestFlight/App Store Connect upload succeeded for version `2.3.5` build `73`.
 - Generated IPA: `ios/fastlane_export/RepVeloCoach.ipa`
-Remaining:
+  Remaining:
 - Wait for App Store Connect/TestFlight processing, then verify the new build on device.
 - Verify historical set editing from session detail.
 - Verify GLM send now works after the renewed API key.
 
-
 ## 2026-04-10 (Codex / GPT-5)
+
 Scope: Make TestFlight build/upload reproducible for Claude as well as Codex.
 Actions:
+
 - Replaced repo-local `scripts/deploy.sh` and `scripts/upload_only.sh` with robust versions that auto-detect the canonical repo, enforce Xcode selection, check ASC env vars, and run Bundler/Fastlane directly from the repo.
 - Rewrote `TESTFLIGHT_DEPLOYMENT.md` from stale Manus-era content to the current RepVeloCoach TestFlight workflow.
 - Updated `AGENTS.md` so all agents prefer the repo-local scripts/docs over Codex-only home-directory skills for actual build/upload work.
 - Updated `CURRENT_STATUS.md` to point Build And Upload at the repo-local workflow.
-Results:
+  Results:
 - TestFlight build/upload workflow is now documented in repo-local files that Claude can read and execute without `~/.codex/skills/...`.
 - `bash -n scripts/deploy.sh` and `bash -n scripts/upload_only.sh` passed.
-Remaining:
+  Remaining:
 - Optionally mirror the same wording into any Claude-specific bootstrap file if one is later introduced.
 - Keep repo-local scripts as the release source of truth when the workflow changes.
 
-
 ## 2026-04-10 (Claude Sonnet 4.6)
+
 Scope: Second-pass implementation addressing reviewer feedback and remaining gaps.
 Actions:
+
 - Added UI toggle for `enable_auto_start_session` in settings with proper labeling and placement.
 - Enhanced exercise master editing functionality:
   - Added per-exercise `velocity_loss_threshold` editing with 10-30% options plus "既定" (default).
@@ -205,7 +223,7 @@ Actions:
 - Fixed TypeScript errors:
   - Corrected method name from `getRecentSetsByLift` to `getRecentSetsForLift`.
   - Added missing category chip styles for inline exercise category selector.
-Results:
+    Results:
 - `pnpm -s tsc --noEmit` passed with no errors.
 - All 8 major tasks from supervisor feedback completed:
   1. Auto-start session toggle - DONE
@@ -216,15 +234,16 @@ Results:
   6. Auto-finish on background - DONE
   7. Style consistency (no emoji) - DONE
   8. TypeScript validation - PASSED
-Remaining:
+     Remaining:
 - Interval timer 11-second auto-complete feature: Left as-is per guidance - not cleanly implementable without refactoring rest timer logic.
 - Real-device testing recommended for auto-finish behavior and exercise editing workflow.
 - Consider TestFlight upload after device verification.
 
-
 ## 2026-04-10 (Claude Sonnet 4.6)
+
 Scope: Small corrective pass for session screen and RepDetailModal.
 Actions:
+
 - Fixed recent exercise history cards to properly display historical data:
   - Added `historicalSessionReps` state to track reps from tapped historical sessions.
   - Modified `openRepDetail` to fetch reps for historical sessions when cards are tapped.
@@ -235,19 +254,20 @@ Actions:
   - Changed background from bright green (#4CAF50) to GarageTheme accent (#ff7a1a).
   - Changed border color to GarageTheme accentSoft (#ffb347).
   - Changed text color to GarageTheme text (#fff5ee) for consistency.
-Results:
+    Results:
 - `pnpm -s tsc --noEmit` passed with no errors.
 - Recent exercise history cards now open useful data from historical sessions.
 - All UI elements now consistently follow GarageTheme styling.
 - Historical sessions are properly read-only (no edit/add/delete actions).
-Remaining:
+  Remaining:
 - Real-device testing recommended for historical session detail modal behavior.
 - Consider TestFlight upload after device verification.
 
-
 ## 2026-04-10 (Claude Sonnet 4.6)
+
 Scope: TestFlight build/upload with build number bump to 74.
 Actions:
+
 - Bumped iOS build number from 73 to 74 consistently in:
   - `app.config.ts` (buildNumber: "74")
   - `ios/RepVeloCoach/Info.plist` (CFBundleVersion: 74)
@@ -256,19 +276,21 @@ Actions:
 - Ran repo-local TestFlight deployment script:
   - Executed: `FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT=20 FASTLANE_XCODEBUILD_SETTINGS_RETRIES=6 bash scripts/deploy.sh`
   - Used canonical repo path: `/Volumes/0RICON_APP/Developer/MyFiles/repvelocoach-git-sync-20260320/repo`
-Results:
+    Results:
 - TestFlight/App Store Connect upload succeeded for version `2.3.5` build `74`.
 - Generated IPA: `ios/fastlane_export/RepVeloCoach.ipa`
 - Fastlane summary: build_app (184s), upload_to_testflight (55s), total ~4 minutes.
 - Upload completed successfully at 11:31:31.
-Remaining:
+  Remaining:
 - Wait for App Store Connect/TestFlight processing (usually 15-30 minutes).
 - Verify build 74 appears in TestFlight.
 - Real-device testing recommended for all features implemented in recent sessions.
 
 ## 2026-04-13 (Codex / GPT-5 + Claude CLI via Z.AI GLM sonnet/opus)
+
 Scope: Feedback triage after device test, introduce a canonical improvement tracker, and implement a first pass on session/AI/graph follow-ups.
 Actions:
+
 - Confirmed Claude CLI is currently pointed at Z.AI GLM and verified both `--model sonnet` and `--model opus` respond through the CLI.
 - Added `docs/IMPROVEMENT_TRACKER.md` as the canonical improvement table for all agents and updated `AGENTS.md` to require reading/updating it.
 - Launched two GLM worker tasks via the project-leader workflow:
@@ -282,7 +304,7 @@ Actions:
 - Added category-first exercise selection to graph mode and replaced fixed graph zones with percentile-based history-derived zones (with fallback).
 - Integrated a 4-point / historical-fallback 1RM estimator after set save, and surfaced velocity-loss-based estimated RPE in session history.
 - Added an explicit `履歴から V@1RM を最適化` button and made accepted MVT updates propagate to both the LVP profile and the exercise master.
-Results:
+  Results:
 - `pnpm -s tsc --noEmit` passed after the integrated changes.
 - Improvement requests now have a single canonical tracking document that future Codex/Claude/GLM/Gemini sessions can update.
 - The following items moved to implemented in the tracker:
@@ -296,16 +318,17 @@ Results:
 - Existing implemented features were confirmed and tracked explicitly:
   - exercise master cue/focus notes
   - session note editing from session mode
-Remaining:
+    Remaining:
 - Battery percentage issue is still unresolved; current UI exposes CNS Battery only, and a true sensor battery pipeline may still be missing.
 - Auto-start still needs another pass; current movement trigger (`ROM > 5cm`) did not satisfy device testing.
 - Duplicate-rep suppression must be re-tested on device because the fix is heuristic.
 - If the next agent continues this work, start from `docs/IMPROVEMENT_TRACKER.md` and `git diff` rather than the old TODO file.
 
-
 ## 2026-04-13 (Claude Sonnet 4.6 via Z.AI GLM)
+
 Scope: Auto-start ROM threshold configuration
 Actions:
+
 - Added `auto_start_rom_cm` field to `AppSettings` type with default value of 5cm.
 - Added `auto_start_rom_cm` field to `Exercise` type for per-exercise override.
 - Updated `AppSettingsService` to include the new field in `DEFAULT_APP_SETTINGS` and persistence.
@@ -314,35 +337,39 @@ Actions:
 - Added exercise-specific auto-start ROM editing in exercise master edit form.
 - Updated `mergeExerciseWithPreset` in `exerciseCatalog.ts` to merge auto_start_rom_cm.
 - Updated `ExerciseService.syncCatalog` to preserve existing auto_start_rom_cm values.
-Results:
+  Results:
 - `pnpm -s tsc --noEmit` validation needed.
 - Auto-start ROM threshold is now configurable at both app-level and exercise-level.
 - Settings UI allows global configuration with visual feedback (current threshold displayed).
 - Exercise master editing allows per-exercise override with "既定" (default) option.
 - Auto-start logic follows precedence: exercise.override > settings.default.
-Remaining:
+  Remaining:
 - Type-check and build to verify no compilation errors.
 - Real-device testing to confirm auto-start behavior with configurable thresholds.
 - Consider TestFlight upload after verification.
 
 ## 2026-04-13 (Codex review + GLM Sonnet auto-start threshold pass)
+
 Scope: Make auto-start ROM threshold configurable globally and per exercise, then prepare for commit/build.
 Actions:
+
 - Used the global `glm-priority-workflow` and project-leader orchestration to route the task to a GLM Sonnet worker.
 - Reviewed the partial worker changes and completed the missing persistence integration in `DatabaseService` and `ExerciseService`.
 - Added a global app setting for auto-start ROM threshold (`auto_start_rom_cm`, default 5cm).
 - Added an exercise-level override for auto-start ROM threshold and surfaced it in exercise-master editing.
 - Updated session auto-start detection to use exercise override first, then global default.
 - Updated the improvement tracker so auto-start is back in implemented state pending new device testing.
-Results:
+  Results:
 - Auto-start threshold is no longer hard-coded to 5cm.
 - Users can now tune it globally and override it per exercise from settings.
-Remaining:
+  Remaining:
 - Device testing is still required to confirm the threshold choices are appropriate per lift.
 
 ## 2026-04-13 (Codex / GPT-5 + Claude CLI via Z.AI GLM sonnet)
+
 Scope: Commit the integrated session/intelligence/auto-start changes, push `main`, and ship a new TestFlight build.
 Actions:
+
 - Final-reviewed the integrated working tree after GLM-assisted implementation and kept the canonical repo at `/Volumes/0RICON_APP/Developer/MyFiles/repvelocoach-git-sync-20260320/repo`.
 - Committed the feature batch as `825c4a2` (`Improve session intelligence and configurable auto-start`) and pushed it to `origin/main`.
 - Bumped the iOS/TestFlight build number from `74` to `75` in all three required sources:
@@ -353,12 +380,12 @@ Actions:
 - Ran the repo-local upload flow:
   - `source ~/.zshrc && FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT=20 FASTLANE_XCODEBUILD_SETTINGS_RETRIES=6 bash scripts/deploy.sh`
 - Verified archive, IPA export, and App Store Connect upload success from the fastlane output.
-Results:
+  Results:
 - GitHub `main` now contains the auto-start threshold changes and the session/intelligence improvements.
 - TestFlight/App Store Connect upload succeeded for version `2.3.5` build `75`.
 - Generated IPA: `ios/fastlane_export/RepVeloCoach.ipa`
 - Fastlane summary: `build_app` 316s, `upload_to_testflight` 61s.
-Remaining:
+  Remaining:
 - Wait for App Store Connect/TestFlight processing for build `75`.
 - Device-test the new auto-start threshold controls:
   - global default threshold in settings
@@ -367,8 +394,10 @@ Remaining:
 - If another iOS upload is needed, bump above `75` before the next run.
 
 ## 2026-04-14 (Codex / GPT-5 + Claude CLI Sonnet)
+
 Scope: Add a repo-root Claude bootstrap document so Claude can reliably work in the canonical repo and follow the correct TestFlight workflow.
 Actions:
+
 - Launched Claude CLI (`claude --model sonnet`) against the canonical repo and asked it to draft a repo-root `CLAUDE.md` based only on:
   - `AGENTS.md`
   - `CURRENT_STATUS.md`
@@ -381,15 +410,17 @@ Actions:
   - exact TestFlight upload steps
   - post-upload recording requirements
 - Kept the build/upload source of truth repo-local rather than home-directory skill-local.
-Results:
+  Results:
 - The repo now has a root `CLAUDE.md` that Claude Code can read before editing or building.
 - Claude-specific onboarding now points at the same canonical repo and the same TestFlight workflow used by Codex.
-Remaining:
+  Remaining:
 - If release workflow changes again, update both `TESTFLIGHT_DEPLOYMENT.md` and `CLAUDE.md` together.
 
 ## 2026-04-14 (Codex / GPT-5 + Claude CLI via Z.AI GLM sonnet)
+
 Scope: Turn the user's dark/high-tech redesign brief into a canonical implementation direction for Home and Active Session.
 Actions:
+
 - Used the `glm-priority-workflow` and `project-leader` skills to route the redesign work through Claude CLI on Z.AI GLM.
 - Read the current Home (`app/(tabs)/index.tsx`) and Session (`app/(tabs)/session.tsx`) structures plus the existing `GarageTheme` token set.
 - Asked GLM for an implementation-oriented redesign plan and selected a hybrid direction:
@@ -397,17 +428,19 @@ Actions:
   - Session = Variant 1 base + Variant 2 data hierarchy polish
 - Added `docs/UI_REDESIGN_BRIEF_2026-04-14.md` as the canonical design brief for this redesign pass.
 - Added two tracker entries so future Codex/Claude/GLM agents can continue the redesign without re-deciding direction.
-Results:
+  Results:
 - The redesign direction is now documented in-repo rather than only in chat.
 - Home and Session redesign are explicitly tracked as active work items.
-Remaining:
+  Remaining:
 - Execute the first-pass UI implementation for `app/(tabs)/index.tsx` and `app/(tabs)/session.tsx`.
 - Run typecheck after the visual pass.
 - Device-test readability and interaction density after implementation.
 
 ## 2026-04-14 (Codex / GPT-5 + Claude CLI via Z.AI GLM sonnet+opus)
+
 Scope: Start the actual Home / Active Session redesign with a multi-agent flow while keeping the repo stable.
 Actions:
+
 - Split the redesign into smaller slices after the previous full-file GLM attempt had broken JSX and TypeScript.
 - Ran parallel GLM workers:
   - `glm-sonnet-home-slice1` for `app/(tabs)/index.tsx`
@@ -426,11 +459,11 @@ Actions:
   - more pronounced live data card styling
 - Removed some decorative symbols from the Home action buttons to keep the visual language cleaner.
 - Re-ran `pnpm -s tsc --noEmit` after the accepted changes.
-Results:
+  Results:
 - Home screen now has a clear first-pass dark/high-tech visual redesign.
 - Active Session screen has a safe first-pass polish without touching business logic.
 - TypeScript check passed after reverting the broken GLM patch and keeping only the accepted slices.
-Remaining:
+  Remaining:
 - Device-test the new Home readability and action-card ergonomics.
 - Device-test Session readability under actual live telemetry.
 - Continue the redesign in smaller passes:
@@ -440,8 +473,10 @@ Remaining:
   - graph/history/settings screens later
 
 ## 2026-04-14 (Codex / GPT-5 + Claude CLI via Z.AI GLM sonnet+opus)
+
 Scope: Continue the dark-tech redesign and complete the second-pass Session polish before the next TestFlight build.
 Actions:
+
 - Used GLM again for two smaller Session redesign slices instead of another unsafe full-file rewrite.
 - Accepted the Session second-pass visual changes that improved:
   - session start banner
@@ -451,15 +486,17 @@ Actions:
   - session history card styling
 - Kept the redesign strictly visual and layout-oriented; no session logic, BLE logic, DB flow, or state transitions were changed.
 - Re-ran `pnpm -s tsc --noEmit` after the integrated second-pass changes.
-Results:
+  Results:
 - Session screen now has a broader dark/high-tech treatment beyond the first safe pass.
 - TypeScript check passed.
-Remaining:
+  Remaining:
 - Commit and upload a new TestFlight build so the redesign can be evaluated on device.
 
 ## 2026-04-14 (Codex / GPT-5 + Claude CLI via Z.AI GLM sonnet+opus)
+
 Scope: Ship the redesign first pass and second-pass Session polish in a new TestFlight build.
 Actions:
+
 - Committed the accepted redesign first pass as `bcb9563` (`Start dark tech redesign for home and session`).
 - Committed the accepted Session second-pass polish as `2573c18` (`Polish session screen dark tech redesign`).
 - Bumped the iOS/TestFlight build number from `75` to `76` in all three required sources:
@@ -473,19 +510,21 @@ Actions:
 - Ran the canonical upload command:
   - `source ~/.zshrc && FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT=20 FASTLANE_XCODEBUILD_SETTINGS_RETRIES=6 bash scripts/deploy.sh`
 - Verified archive success, IPA export success, and App Store Connect upload success from fastlane output.
-Results:
+  Results:
 - GitHub `main` contains the redesign commits and build bump through `ec178af`.
 - TestFlight/App Store Connect upload succeeded for version `2.3.5` build `76`.
 - Generated IPA: `ios/fastlane_export/RepVeloCoach.ipa`
 - Fastlane summary: `build_app` 422s, `upload_to_testflight` 67s.
-Remaining:
+  Remaining:
 - Wait for App Store Connect/TestFlight processing for build `76`.
 - Device-test the redesign on Home and Session with live telemetry.
 - If another iOS upload is needed, bump above `76` before the next run.
 
 ## 2026-04-14 (Codex / GPT-5)
+
 Scope: AirPods Pro 3 / HealthKit live heart-rate ingestion into the session screen.
 Actions:
+
 - Reviewed the existing session heart-rate plumbing and confirmed the UI/store were already prepared to render `currentHeartRate` in both the session status area and the rest timer.
 - Replaced the stub `src/services/HealthService.ts` with a real native bridge wrapper using `NativeModules` and `NativeEventEmitter`.
 - Added `ios/RepVeloCoach/HealthKitHeartRateModule.swift` and `ios/RepVeloCoach/HealthKitHeartRateModule.m` to expose HealthKit authorization and live heart-rate updates to React Native.
@@ -497,68 +536,74 @@ Actions:
 - Validated TypeScript with `pnpm -s tsc --noEmit`.
 - Validated the iOS native side with simulator build:
   - `xcodebuild -workspace ios/RepVeloCoach.xcworkspace -scheme RepVeloCoach -configuration Debug -sdk iphonesimulator -destination 'platform=iOS Simulator,id=1C0615D0-1B04-46D5-92F9-A6BC66AF765B' build | xcpretty --no-color`
-Results:
+    Results:
 - Simulator build succeeded after switching to the HealthKit sample-query approach.
 - Heart-rate ingestion is now implemented end-to-end in code for iOS and is wired into the existing session UI.
 - The feature still needs real-device verification with AirPods Pro 3 and Health permissions.
-Remaining:
+  Remaining:
 - Confirm on device that AirPods Pro 3 actually streams heart-rate samples into HealthKit quickly enough during a live session.
 - If live updates lag, the next iteration should evaluate whether workout-session APIs can be conditionally used on newer iOS versions while keeping the sample-query fallback for iOS 15.1.
 - Before shipping, commit the new native files with `git add -f` because `/ios` is ignored by repo rules and the new files will not be picked up automatically.
 
 ## 2026-04-15 (Codex / GPT-5)
+
 Scope: Fix post-test issues in manual entry recent-weight reflection and session-side manual rep addition, then prepare a new TestFlight build.
 Actions:
+
 - Investigated manual entry history refresh and confirmed the quick-select weights only came from historical DB sets, excluding sets just saved in the current manual-entry session.
 - Added a merged `recentSetsForDisplay` source in `src/screens/ManualEntryScreen.tsx` so current-session saved sets are surfaced immediately in the recent-weight buttons and recent-set list.
 - Investigated session-side manual rep addition and confirmed the detail modal was adding reps to the currently active set instead of the set currently opened in the modal.
 - Updated `app/(tabs)/session.tsx` so manual rep addition now targets `selectedSet`, uses its `lift/load/set_index`, recalculates set metrics, updates set history, and refreshes session reps after insertion.
 - Validated the JS side with `pnpm -s tsc --noEmit`.
-Results:
+  Results:
 - Manual entry should now reflect the just-saved load immediately in recent-weight quick select.
 - Manual rep addition from set detail should now affect the visible set rather than an unrelated in-progress set.
-Remaining:
+  Remaining:
 - Ship and verify both fixes on device via the next TestFlight build.
 
 ## 2026-04-15 (Codex / GPT-5)
+
 Scope: TestFlight build attempt for manual-entry/session fixes and HealthKit-enabled build.
 Actions:
+
 - Committed manual-entry recent-weight reflection fix and session detail manual-rep-add fix as `9f2d78b`.
 - Bumped build number to `77` across `app.config.ts`, `ios/RepVeloCoach/Info.plist`, and `ios/RepVeloCoach.xcodeproj/project.pbxproj` as commit `58a2b45`.
 - Added explicit HealthKit `SystemCapabilities` declaration in the Xcode project as commit `45ff9df` to help automatic signing recognize the new capability.
 - Ran the repo-local TestFlight workflow twice with:
   - `FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT=20 FASTLANE_XCODEBUILD_SETTINGS_RETRIES=6 bash scripts/deploy.sh`
-Results:
+    Results:
 - Build `77` did not upload.
 - Archive failed before IPA export because signing/provisioning is not aligned with the newly added HealthKit entitlement.
 - First fatal errors:
   - `Provisioning profile "iOS Team Provisioning Profile: *" doesn't include the HealthKit capability.`
   - `Provisioning profile "iOS Team Provisioning Profile: *" doesn't include the com.apple.developer.healthkit entitlement.`
   - `No Accounts: Add a new account in Accounts settings.`
-Remaining:
+    Remaining:
 - Apple Developer portal or local Xcode signing setup must be updated before any HealthKit-enabled TestFlight build can succeed.
 - After capability/profile/account alignment, re-run `scripts/deploy.sh` using build `77` or bump above it if another local archive already consumes `77`.
 
-
 ## 2026-04-15 (Codex / GPT-5)
+
 Scope: Extend graph mode with a daily e1RM trend for the selected exercise.
 Actions:
+
 - Updated `app/(tabs)/graph.tsx` to collect up to 30 recent sessions worth of sets for the selected exercise instead of only the small velocity subset.
 - Added `buildDailyE1rmTrend()` to aggregate the best e1RM per day from saved sets.
 - Added a new `renderDailyE1rmTrend()` section to the graph `進捗` tab, with latest/best summary cards and per-day bars.
 - Kept existing velocity trend behavior by continuing to expose the latest 20 sets separately.
 - Validated with `pnpm -s tsc --noEmit`.
-Results:
+  Results:
 - Graph mode now shows a day-by-day e1RM trend for the currently selected exercise.
 - Existing LVP and velocity-zone views remain intact.
-Remaining:
+  Remaining:
 - Check on device whether the date range and bar density are readable when an exercise has many logged days.
 - If needed, add a range filter (7d / 30d / all) in a later pass.
 
-
 ## 2026-04-15 (Codex / GPT-5 + GLM sonnet)
+
 Scope: Extend graph mode beyond daily e1RM with range filters, smoothing, and cross-exercise comparison.
 Actions:
+
 - Requested a focused implementation proposal from GLM sonnet for `app/(tabs)/graph.tsx` covering 7d/30d/all filters, a smoothed trend line, and exercise comparison.
 - Rejected the expensive part of the GLM proposal that would re-query every exercise independently; instead integrated a single-pass per-session aggregation for comparison data.
 - Added `DateRange` filtering for the daily e1RM trend (`7日 / 30日 / 全期間`).
@@ -566,31 +611,35 @@ Actions:
 - Added an exercise comparison section that shows the latest e1RM snapshot across recorded exercises.
 - Kept the existing volume trend and velocity trend sections intact under the new e1RM trend block.
 - Validated with `pnpm -s tsc --noEmit`.
-Results:
+  Results:
 - Trend tab now includes date-range filtering, smoothed e1RM visualization, and cross-exercise comparison.
 - GLM was used for the implementation proposal; final integration was reviewed and adjusted locally to avoid wasteful DB access.
-Remaining:
+  Remaining:
 - Real-device review should confirm chart readability when many days are visible in `全期間`.
 - If labels become crowded, the next pass should add a horizontal scroll or sparse x-axis labeling.
 
 ## 2026-04-18 (Claude Sonnet)
+
 Scope: Bug fixes for session mode and TestFlight build attempt.
 Actions:
+
 - Fixed Mean Power and Peak Power display in session mode (`app/(tabs)/session.tsx`) to always calculate and show power values even when BLE data doesn't include power.
 - Disabled automatic set completion when velocity loss threshold is exceeded (`src/hooks/useSessionLogic.ts`) - now only shows warning, allows user to continue recording until manual set complete.
 - Added bash command confirmation skip setting in `~/.claude/settings.json` with `"defaultMode": "dontAsk"` and `"Bash"` in allowed tools.
 - Bumped build number to `78` across `app.config.ts`, `ios/RepVeloCoach/Info.plist`, and `ios/RepVeloCoach.xcodeproj/project.pbxproj`.
 - Attempted TestFlight upload with build 78.
-Results:
+  Results:
 - Build 78 upload failed due to Apple Developer Program agreement expiration (requires user to update agreement in App Store Connect).
 - Session mode bugs fixed: power display now working, VL cut no longer auto-ends sets.
 - Bash commands now execute without confirmation prompts.
-Remaining:
+  Remaining:
 - User needs to update Apple Developer Program agreement in App Store Connect, then retry TestFlight upload with build 78 or bump to build 79.
 
 ## 2026-04-21 (Claude Opus 4.7)
+
 Scope: Phase 1 & 2 implementation based on user testing feedback (10 improvement items).
 Actions:
+
 - Created improvement plan at `/Users/hoshinohideyuki/.claude/plans/fluttering-gliding-stallman.md` covering:
   1. VL警告音のオンオフ機能
   2. パワー表示修正とピークベロシティ表示追加
@@ -616,21 +665,21 @@ Actions:
   - Created ManualRepModal.tsx for manual rep entry with velocity and load inputs
 - Updated settings.tsx with VL warning toggle and volume adjustment UI (25/50/75/100% buttons)
 - Updated session.tsx with improved power display, peak velocity fallback, and HR signal display
-Results:
+  Results:
 - All 10 improvement items implemented in code
 - TypeScript validation passed
 - Git commit created: `78817b0` - "feat: セッションモード改善（Phase1&2）"
 - Git push to origin/main completed successfully
 - Build 78 IPA already exists from previous build (generated at 06:32 on 2026-04-21)
 - TestFlight upload completed by Codex via skill-based script
-Note: For future Claude sessions, use skill-based deployment scripts:
+  Note: For future Claude sessions, use skill-based deployment scripts:
   - Full build + upload: `bash ~/.claude/skills/repvelocoach-testflight/scripts/deploy.sh`
   - Upload existing IPA only: `bash ~/.claude/skills/repvelocoach-testflight/scripts/upload_only.sh`
 - Build 79 uploaded to TestFlight successfully (2026-04-21 08:06:54 JST)
   - build_app: 195s
   - upload_to_testflight: 57s
   - Generated IPA: `ios/fastlane_export/RepVeloCoach.ipa` (20.9 MB)
-Remaining:
+    Remaining:
 - Device testing needed for all new features:
   - VL warning toggle functionality
   - Volume control effectiveness
@@ -643,8 +692,10 @@ Remaining:
   - Manual rep modal usability
 
 ## 2026-04-22 (Claude Opus 4.7)
+
 Scope: Fix 6 new issues from user testing, VL settings UI relocation, audio ducking.
 Actions:
+
 - Fixed performance issue: Limited setHistory array to 50 items in trainingStore (completeSet)
 - Fixed first session recording twice issue: Auto-start functionality investigation (found enable_auto_start_session defaults to false)
 - Added VL settings UI to session screen with toggle switch and threshold buttons (10%, 15%, 20%, 25%, 30%)
@@ -652,7 +703,7 @@ Actions:
   - Added INTERRUPTION_MODE_IOS_DUCK_OTHERS and INTERRUPTION_MODE_ANDROID_DUCK_OTHERS to AudioService
   - Music volume will automatically lower during voice announcements
 - Investigated session history power display: Confirmed calculation logic is correct (fallbacks from trackedReps → avg_power_w → calculated from avg_velocity)
-Results:
+  Results:
 - VL settings UI added to session.tsx with full styling
 - Audio ducking enabled via interruptionMode configuration
 - TypeScript validation passed
@@ -664,17 +715,19 @@ Results:
   - build_app: 195s
   - upload_to_testflight: 57s
   - Generated IPA: `ios/fastlane_export/RepVeloCoach.ipa`
-Remaining:
+    Remaining:
 - Device testing needed for:
   - VL settings UI functionality in session screen
   - Audio ducking effectiveness during voice announcements
   - Performance improvements in long sessions
 
 ## 2026-05-13 (Codex)
+
 Scope: User field-test follow-up for session freeze, VBT simulator testing path, and graph/MY V@1RM behavior.
 Safety:
+
 - Considered workspace AGENTS rule before acting. Work stayed inside repo-local files and normal build/test commands; no scans or broad network probing.
-Actions:
+  Actions:
 - Backed up touched files under `.ai-backups/20260513-vbt-freeze-simulator-graph/`.
 - Updated `docs/IMPROVEMENT_TRACKER.md` with 2026-05-13 user feedback and implemented items.
 - Changed `src/hooks/useSessionLogic.ts` so set completion moves UI to rest immediately, then persists DB rows, PR checks, four-point 1RM estimation, LVP save, and ROM inference asynchronously.
@@ -690,7 +743,7 @@ Actions:
   - Bars prefer actual recorded loads instead of fixed 20-140kg loads
   - Displays `MY V@1RM` using lvp.mvt, exercise.mvt, then v1rm fallback
   - e1RM estimate now uses personal MVT where available
-Results:
+    Results:
 - `pnpm -s check` passed.
 - `pnpm -s test` passed: 20 passed, 1 skipped.
 - iOS Debug simulator build passed with `xcodebuild ... CODE_SIGNING_ALLOWED=NO build`.
@@ -701,17 +754,19 @@ Results:
   - Found and fixed active-session screen hiding VBT SIM controls.
   - Ran SIM SET in active session; it advanced to SET 2 without freezing.
   - Found and fixed `AICoachService.suggestNextLoad` crash when `target_training_phase` is a PL phase such as `peaking`.
-Notes:
+    Notes:
 - Simulator warning `Missing com.apple.developer.healthkit entitlement` is expected for the simulator/debug entitlement context and did not block session testing.
 - Physical iPhone training DB is not directly readable from Mac in normal TestFlight use unless exported/synced or the app container is accessible via development tooling.
 
 ## 2026-05-14 (Codex)
+
 Scope: Add a safe iPhone-to-Codex training-data handoff.
 Safety:
+
 - Considered the workspace AGENTS security rule before acting.
 - Confirmed the Mac is not associated with AirPort Wi-Fi before starting.
 - Avoided network scanning, LAN discovery, device probing, and background servers. The handoff is user-initiated file sharing only.
-Actions:
+  Actions:
 - Backed up touched files under `.ai-backups/20260514-codex-training-export/`.
 - Added `src/services/CodexDataExportService.ts`.
   - Builds schema `repvelocoach.codex-training-export.v1`.
@@ -725,25 +780,28 @@ Actions:
   - Validates the schema and prints counts, latest session, mean rep velocity, top exercises, and MY V@1RM profile values.
 - Added package script `pnpm codex:training-export`.
 - Added direct `expo-file-system` dependency so the export service owns its file-writing dependency.
-Results:
+  Results:
 - `pnpm -s check` passed.
 - `node --check scripts/read-codex-training-export.mjs` passed.
 - Sample JSON parser smoke test passed.
-Remaining:
+  Remaining:
 - Real iPhone TestFlight/shared-file check is still needed: Data tab -> CODEX EXPORT -> AirDrop/Files/Finder to Mac -> `pnpm codex:training-export ~/Downloads`.
 
 Follow-up:
+
 - User said this should feel like it can be acquired from this screen.
 - Polished `app/(tabs)/import.tsx` so the Data tab headline is `DATA BAY / CODEX LINK`.
 - Moved Codex export into a prominent top card directly below local DB stats.
 - The card now shows export target, JSON badge, exportable counts, `GET DATA FOR CODEX`, and last exported file metadata.
 
 ## 2026-05-14 (Codex)
+
 Scope: VBT SIM session-mode regression test.
 Safety:
+
 - Considered the workspace AGENTS security rule. No network probing or scanning was used.
 - Wi-Fi check showed the Mac was not associated with AirPort Wi-Fi.
-Actions:
+  Actions:
 - Ran `pnpm -s check`.
 - Ran `pnpm -s vitest run src/utils/__tests__/VBTSimulator.test.ts src/services/__tests__/DeterministicVBTCoach.test.ts`.
 - Used iOS Simulator + Computer Use to test session mode:
@@ -755,27 +813,29 @@ Actions:
   - Sent a simulated SET.
   - Confirmed the UI entered rest/paused state after set completion.
   - Confirmed `次のセットを開始` advanced to `SET 2`.
-Findings:
+    Findings:
 - No freeze was observed during the simulated set-completion flow.
 - A React Native LogBox warning appeared after a 0kg simulator PR: `Text strings must be rendered within a <Text> component.`
 - Root cause was `prRecord.load_kg && (...)` in `src/components/PRNotification.tsx`; numeric `0` could be rendered outside `<Text>` during 0kg simulator tests.
-Fix:
+  Fix:
 - Backed up files under `.ai-backups/20260514-session-sim-test-fix/`.
 - Changed the PR notification condition to `prRecord.load_kg != null`.
-Results:
+  Results:
 - `pnpm -s check` passed after the fix.
 - Targeted VBT tests passed after the fix: 9 tests passed.
 - Re-ran the Simulator flow and the `Text strings...` warning did not reappear.
-Remaining:
+  Remaining:
 - Simulator still shows `Missing com.apple.developer.healthkit entitlement`, which is expected in the debug Simulator environment and not part of the VBT SIM failure path.
 - Real TestFlight/iPhone session-mode confirmation is still needed.
 
 ## 2026-05-14 (Codex)
+
 Scope: Fix 0W power display and add more live session information.
 Safety:
+
 - Considered the workspace AGENTS security rule. No network probing or scanning was used.
 - Wi-Fi check showed the Mac was not associated with AirPort Wi-Fi.
-Actions:
+  Actions:
 - Backed up touched files under `.ai-backups/20260514-session-power-info/`.
 - Updated `src/hooks/useSessionLogic.ts`.
   - Preserves device/simulator `mean_power_w` and `peak_power_w` when they are positive.
@@ -788,7 +848,7 @@ Actions:
   - Applies the same fallback to session-history power chips, so existing reps with missing/zero saved power can still show calculated power from load and velocity.
   - Adds active-session info cards for `EXERCISE`, `LOAD`, and `POWER`.
   - Adds active-session metric strip for `AVG V`, `ROM`, and `PEAK P`.
-Results:
+    Results:
 - `pnpm -s check` passed.
 - Targeted VBT tests passed: 20 tests passed across `VBTSimulator`, `VBTLogic`, and `DeterministicVBTCoach`.
 - iOS Simulator + Computer Use verification:
@@ -799,24 +859,487 @@ Results:
   - Confirmed live Power displayed `471 W` and Peak P displayed `556 W`.
   - Sent a simulated SET.
   - Confirmed set completion did not freeze and the PR modal appeared.
-Notes:
+    Notes:
 - Simulator still shows `Missing com.apple.developer.healthkit entitlement`, which is expected in the debug Simulator environment and did not block this test.
 
 ## 2026-05-17 (Codex)
+
 Scope: Continue the 筋トレMEMO-inspired UX plan for history review.
 Safety:
+
 - Work stayed inside repo-local files and normal developer verification commands.
 - No network probing, scans, or device discovery were used.
-Actions:
+  Actions:
 - Updated `src/screens/HistoryScreen.tsx`.
   - Added `リスト / カレンダー / グラフ` segmented view modes.
   - Calendar mode highlights days with sessions and shows selected-day sessions below the calendar.
   - Graph mode shows the last 14 training days and can switch between volume, set count, and duration.
   - Bar taps update a compact tooltip with date, metric value, session count, and main lifts.
 - Updated `docs/IMPROVEMENT_TRACKER.md` with `2026-05-17-01`.
-Results:
+  Results:
 - `pnpm -s lint` passed.
 - `pnpm -s tsc --noEmit` passed.
 - `pnpm -s test` passed: 20 tests passed, 1 skipped.
-Remaining:
+  Remaining:
 - Real-device UX check for touch target comfort, text fit, and whether calendar or graph should become the default history view.
+
+## 2026-05-19 (Codex)
+
+Scope: Split BIG3 categories and reduce Session screen freeze risk.
+Safety:
+
+- Work stayed inside repo-local files and normal developer verification commands.
+- No network probing, scans, or device discovery were used.
+  Actions:
+- Updated `src/constants/exerciseCatalog.ts`.
+  - Replaced the single `BIG3` selection group with separate `ベンチ`, `スクワット`, and `デッド` groups.
+  - Preserved other accessory category groupings.
+- Updated `src/types/index.ts` and `src/services/AppSettingsService.ts`.
+  - Added Session lightweight mode and per-section display settings for normal and focus Session screens.
+  - Defaulted lightweight mode to on.
+- Updated `app/(tabs)/session.tsx`.
+  - Avoids loading all session reps unless Session History or rep detail needs them.
+  - Stops the delayed second DB refresh once lightweight mode is active after 5 sets.
+  - Shows only the latest 5 sets in Session History while lightweight mode is on.
+  - Gates normal and focus Session sections behind display settings.
+- Updated `app/(tabs)/settings.tsx`.
+  - Added a categorized settings menu.
+  - Added Session lightweight mode controls.
+  - Added display toggles for normal Session and focus Session sections.
+    Results:
+- `pnpm -s tsc --noEmit` passed.
+- `pnpm -s lint` passed.
+- `pnpm -s test` passed: 20 tests passed, 1 skipped.
+  Remaining:
+- Real-device check needed: run at least 6 sets in Session mode and tune which display toggles should default off if the screen still feels heavy.
+
+## 2026-05-19 (Codex, parallel agents)
+
+Scope: Investigate and reduce progressive Session slowdown around the 6th set.
+Safety:
+
+- Work stayed inside repo-local files and normal developer verification commands.
+- No network probing, scans, or device discovery were used.
+  Investigation:
+- Started three read-only explorer agents in parallel:
+  - Session render/React performance.
+  - Store/DB/state accumulation.
+  - BLE/simulator/timers/listeners.
+- All reports converged on the same high-risk areas:
+  - Set-completion persistence and analysis were fire-and-forget and could overlap across sets.
+  - `handleDataReceived` did `getLVPProfile` DB reads per accepted rep.
+  - Full session reps were reloaded and regrouped for UI/detail paths.
+  - Hot SQLite queries had no indexes.
+  - Hidden `RepDetailModal` still filtered passed reps on parent renders.
+    Actions:
+- Updated `src/hooks/useSessionLogic.ts`.
+  - Added a serialized persistence queue so set-completion DB/analysis work does not pile up in parallel.
+  - Added lift-scoped LVP profile caching and removed per-rep DB reads from the hot BLE path.
+  - In lightweight mode, skipped heavier 4-point 1RM session-rep reread and ROM full-history inference during each set completion.
+  - Kept PR checks and LVP update path intact.
+- Updated `src/services/DatabaseService.ts`.
+  - Added `CREATE INDEX IF NOT EXISTS` indexes for hot `sets`, `reps`, and `pr_records` queries.
+- Updated `app/(tabs)/session.tsx`.
+  - Avoided manual/simulator full-rep refreshes when Session reps are not currently needed.
+- Updated `src/components/RepDetailModal.tsx`.
+  - Avoided filtering work when hidden and precomputed velocity-loss values in one pass.
+    Results:
+- `pnpm -s tsc --noEmit` passed.
+- `pnpm -s lint` passed.
+- `pnpm -s test` passed: 20 tests passed, 1 skipped.
+  Remaining:
+- Real-device check needed: run 8-10 sets with the physical device and confirm no progressive freeze.
+- If still heavy, next step is splitting `SessionScreen` into memoized subcomponents with Zustand selectors.
+
+## 2026-05-25 (Codex, parallel agents)
+
+Scope: Use pasted freeze diagnostics to reduce Session mode freeze risk and improve recovery/GPT/exercise selection flows.
+Safety:
+
+- Work stayed inside repo-local files and normal developer verification commands.
+- No network probing, scans, device discovery, or security-sensitive actions were used.
+  Investigation:
+- Started three read-only explorer agents in parallel:
+  - Session render/store fan-out and DB reload hotspots.
+  - Recovery/session continuity gaps.
+  - Exercise sort and GPT copy/open feasibility.
+- Reports agreed that DB/store counts matching means the latest freeze is more likely render fan-out than data corruption.
+- `sessionAllReps state件数: 0` is expected in lightweight mode because reps are intentionally lazy-loaded.
+  Actions:
+- Updated `app/(tabs)/session.tsx`.
+  - Switched the broad `useTrainingStore()` subscription to a shallow selector.
+  - Restores active sessions with the snapshot `current_set_index` and a canonical restored lift.
+  - Reduces recovery snapshot writes by depending on set count and last completed timestamp, not the whole set array.
+  - Loads reps for the tapped set with `getRepsForSet()` instead of full-session `getRepsForSession()` for detail/edit paths.
+  - GPT button now copies the full VBT/heart-rate context, opens ChatGPT via `chatgpt://`, and falls back to `https://chatgpt.com/`.
+- Updated `src/hooks/useSessionLogic.ts`.
+  - Switched broad store subscription to a shallow selector.
+- Updated `src/store/trainingStore.ts`.
+  - Recovery now preserves `currentSetIndex` while guarding against duplicate DB set indexes.
+  - LiveData and heart-rate setters skip unchanged/near-identical values to reduce unnecessary renders.
+- Updated `src/services/DatabaseService.ts`.
+  - `getSetsForSession()` now restores chronological order.
+  - Added recent exercise usage stats for sorting.
+- Updated `src/services/ExerciseService.ts` and `src/components/ExerciseSelectModal.tsx`.
+  - Exercise selection now sorts by recent set frequency, session count, last trained date, then name.
+- Updated `app.config.ts` and `ios/RepVeloCoach/Info.plist`.
+  - Added `chatgpt` as an allowed queried URL scheme.
+- Updated `docs/IMPROVEMENT_TRACKER.md` with `2026-05-25-01` through `2026-05-25-04`.
+  Results:
+- `pnpm -s tsc --noEmit` passed.
+- `pnpm -s lint` passed.
+- `pnpm -s test` passed: 24 tests passed, 1 skipped.
+  Remaining:
+- Real-device check: run the same 8-14 set workflow and confirm whether freeze remains.
+- If still heavy, split the large `SessionScreen` render tree into memoized `LiveDataPanel`, `SessionHistoryList`, and `SessionSetCard` components.
+- ChatGPT can be opened automatically, but iOS does not allow reliable cross-app auto-paste or auto-send without user action.
+
+## 2026-05-25 (Codex)
+
+Scope: Add app-side VBT decision summary before sending data to ChatGPT.
+Safety:
+
+- Work stayed inside repo-local files and normal developer commands.
+- No network probing, scans, device discovery, or credential access was used.
+  Actions:
+- Added `src/services/SessionDecisionService.ts`.
+  - Separates all-set AV, working-set AV, and recent 3 working-set AV.
+  - Treats non-warmup sets at 80%+ of today's max load as working sets.
+  - Flags same-load AV drop, ROM drop, high current HR, delayed HR→120, high VL, and e1RM drop.
+  - Produces next-load, HR wait target, rest target, pass criteria, stop criteria, PR status, confidence, and trend rows.
+- Added `src/services/__tests__/SessionDecisionService.test.ts`.
+  - Covers the observed 120kg→110kg style case where ROM drop is more important than velocity recovery.
+  - Verifies HR→120 averages ignore zero values.
+- Updated `app/(tabs)/session.tsx`.
+  - Added a short `NEXT SET DECISION` card for set-to-set use.
+  - Added purpose chips: 完遂 / フォーム / LVP / 量.
+  - Replaced GPT copy content with `VBT相談パケット v3`.
+  - Added app-side decision summary and an `AI用JSON` block.
+  - Explicitly separates HR→120 all vs working-set averages and notes HR→130/135 is not yet stored.
+- Updated `src/hooks/useSessionLogic.ts`.
+  - PR notification now excludes warmup sets, ROM that is 2cm+ shallower than the current day baseline, and clearly invalid peak velocity values.
+- Updated `docs/IMPROVEMENT_TRACKER.md` with `2026-05-25-05`.
+  Results:
+- `pnpm -s tsc --noEmit` passed.
+- `pnpm -s lint` passed.
+- `pnpm -s test` passed: 26 tests passed, 1 skipped.
+- `pnpm -s build` passed.
+- `git diff --check` passed.
+  Remaining:
+- Real-device check needed: confirm the NEXT SET DECISION card is readable during rest.
+- Future data model work: store HR→130 and HR→135 recovery times separately instead of only HR→120.
+- Future PR work: persist PR status as Baseline/Candidate/Confirmed rather than only using it in the decision packet.
+
+## 2026-05-26 (Codex)
+
+Scope: Organize exercise names so Japanese/Katakana registrations converge on English canonical names, and add a Mac helper GUI for category/alias cleanup.
+Safety:
+
+- Work stayed inside repo-local files and normal developer verification commands.
+- No network probing, scans, device discovery, credential access, or destructive git actions were used.
+
+Actions:
+
+- Updated `src/constants/exerciseCatalog.ts`.
+  - Added English canonical seeds for `Low Bar Squat`, `High Bar Squat`, and `Close Grip Bench Press`.
+  - Added Japanese aliases such as `ローバースクワット`, `ハイバースクワット`, `ナローベンチプレス`, and `ナローベンチ`.
+  - Improved free-text inference so future Japanese entries like `ナローベンチ` map to bench variants instead of generic accessory records.
+- Updated `src/services/DatabaseService.ts` and `src/services/ExerciseService.ts`.
+  - Catalog sync now migrates historical `sets`, `reps`, `pr_records`, and `lvp_profiles` lift names to the English canonical name when a Japanese alias is detected.
+  - This keeps history, PRs, LVP, and frequency sorting from splitting between Japanese and English names.
+- Updated `src/screens/MonitorScreen.tsx`.
+  - Changed the hard-coded sample/default lift from `ベンチプレス` to `Bench Press`.
+- Added `scripts/exercise_catalog_gui.py` and `pnpm exercise:gui`.
+  - The Mac GUI reads `src/constants/exerciseCatalog.ts`, lets the user draft category/subcategory/alias edits, and exports `tmp/exercise-catalog-draft.json` plus `docs/exercise-catalog-alias-plan.md`.
+  - `pnpm exercise:gui` uses `/usr/bin/python3` because Homebrew Python on this Mac lacks `_tkinter`.
+  - It intentionally does not rewrite TypeScript directly, keeping catalog changes reviewable.
+- Updated `src/constants/__tests__/exerciseCatalog.test.ts`.
+  - Added tests for Japanese/Katakana canonicalization and variant inference.
+- Updated `docs/IMPROVEMENT_TRACKER.md` with `2026-05-26-01`.
+
+Results:
+
+- `/usr/bin/python3 -m py_compile scripts/exercise_catalog_gui.py` passed.
+- `/usr/bin/python3` loaded 30 catalog seeds from the GUI parser and confirmed `Close Grip Bench Press` is present.
+- `pnpm -s tsc --noEmit` passed.
+- `pnpm -s lint` passed.
+- `pnpm -s test` passed: 28 tests passed, 1 skipped.
+- `pnpm -s build` passed.
+- `git diff --check` passed.
+
+Remaining:
+
+- Real-device check: launch the app once so `ExerciseService.syncCatalog()` migrates existing Japanese lift names to English canonical names.
+- GUI check: run `pnpm exercise:gui` on the Mac and confirm the table opens. The GUI exports draft files only; applying TS catalog changes remains a review step.
+
+## 2026-05-26 (Codex)
+
+Scope: Build and upload RepVeloCoach to TestFlight after exercise catalog cleanup.
+Safety:
+
+- Used the repo-local `scripts/deploy.sh` workflow documented in `TESTFLIGHT_DEPLOYMENT.md`.
+- No network scanning, device discovery, credential printing, or destructive git actions were used.
+
+Actions:
+
+- Confirmed build metadata was not aligned: `app.config.ts` and `Info.plist` were at build `88`, while `ios/RepVeloCoach.xcodeproj/project.pbxproj` was at `86`.
+- Bumped and aligned all build-number sources to build `89`:
+  - `app.config.ts` `buildNumber: "89"`
+  - `ios/RepVeloCoach/Info.plist` `CFBundleVersion=89`
+  - `ios/RepVeloCoach.xcodeproj/project.pbxproj` `CURRENT_PROJECT_VERSION = 89`
+- Ran:
+  - `source ~/.zshrc && FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT=20 FASTLANE_XCODEBUILD_SETTINGS_RETRIES=6 bash scripts/deploy.sh`
+
+Results:
+
+- Archive succeeded.
+- IPA export succeeded:
+  - `ios/fastlane_export/RepVeloCoach.ipa`
+- TestFlight upload succeeded:
+  - `Successfully uploaded package to App Store Connect`
+  - `Lane beta finished successfully`
+- Fastlane summary:
+  - `build_app`: 2327 seconds
+  - `upload_to_testflight`: 84 seconds
+- Build uploaded:
+  - version `2.3.5`
+  - build `89`
+
+Remaining:
+
+- Wait for App Store Connect/TestFlight processing, usually 15-30 minutes.
+- On device, verify the exercise-name migration by launching the app once and checking that previous Katakana lifts are grouped under English canonical names.
+
+## 2026-05-27 (Codex)
+
+Scope: Apply user feedback from Notes for session history mini graph, graph MY V@1RM history fallback, set-finish heart-rate recovery, and form-video planning.
+
+Safety:
+
+- Work stayed inside repo-local files and normal developer verification commands.
+- No network probing, device discovery, credential access, or destructive git actions were used.
+- Did not add camera/native dependencies in this pass, to avoid destabilizing the already working TestFlight build path before the form-video MVP is reviewed.
+
+Actions:
+
+- Updated `app/(tabs)/session.tsx`.
+  - Added a same-lift average-velocity mini trend next to the zone badge in each session history card.
+  - The current set is highlighted so the user can see whether the latest set is trending up or down without opening details.
+- Updated `app/(tabs)/graph.tsx`.
+  - `MY V@1RM` now derives a historical MVT candidate from the heaviest 90% load cluster and uses the low observed velocity before falling back to saved LVP / exercise MVT / LVP estimate.
+  - The stat card now shows the source label such as `履歴MVT` or `保存MVT`.
+- Updated `src/hooks/useSessionLogic.ts`.
+  - Removed the path that saved `HR→120 = 0:00` immediately at set finish when a low/stale HR reading was present.
+  - HR recovery is now tracked only for sets with peak HR at least 125bpm and is confirmed only after a 15-second minimum observation window.
+- Updated `app/(tabs)/settings.tsx`.
+  - Added a visible `フォーム動画` settings card that uses the existing `enable_video_recording` setting as the feature gate for the next MVP.
+- Added `docs/FORM_VIDEO_RECORDING_PLAN.md`.
+  - Defines the safe MVP for in-app form video capture, metadata, set/session linking, storage, and implementation order.
+- Updated `docs/IMPROVEMENT_TRACKER.md` with `2026-05-27-01` through `2026-05-27-04`.
+
+Results:
+
+- `pnpm -s tsc --noEmit` passed.
+- `pnpm -s lint` passed.
+- `pnpm -s test` passed: 28 tests passed, 1 skipped.
+- `pnpm -s build` passed.
+- `git diff --check` passed.
+
+Remaining:
+
+- Real-device check: verify the session history mini graph is visible around the zone badge and does not make history cards cramped.
+- Real-device check: confirm new sets no longer show immediate `HR→120 0:00` after hard sets; warmups/low HR sets should show `-` unless real recovery is observed later.
+- Graph check: confirm Bench Press `MY V@1RM` shows the low historical value source when 95kg / 0.13m/s style history exists.
+- Next implementation: add `expo-camera`, a recording screen, and SQLite metadata attachment following `docs/FORM_VIDEO_RECORDING_PLAN.md`.
+
+## 2026-05-27 (Codex Orchestrator + Worker Agents)
+
+Scope: Implement the form-video MVP: `expo-camera`, recording screen, SQLite metadata, and session/set linking.
+
+Safety:
+
+- Work stayed inside repo-local files and normal developer/package commands.
+- No network probing, device discovery, credential access, or destructive git actions were used.
+- Split implementation into two low-reasoning workers:
+  - Worker A owned DB/type/service metadata.
+  - Worker B owned camera UI/session entry point.
+- Codex reviewed and integrated the two slices, resolving the temporary API-name mismatch between the UI helper and `VideoRecordingService`.
+
+Acceptance Criteria:
+
+- Add Expo SDK 54 compatible camera dependency.
+- Create a recording screen with permissions, preview, start/stop/cancel/save, and unavailable-camera handling.
+- Persist metadata with `session_id`, `lift`, `set_index`, `load_kg`, `local_uri`, `started_at`, `ended_at`, and `duration_s`.
+- Keep camera rendering out of the main Session screen.
+- Show the recording entry point only when `enable_video_recording` is enabled and a session/lift exists.
+- Keep DB migrations non-destructive.
+
+Worker A Report:
+
+- Added `FormVideoRecord` type.
+- Added `form_video_records` table and indexes.
+- Added `insertFormVideoRecord`, `getFormVideosForSet`, `getFormVideosForSession`, and `deleteFormVideoRecord`.
+- Added `VideoRecordingService`.
+- Worker A ran `pnpm -s tsc --noEmit` successfully.
+
+Worker B Report:
+
+- Added `expo-camera`.
+- Added `app/form-video-recorder.tsx`.
+- Added `フォーム録画` entry point to `app/(tabs)/session.tsx`.
+- Updated settings wording for the form video mode.
+- Worker B initially left a helper/API mismatch in `session.tsx`; Codex integrated it with `VideoRecordingService`.
+
+Codex Integration:
+
+- Connected `app/form-video-recorder.tsx` directly to `VideoRecordingService.saveFormVideoRecord`.
+- Added video-file persistence to `documentDirectory/form-videos/` before metadata save.
+- Changed session video counts to use `VideoRecordingService.getFormVideosForSession`.
+- Added `expo-camera` plugin config and updated microphone permission wording in `app.config.ts`.
+- Updated `docs/FORM_VIDEO_RECORDING_PLAN.md` from plan-only to implemented MVP status.
+- Updated `docs/IMPROVEMENT_TRACKER.md` row `2026-05-27-04`.
+
+Results:
+
+- `pnpm -s tsc --noEmit` passed.
+- `pnpm -s lint` passed.
+- `pnpm -s test` passed: 28 tests passed, 1 skipped.
+- `pnpm -s build` passed.
+- `git diff --check` passed.
+
+Remaining:
+
+- Real-device check required: camera permission, recording start/stop, save, and session history video count.
+- Next phase: open linked videos from set detail, plus share/delete controls.
+- Next phase: optional thumbnail generation if the video list needs visual scanning.
+
+## 2026-05-27 (Codex)
+
+Scope: Continue form-video workflow and plan real-time Mac data sharing.
+
+Safety:
+
+- Work stayed inside repo-local files and normal developer verification commands.
+- No network probing, device discovery, credential access, or destructive git actions were used.
+- Real-time share work was limited to planning; no local server or network listener was started.
+
+Actions:
+
+- Updated `src/components/RepDetailModal.tsx`.
+  - Added a `FORM VIDEOS` section to set detail.
+  - Added controls to open, share, and unlink video metadata from the set.
+- Updated `app/(tabs)/session.tsx`.
+  - Loads form videos when opening a set detail modal.
+  - Opens linked local video URIs via `Linking`.
+  - Shares videos through the native share sheet.
+  - Unlinks video metadata through `VideoRecordingService.deleteFormVideoRecord`.
+- Updated `src/services/CodexDataExportService.ts`.
+  - Adds `form_videos` to Codex training export payload and counts.
+- Updated `scripts/read-codex-training-export.mjs`.
+  - Prints form-video counts and a short list of recent linked videos.
+- Updated `docs/FORM_VIDEO_RECORDING_PLAN.md`.
+  - Marked set-detail open/share/unlink and Mac export metadata as implemented.
+- Added `docs/REALTIME_DATA_SHARE_PLAN.md`.
+  - Recommends a local LAN Live Share MVP where the iPhone POSTs explicit events to a manually configured Mac URL.
+  - Keeps the safety boundary: no network discovery/scanning; token/header optional; video file upload deferred.
+- Updated `docs/IMPROVEMENT_TRACKER.md`.
+  - Expanded `2026-05-27-04` with set-detail and export work.
+  - Added `2026-05-27-05` for real-time Mac sharing.
+
+Results:
+
+- `pnpm -s tsc --noEmit` passed.
+- `node --check scripts/read-codex-training-export.mjs` passed.
+- `pnpm -s lint` passed.
+- `pnpm -s test` passed: 28 tests passed, 1 skipped.
+- `pnpm -s build` passed.
+- `git diff --check` passed.
+
+Remaining:
+
+- Real-device check: play/share/unlink videos from set detail.
+- Implement Live Share MVP:
+  - Mac local receiver script.
+  - app setting for Live Share URL/token.
+  - non-blocking event queue for `session_started`, `rep_recorded`, `set_completed`, and `form_video_saved`.
+
+## 2026-05-28 (Codex)
+
+Scope: Implement local LAN Live Share MVP for Mac-side real-time data viewing.
+
+Safety:
+
+- Work stayed inside repo-local files and normal developer verification commands.
+- No network probing, device discovery, packet capture, or aggressive connection retry logic was added.
+- The app only sends to a user-entered URL when Live Share is explicitly enabled.
+
+Actions:
+
+- Added `src/services/LiveShareService.ts`.
+  - Sends non-blocking `session_started`, `rep_recorded`, `set_completed`, and `form_video_saved` events.
+  - Caches settings briefly to avoid reading AsyncStorage on every rep.
+  - Queues failed events in AsyncStorage, serializes queue writes, and caps the queue at 100 events.
+- Added `scripts/repvelo_live_share_server.mjs`.
+  - Receives `POST /events`, optional token header, and writes JSONL to `exports/live-share/events.jsonl`.
+  - Provides `GET /health` for a targeted local status check.
+- Updated settings.
+  - Added a `共有` category with Live Share ON/OFF, Mac URL, and optional token.
+- Wired events into session start, rep recording, set completion, and form video save.
+- Updated `docs/REALTIME_DATA_SHARE_PLAN.md` and `docs/IMPROVEMENT_TRACKER.md`.
+- Cross review passed.
+  - Follow-up fixes: current event is sent before stale queue flush, and enqueue failure is separately caught.
+
+Results:
+
+- `pnpm -s tsc --noEmit` passed.
+- `node --check scripts/repvelo_live_share_server.mjs` passed.
+- `pnpm -s lint` passed.
+- `pnpm -s test` passed: 28 tests passed, 1 skipped.
+- `pnpm -s build` passed.
+- `git diff --check` passed.
+- Local smoke check passed: started the receiver on `127.0.0.1:18989`, posted one `rep_recorded` event, and confirmed JSONL output.
+
+Remaining:
+
+- Real-device check: enter Mac URL, start server manually, record a few reps, and confirm JSONL events arrive.
+- Next phase: Mac dashboard and optional ChatGPT packet generation from live JSONL.
+
+## 2026-05-28 (Codex)
+
+Scope: Extend Live Share with a Mac browser dashboard and GPT packet generation.
+
+Safety:
+
+- Kept the existing explicit URL model; no discovery, scanning, or device probing.
+- The dashboard reads only the repo-local JSONL output file.
+- When token is configured, `/events/recent` and `/gpt-packet` require the same token via query string or header.
+
+Actions:
+
+- Updated `scripts/repvelo_live_share_server.mjs`.
+  - Added `/dashboard` browser view.
+  - Added `/events/recent` JSON endpoint.
+  - Added `/gpt-packet` Markdown endpoint.
+  - Dashboard shows current lift, set/rep/video counts, recent sets, recent reps, and latest raw event.
+  - Dashboard can copy the generated GPT packet to the clipboard.
+- Updated `docs/REALTIME_DATA_SHARE_PLAN.md`.
+- Updated `docs/IMPROVEMENT_TRACKER.md` with `2026-05-28-01`.
+
+Results:
+
+- `node --check scripts/repvelo_live_share_server.mjs` passed.
+- `pnpm -s tsc --noEmit` passed.
+- `pnpm -s lint` passed.
+- `pnpm -s test` passed: 28 tests passed, 1 skipped.
+- `pnpm -s build` passed.
+- `git diff --check` passed.
+- Local smoke check passed with token:
+  - posted `rep_recorded` and `set_completed`
+  - `/events/recent?token=...` returned set_count=1, rep_count=1
+  - `/gpt-packet?token=...` generated Markdown
+  - `/dashboard?token=...` returned the dashboard HTML
+
+Remaining:
+
+- Real-device check with iPhone sending live events to the Mac.
+- Later phase: richer trend analysis in the Mac dashboard from accumulated JSONL.

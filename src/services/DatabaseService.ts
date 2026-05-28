@@ -14,6 +14,7 @@ import type {
   LVPData,
   PRRecord,
   Exercise,
+  FormVideoRecord,
 } from "../types/index";
 
 const DB_NAME = "repvelo.db";
@@ -38,6 +39,20 @@ class DatabaseService {
   private db: any = null;
   private isExpoGo = Constants.appOwnership === "expo";
   private initializationPromise: Promise<void> | null = null;
+
+  private resolveRepPower(
+    storedPower: number | null | undefined,
+    velocity: number | null | undefined,
+    loadKg: number | null | undefined,
+  ): number | null {
+    if (storedPower != null && storedPower > 0) {
+      return storedPower;
+    }
+    if (velocity != null && velocity > 0 && loadKg != null && loadKg > 0) {
+      return VBTLogic.calculatePower(loadKg, velocity);
+    }
+    return null;
+  }
 
   /**
    * Initialize database and create tables
@@ -72,6 +87,7 @@ class DatabaseService {
         this.db = await sqlite.openDatabaseAsync(DB_NAME);
         await this.createTables();
         await this.migrate(); // カラム追加などのマイグレーション
+        await this.createIndexes();
         console.log("Database initialized successfully");
       } catch (error) {
         this.db = null;
@@ -146,6 +162,7 @@ class DatabaseService {
         rest_duration_s REAL,
         avg_hr REAL,
         peak_hr REAL,
+        hr_recovery_to_120_s REAL,
         avg_power_w REAL,
         is_warmup INTEGER DEFAULT 0,
         notes TEXT,
@@ -166,6 +183,8 @@ class DatabaseService {
         device_type TEXT NOT NULL,
         mean_velocity REAL,
         peak_velocity REAL,
+        mean_power_w REAL,
+        peak_power_w REAL,
         rom_cm REAL,
         rep_duration_ms REAL,
         is_valid_rep INTEGER DEFAULT 1,
@@ -235,6 +254,24 @@ class DatabaseService {
       );
     `);
 
+    await this.db.execAsync(`
+      CREATE TABLE IF NOT EXISTS form_video_records (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        lift TEXT NOT NULL,
+        set_index INTEGER,
+        load_kg REAL,
+        local_uri TEXT NOT NULL,
+        thumbnail_uri TEXT,
+        started_at TEXT NOT NULL,
+        ended_at TEXT NOT NULL,
+        duration_s REAL NOT NULL,
+        created_at TEXT NOT NULL,
+        notes TEXT,
+        FOREIGN KEY (session_id) REFERENCES sessions(session_id)
+      );
+    `);
+
     console.log("Database tables created successfully");
   }
 
@@ -256,6 +293,7 @@ class DatabaseService {
       { table: "sets", column: "rest_duration_s", type: "REAL" },
       { table: "sets", column: "avg_hr", type: "REAL" },
       { table: "sets", column: "peak_hr", type: "REAL" },
+      { table: "sets", column: "hr_recovery_to_120_s", type: "REAL" },
       { table: "sets", column: "avg_power_w", type: "REAL" },
       { table: "sets", column: "avg_rom_cm", type: "REAL" },
       { table: "sets", column: "is_warmup", type: "INTEGER DEFAULT 0" },
@@ -266,6 +304,8 @@ class DatabaseService {
       { table: "reps", column: "is_short_rom", type: "INTEGER DEFAULT 0" },
       { table: "reps", column: "is_failed", type: "INTEGER DEFAULT 0" },
       { table: "reps", column: "rep_id", type: "TEXT" }, // UUID for consistent rep tracking
+      { table: "reps", column: "mean_power_w", type: "REAL" },
+      { table: "reps", column: "peak_power_w", type: "REAL" },
       // Exercises 追加カラム
       { table: "exercises", column: "description", type: "TEXT" },
       {
@@ -311,6 +351,110 @@ class DatabaseService {
         // すでにカラムが存在する場合はエラーになるが、無視して続行
       }
     }
+  }
+
+  private async createIndexes(): Promise<void> {
+    if (!this.db) return;
+
+    await this.db.execAsync(`
+      CREATE INDEX IF NOT EXISTS idx_sets_session_lift_set
+        ON sets(session_id, lift, set_index);
+      CREATE INDEX IF NOT EXISTS idx_sets_lift_timestamp
+        ON sets(lift, timestamp DESC);
+      CREATE INDEX IF NOT EXISTS idx_sets_lift_velocity_timestamp
+        ON sets(lift, avg_velocity, is_warmup, timestamp DESC);
+      CREATE INDEX IF NOT EXISTS idx_reps_session_lift_set
+        ON reps(session_id, lift, set_index, rep_index);
+      CREATE INDEX IF NOT EXISTS idx_reps_lift_rom
+        ON reps(lift, is_valid_rep, is_excluded, is_failed, rom_cm);
+      CREATE INDEX IF NOT EXISTS idx_pr_records_lift_type_value
+        ON pr_records(lift, type, value DESC);
+      CREATE INDEX IF NOT EXISTS idx_form_video_records_session_lift_set
+        ON form_video_records(session_id, lift, set_index, started_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_form_video_records_session_started
+        ON form_video_records(session_id, started_at DESC);
+    `);
+  }
+
+  private mapFormVideoRecord(row: any): FormVideoRecord {
+    return {
+      id: row.id,
+      session_id: row.session_id,
+      lift: row.lift,
+      set_index: row.set_index ?? null,
+      load_kg: row.load_kg ?? null,
+      local_uri: row.local_uri,
+      thumbnail_uri: row.thumbnail_uri ?? null,
+      started_at: row.started_at,
+      ended_at: row.ended_at,
+      duration_s: row.duration_s,
+      created_at: row.created_at,
+      notes: row.notes ?? null,
+    };
+  }
+
+  async insertFormVideoRecord(record: FormVideoRecord): Promise<void> {
+    if (!(await this.ensureReady())) return;
+
+    await this.db.runAsync(
+      `INSERT OR REPLACE INTO form_video_records (
+        id, session_id, lift, set_index, load_kg, local_uri, thumbnail_uri,
+        started_at, ended_at, duration_s, created_at, notes
+      )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        record.id,
+        record.session_id,
+        record.lift,
+        record.set_index ?? null,
+        record.load_kg ?? null,
+        record.local_uri,
+        record.thumbnail_uri ?? null,
+        record.started_at,
+        record.ended_at,
+        record.duration_s,
+        record.created_at,
+        record.notes ?? null,
+      ],
+    );
+  }
+
+  async getFormVideosForSet(
+    sessionId: string,
+    lift: string,
+    setIndex: number,
+  ): Promise<FormVideoRecord[]> {
+    if (!(await this.ensureReady())) return [];
+
+    const results = (await this.db.getAllAsync(
+      `SELECT * FROM form_video_records
+       WHERE session_id = ? AND lift = ? AND set_index = ?
+       ORDER BY started_at DESC, created_at DESC`,
+      [sessionId, lift, setIndex],
+    )) as any[];
+
+    return results.map((row) => this.mapFormVideoRecord(row));
+  }
+
+  async getFormVideosForSession(
+    sessionId: string,
+  ): Promise<FormVideoRecord[]> {
+    if (!(await this.ensureReady())) return [];
+
+    const results = (await this.db.getAllAsync(
+      `SELECT * FROM form_video_records
+       WHERE session_id = ?
+       ORDER BY started_at DESC, created_at DESC`,
+      [sessionId],
+    )) as any[];
+
+    return results.map((row) => this.mapFormVideoRecord(row));
+  }
+
+  async deleteFormVideoRecord(id: string): Promise<void> {
+    if (!(await this.ensureReady())) return;
+
+    await this.db.runAsync("DELETE FROM form_video_records WHERE id = ?", [id]);
   }
 
   /**
@@ -371,8 +515,8 @@ class DatabaseService {
 
     await this.db.runAsync(
       `INSERT INTO sets (session_id, lift, set_index, load_kg, reps, device_type, set_type,
-        avg_velocity, velocity_loss, avg_rom_cm, rpe, e1rm, timestamp, start_timestamp, end_timestamp, rest_duration_s, avg_hr, peak_hr, avg_power_w, is_warmup, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        avg_velocity, velocity_loss, avg_rom_cm, rpe, e1rm, timestamp, start_timestamp, end_timestamp, rest_duration_s, avg_hr, peak_hr, hr_recovery_to_120_s, avg_power_w, is_warmup, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         setData.session_id,
         setData.lift,
@@ -392,6 +536,7 @@ class DatabaseService {
         setData.rest_duration_s || null,
         setData.avg_hr || null,
         setData.peak_hr || null,
+        setData.hr_recovery_to_120_s ?? null,
         setData.avg_power_w || null,
         setData.is_warmup ? 1 : 0,
         setData.notes || null,
@@ -407,9 +552,9 @@ class DatabaseService {
 
     await this.db.runAsync(
       `INSERT INTO reps (rep_id, session_id, lift, set_index, rep_index, load_kg, device_type,
-        mean_velocity, peak_velocity, rom_cm, rep_duration_ms, is_valid_rep, is_short_rom,
+        mean_velocity, peak_velocity, mean_power_w, peak_power_w, rom_cm, rep_duration_ms, is_valid_rep, is_short_rom,
         rpe_set, set_type, notes, hr_bpm, timestamp, is_excluded, exclusion_reason, edited_at, is_failed)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         repData.id || null, // UUID
         repData.session_id,
@@ -420,6 +565,8 @@ class DatabaseService {
         repData.device_type,
         repData.mean_velocity,
         repData.peak_velocity,
+        repData.mean_power_w ?? null,
+        repData.peak_power_w ?? null,
         repData.rom_cm || null,
         repData.rep_duration_ms || null,
         repData.is_valid_rep ? 1 : 0,
@@ -634,10 +781,30 @@ class DatabaseService {
         prRecord.load_kg || null,
         prRecord.reps || null,
         prRecord.date,
-        prRecord.previous_value || null,
+        prRecord.previous_value ?? null,
         prRecord.improvement,
       ],
     );
+  }
+
+  /**
+   * 同一種目・同一重量の最高速度PRを取得する。
+   * 軽い重量の速度が重い重量のPR通知を上書きしないよう、速度PRは重量別に扱う。
+   */
+  async getBestSpeedPRForLoad(
+    lift: string,
+    loadKg: number,
+  ): Promise<PRRecord | null> {
+    if (!(await this.ensureReady())) return null;
+
+    const result = await (this.db.getFirstAsync(
+      `SELECT * FROM pr_records
+       WHERE lift = ? AND type = 'speed' AND load_kg IS NOT NULL AND ABS(load_kg - ?) <= 0.001
+       ORDER BY value DESC LIMIT 1`,
+      [lift, loadKg],
+    ) as Promise<PRRecord | null>);
+
+    return result || null;
   }
 
   /**
@@ -795,12 +962,12 @@ class DatabaseService {
    */
   async getBestVelocityAtLoad(
     lift: string,
-    loadKg: number
+    loadKg: number,
   ): Promise<{ avg_velocity: number; date: string; reps: number } | null> {
     if (!(await this.ensureReady())) return null;
 
     // Query sets within ±0.5kg of target load to find best velocity
-    const result = await this.db.getFirstAsync(
+    const result = (await this.db.getFirstAsync(
       `SELECT avg_velocity, timestamp, reps
        FROM sets
        WHERE lift = ?
@@ -810,19 +977,61 @@ class DatabaseService {
        AND is_warmup = 0
        ORDER BY avg_velocity DESC
        LIMIT 1`,
-      [lift, loadKg - 0.5, loadKg + 0.5]
-    ) as { avg_velocity: number; timestamp: string; reps: number } | null;
+      [lift, loadKg - 0.5, loadKg + 0.5],
+    )) as { avg_velocity: number; timestamp: string; reps: number } | null;
 
-    return result ? { avg_velocity: result.avg_velocity, date: result.timestamp, reps: result.reps } : null;
+    return result
+      ? {
+          avg_velocity: result.avg_velocity,
+          date: result.timestamp,
+          reps: result.reps,
+        }
+      : null;
   }
 
   async getSetsForSession(sessionId: string): Promise<SetData[]> {
     if (!(await this.ensureReady())) return [];
 
     const results = await (this.db.getAllAsync(
-      "SELECT * FROM sets WHERE session_id = ? ORDER BY set_index",
+      "SELECT * FROM sets WHERE session_id = ? ORDER BY COALESCE(end_timestamp, timestamp), id",
       [sessionId],
     ) as Promise<SetData[]>);
+
+    return results;
+  }
+
+  async getExerciseUsageStats(
+    days: number = 120,
+  ): Promise<
+    {
+      lift: string;
+      recent_set_count: number;
+      session_count: number;
+      last_trained: string;
+    }[]
+  > {
+    if (!(await this.ensureReady())) return [];
+
+    const since = new Date(
+      Date.now() - Math.max(1, days) * 24 * 60 * 60 * 1000,
+    ).toISOString();
+    const results = (await this.db.getAllAsync(
+      `SELECT
+        lift,
+        COUNT(*) as recent_set_count,
+        COUNT(DISTINCT session_id) as session_count,
+        MAX(timestamp) as last_trained
+       FROM sets
+       WHERE timestamp >= ?
+       GROUP BY lift
+       ORDER BY recent_set_count DESC, last_trained DESC`,
+      [since],
+    )) as {
+      lift: string;
+      recent_set_count: number;
+      session_count: number;
+      last_trained: string;
+    }[];
 
     return results;
   }
@@ -902,6 +1111,16 @@ class DatabaseService {
     return results.map((row: any) => ({
       ...row,
       id: String(row.rep_id || row.id), // Use rep_id (UUID) if available, otherwise fall back to id (INTEGER), ensure string
+      mean_power_w: this.resolveRepPower(
+        row.mean_power_w,
+        row.mean_velocity,
+        row.load_kg,
+      ),
+      peak_power_w: this.resolveRepPower(
+        row.peak_power_w,
+        row.peak_velocity,
+        row.load_kg,
+      ),
       is_valid_rep: row.is_valid_rep === 1,
       is_short_rom: row.is_short_rom === 1,
       is_excluded: row.is_excluded === 1,
@@ -924,6 +1143,16 @@ class DatabaseService {
     return results.map((row: any) => ({
       ...row,
       id: String(row.rep_id || row.id), // Use rep_id (UUID) if available, otherwise fall back to id (INTEGER), ensure string
+      mean_power_w: this.resolveRepPower(
+        row.mean_power_w,
+        row.mean_velocity,
+        row.load_kg,
+      ),
+      peak_power_w: this.resolveRepPower(
+        row.peak_power_w,
+        row.peak_velocity,
+        row.load_kg,
+      ),
       is_valid_rep: row.is_valid_rep === 1,
       is_short_rom: row.is_short_rom === 1,
       is_excluded: row.is_excluded === 1,
@@ -964,14 +1193,18 @@ class DatabaseService {
 
       if (liftSets.length === 0) continue;
 
-      const totalVolume = liftSets.reduce((sum, s) => sum + s.load_kg * s.reps, 0);
+      const totalVolume = liftSets.reduce(
+        (sum, s) => sum + s.load_kg * s.reps,
+        0,
+      );
       const maxLoadSet = liftSets.reduce((max, s) =>
         s.load_kg > max.load_kg ? s : max,
       );
-      const estimated1rm = liftSets
-        .map((s) => s.e1rm)
-        .filter((e): e is number => e !== null)
-        .sort((a, b) => b - a)[0] || null;
+      const estimated1rm =
+        liftSets
+          .map((s) => s.e1rm)
+          .filter((e): e is number => e !== null)
+          .sort((a, b) => b - a)[0] || null;
 
       history.push({
         session_id: session.session_id,
@@ -1060,7 +1293,9 @@ class DatabaseService {
   /**
    * Get list of all exercises that have been trained (have sets recorded)
    */
-  async getTrainedExercises(): Promise<{ lift: string; session_count: number; last_trained: string }[]> {
+  async getTrainedExercises(): Promise<
+    { lift: string; session_count: number; last_trained: string }[]
+  > {
     if (!(await this.ensureReady())) return [];
 
     const results = (await this.db.getAllAsync(
@@ -1267,6 +1502,22 @@ class DatabaseService {
   }
 
   /**
+   * セット後の心拍回復時間を追記する。
+   */
+  async updateSetHeartRateRecovery(
+    sessionId: string,
+    lift: string,
+    setIndex: number,
+    recoverySeconds: number,
+  ): Promise<void> {
+    if (!(await this.ensureReady())) return;
+    await this.db.runAsync(
+      "UPDATE sets SET hr_recovery_to_120_s = ? WHERE session_id = ? AND lift = ? AND set_index = ?",
+      [recoverySeconds, sessionId, lift, setIndex],
+    );
+  }
+
+  /**
    * セットの編集可能項目をまとめて更新し、必要に応じてrep側と集計も揃える
    */
   async updateSetEditableFields(
@@ -1302,6 +1553,40 @@ class DatabaseService {
     );
 
     await this.recalcSessionVolume(sessionId);
+  }
+
+  /**
+   * 種目名の表記揺れを履歴データ全体で英語 canonical 名へ寄せる。
+   * sets/reps/pr_records/lvp_profiles を同時に揃え、履歴・PR・LVPが分断されないようにする。
+   */
+  async renameLiftEverywhere(fromLift: string, toLift: string): Promise<void> {
+    if (!(await this.ensureReady())) return;
+    if (!fromLift || !toLift || fromLift === toLift) return;
+
+    const editedAt = Date.now();
+
+    await this.db.runAsync("UPDATE sets SET lift = ? WHERE lift = ?", [
+      toLift,
+      fromLift,
+    ]);
+    await this.db.runAsync(
+      "UPDATE reps SET lift = ?, edited_at = ? WHERE lift = ?",
+      [toLift, editedAt, fromLift],
+    );
+    await this.db.runAsync("UPDATE pr_records SET lift = ? WHERE lift = ?", [
+      toLift,
+      fromLift,
+    ]);
+    await this.db.runAsync(
+      `UPDATE lvp_profiles
+       SET lift = ?
+       WHERE lift = ?
+         AND NOT EXISTS (SELECT 1 FROM lvp_profiles WHERE lift = ?)`,
+      [toLift, fromLift, toLift],
+    );
+    await this.db.runAsync("DELETE FROM lvp_profiles WHERE lift = ?", [
+      fromLift,
+    ]);
   }
 
   /**
@@ -1504,7 +1789,7 @@ class DatabaseService {
    */
   async getHistoricalVelocityData(
     lift: string,
-    limit: number = 20
+    limit: number = 20,
   ): Promise<{ load: number; velocity: number }[]> {
     if (!(await this.ensureReady())) return [];
 
@@ -1516,7 +1801,7 @@ class DatabaseService {
          AND s.is_warmup = 0
        ORDER BY s.timestamp DESC
        LIMIT ?`,
-      [lift, limit * 2] // Get more to allow for filtering
+      [lift, limit * 2], // Get more to allow for filtering
     )) as { load_kg: number; avg_velocity: number }[];
 
     // Group by load and average velocities
@@ -1542,10 +1827,10 @@ class DatabaseService {
   async updateExerciseMVT(exerciseId: string, mvt: number): Promise<void> {
     if (!(await this.ensureReady())) return;
 
-    await this.db.runAsync(
-      "UPDATE exercises SET mvt = ? WHERE id = ?",
-      [mvt, exerciseId]
-    );
+    await this.db.runAsync("UPDATE exercises SET mvt = ? WHERE id = ?", [
+      mvt,
+      exerciseId,
+    ]);
   }
 
   /**

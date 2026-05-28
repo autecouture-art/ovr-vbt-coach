@@ -62,6 +62,45 @@ class ExerciseService {
     );
   }
 
+  async getAllExercisesByRecentFrequency(
+    days: number = 120,
+  ): Promise<Exercise[]> {
+    if (!this.initialized) {
+      await this.initialize();
+    }
+
+    const usageStats = await DatabaseService.getExerciseUsageStats(days);
+    const usageByLift = new Map(
+      usageStats.map((stat) => [
+        stat.lift,
+        {
+          recentSetCount: stat.recent_set_count,
+          sessionCount: stat.session_count,
+          lastTrainedAt: new Date(stat.last_trained).getTime(),
+        },
+      ]),
+    );
+
+    return [...this.exercises].sort((a, b) => {
+      const aUsage = usageByLift.get(a.name);
+      const bUsage = usageByLift.get(b.name);
+      if (aUsage || bUsage) {
+        if (!aUsage) return 1;
+        if (!bUsage) return -1;
+        if (aUsage.recentSetCount !== bUsage.recentSetCount) {
+          return bUsage.recentSetCount - aUsage.recentSetCount;
+        }
+        if (aUsage.sessionCount !== bUsage.sessionCount) {
+          return bUsage.sessionCount - aUsage.sessionCount;
+        }
+        if (aUsage.lastTrainedAt !== bUsage.lastTrainedAt) {
+          return bUsage.lastTrainedAt - aUsage.lastTrainedAt;
+        }
+      }
+      return a.name.localeCompare(b.name, "ja");
+    });
+  }
+
   async getExerciseById(id: string): Promise<Exercise | null> {
     if (!this.initialized) {
       await this.initialize();
@@ -211,7 +250,7 @@ class ExerciseService {
         : merged;
 
       if (existing && existing.name !== defaultExercise.name) {
-        await this.migrateLvpProfile(existing.name, defaultExercise.name);
+        await this.migrateLiftData(existing.name, defaultExercise.name);
       }
 
       await DatabaseService.saveExercise(nextExercise);
@@ -243,16 +282,13 @@ class ExerciseService {
 
       await DatabaseService.saveExercise(merged);
 
-      await this.migrateLvpProfile(exercise.name, canonical.name);
+      await this.migrateLiftData(exercise.name, canonical.name);
 
       await DatabaseService.deleteExercise(exercise.id);
     }
   }
 
-  private async migrateLvpProfile(
-    fromLift: string,
-    toLift: string,
-  ): Promise<void> {
+  private async migrateLiftData(fromLift: string, toLift: string): Promise<void> {
     if (fromLift === toLift) return;
 
     const aliasLvp = await DatabaseService.getLVPProfile(fromLift);
@@ -264,6 +300,8 @@ class ExerciseService {
         last_updated: new Date().toISOString(),
       });
     }
+
+    await DatabaseService.renameLiftEverywhere(fromLift, toLift);
   }
 
   private async applyRomInference(

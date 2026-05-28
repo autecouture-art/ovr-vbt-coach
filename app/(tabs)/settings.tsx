@@ -10,14 +10,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { useRouter } from "expo-router";
 
-import {
-  getResolvedApiHealth,
-  getStoredApiBaseUrlOverride,
-  hydrateApiBaseUrlOverride,
-  setStoredApiBaseUrlOverride,
-} from "@/constants/oauth";
 import {
   EXERCISE_CATEGORY_LABELS,
   EXERCISE_SELECTION_GROUPS,
@@ -30,10 +23,6 @@ import {
 } from "@/src/constants/exerciseCatalog";
 import { GarageTheme } from "@/src/constants/garageTheme";
 import ExerciseService from "@/src/services/ExerciseService";
-import {
-  getLocalLLMHealth,
-  saveLocalLLMConfig,
-} from "@/src/services/LocalLLMService";
 import {
   DEFAULT_APP_SETTINGS,
   loadAppSettings,
@@ -80,29 +69,235 @@ const MODE_LABELS: Record<
   short_rom: "短ROM",
 };
 
-const DEFAULT_WEEK_BY_PHASE: Record<AppSettings["target_training_phase"], number> = {
+const DEFAULT_WEEK_BY_PHASE: Record<
+  AppSettings["target_training_phase"],
+  number
+> = {
   hypertrophy: 1,
   strength: 5,
   peaking: 9,
   power: 5,
 };
 
+type SettingsSectionId =
+  | "training"
+  | "session"
+  | "display"
+  | "focus"
+  | "audio"
+  | "share"
+  | "exercises";
+
+type BooleanSettingKey = {
+  [K in keyof AppSettings]: AppSettings[K] extends boolean ? K : never;
+}[keyof AppSettings];
+
+const SETTINGS_SECTIONS: {
+  id: SettingsSectionId;
+  label: string;
+  description: string;
+}[] = [
+  {
+    id: "training",
+    label: "トレーニング",
+    description: "単位 / VBT / ブロック",
+  },
+  { id: "session", label: "セッション", description: "自動開始 / 軽量化" },
+  { id: "display", label: "表示項目", description: "通常画面の表示ON/OFF" },
+  { id: "focus", label: "計測中表示", description: "フォーカス画面の項目" },
+  { id: "audio", label: "音声", description: "読み上げ / 音量" },
+  { id: "share", label: "共有", description: "Mac Live Share" },
+  { id: "exercises", label: "種目", description: "カテゴリ / マスタ" },
+];
+
+const SESSION_DISPLAY_TOGGLES: {
+  key: BooleanSettingKey;
+  label: string;
+  meta: string;
+}[] = [
+  {
+    key: "session_display_advice_group",
+    label: "アドバイス系まとめ",
+    meta: "プロトコル/提案/判定/AI助言を一括表示",
+  },
+  {
+    key: "session_display_status",
+    label: "接続状態",
+    meta: "センサー接続と心拍バッジ",
+  },
+  {
+    key: "session_display_simulator",
+    label: "VBT SIM",
+    meta: "シミュレーター操作",
+  },
+  {
+    key: "session_display_exercise_picker",
+    label: "種目選択",
+    meta: "Exerciseカード",
+  },
+  {
+    key: "session_display_vl_settings",
+    label: "VL閾値",
+    meta: "種目別VLクイック設定",
+  },
+  {
+    key: "session_display_protocol",
+    label: "PL VBTプロトコル",
+    meta: "トップシングル/バックオフ案内",
+  },
+  {
+    key: "session_display_lvp_build",
+    label: "LVP BUILD",
+    meta: "Big3のLVP作成案内",
+  },
+  {
+    key: "session_display_training_notes",
+    label: "種目ノート",
+    meta: "キューとフォーカスノート",
+  },
+  {
+    key: "session_display_session_note",
+    label: "今日のメモ",
+    meta: "セッションメモ入力",
+  },
+  {
+    key: "session_display_session_banner",
+    label: "開始/記録バナー",
+    meta: "開始・一時停止の大きい表示",
+  },
+  {
+    key: "session_display_intelligence",
+    label: "CNS / e1RM",
+    meta: "状態サマリー",
+  },
+  {
+    key: "session_display_attempt_guide",
+    label: "試技ガイド",
+    meta: "e1RMからの第1-第3案",
+  },
+  {
+    key: "session_display_suggestions",
+    label: "提案バナー",
+    meta: "重量提案とMVT提案",
+  },
+  {
+    key: "session_display_rest_timer",
+    label: "レストタイマー",
+    meta: "休憩中の次セット開始",
+  },
+  {
+    key: "session_display_target_weight",
+    label: "目標重量",
+    meta: "Big3トップセット入力",
+  },
+  {
+    key: "session_display_warmup_guide",
+    label: "ウォームアップ",
+    meta: "目標重量からのステップ",
+  },
+  {
+    key: "session_display_readiness",
+    label: "当日状態判定",
+    meta: "同程度重量との比較",
+  },
+  {
+    key: "session_display_set_config",
+    label: "セット設定",
+    meta: "重量入力と微調整",
+  },
+  {
+    key: "session_display_live_data",
+    label: "Live Data",
+    meta: "速度・パワー・ROM",
+  },
+  {
+    key: "session_display_velocity_chart",
+    label: "速度グラフ",
+    meta: "現在セットのレップ推移",
+  },
+  {
+    key: "session_display_vl_decision",
+    label: "VL判定",
+    meta: "セット継続/終了判断",
+  },
+  {
+    key: "session_display_action_buttons",
+    label: "操作ボタン",
+    meta: "ウォームアップ/SET COMPLETE",
+  },
+  {
+    key: "session_display_same_load_history",
+    label: "同重量履歴",
+    meta: "直近同重量の比較",
+  },
+  {
+    key: "session_display_recent_history",
+    label: "種目履歴",
+    meta: "最近の同種目セット",
+  },
+  {
+    key: "session_display_session_history",
+    label: "セッション履歴",
+    meta: "完了セットカード一覧",
+  },
+  {
+    key: "session_display_end_session",
+    label: "終了ボタン",
+    meta: "SESSION ENDボタン",
+  },
+];
+
+const FOCUS_DISPLAY_TOGGLES: {
+  key: BooleanSettingKey;
+  label: string;
+  meta: string;
+}[] = [
+  {
+    key: "session_display_focus_simulator",
+    label: "VBT SIM",
+    meta: "計測中のシミュレーター操作",
+  },
+  {
+    key: "session_display_focus_info_grid",
+    label: "情報グリッド",
+    meta: "種目 / 重量 / パワー",
+  },
+  {
+    key: "session_display_focus_velocity",
+    label: "速度メイン",
+    meta: "中央の大きいm/s表示",
+  },
+  {
+    key: "session_display_focus_metrics",
+    label: "補助メトリクス",
+    meta: "AVG V / ROM / PEAK P",
+  },
+  {
+    key: "session_display_focus_rep_counter",
+    label: "レップ数",
+    meta: "REPSカウンター",
+  },
+  {
+    key: "session_display_focus_zone",
+    label: "ゾーン",
+    meta: "速度ゾーンバッジ",
+  },
+  {
+    key: "session_display_focus_vl",
+    label: "VLボックス",
+    meta: "Velocity Loss警告",
+  },
+  { key: "session_display_focus_heart_rate", label: "心拍", meta: "bpm表示" },
+  { key: "session_display_focus_load", label: "重量", meta: "右下のkg表示" },
+];
+
 export default function SettingsTab() {
-  const router = useRouter();
   const updateGlobalSettings = useTrainingStore(
     (state) => state.updateSettings,
   );
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
-  const [apiBaseUrlInput, setApiBaseUrlInput] = useState("");
-  const [apiStatusText, setApiStatusText] = useState("未確認");
-  const [checkingApi, setCheckingApi] = useState(false);
-  const [localApiKeyInput, setLocalApiKeyInput] = useState("");
-  const [localModelInput, setLocalModelInput] = useState("glm-4.7");
-  const [localApiUrlInput, setLocalApiUrlInput] = useState(
-    "https://api.z.ai/api/anthropic",
-  );
-  const [localStatusText, setLocalStatusText] = useState("未設定");
-  const [savingLocalLlm, setSavingLocalLlm] = useState(false);
+  const [activeSection, setActiveSection] =
+    useState<SettingsSectionId>("training");
   const [exerciseMaster, setExerciseMaster] = useState<Exercise[]>([]);
   const [exerciseSearchQuery, setExerciseSearchQuery] = useState("");
   const [exerciseGroup, setExerciseGroup] =
@@ -126,8 +321,6 @@ export default function SettingsTab() {
 
   useEffect(() => {
     void loadSettings();
-    void loadApiOverride();
-    void loadLocalLlm();
     void loadExerciseMaster();
     // Settings bootstrap is intentionally run once on mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -143,12 +336,6 @@ export default function SettingsTab() {
     }
   };
 
-  const loadApiOverride = async () => {
-    await hydrateApiBaseUrlOverride();
-    setApiBaseUrlInput(getStoredApiBaseUrlOverride());
-    await handleCheckApiHealth(false);
-  };
-
   const saveSettings = async (nextSettings: AppSettings) => {
     try {
       const saved = await saveAppSettings(nextSettings);
@@ -156,23 +343,6 @@ export default function SettingsTab() {
       updateGlobalSettings(saved);
     } catch (error) {
       console.error("Failed to save settings:", error);
-    }
-  };
-
-  const loadLocalLlm = async () => {
-    try {
-      const health = await getLocalLLMHealth();
-      setLocalApiKeyInput(health.apiKey);
-      setLocalModelInput(health.model);
-      setLocalApiUrlInput(health.apiUrl);
-      if (health.hasApiKey) {
-        setLocalStatusText(`ローカル直接接続が有効 / ${health.model}`);
-      } else {
-        setLocalStatusText("ローカルAPIキー未設定");
-      }
-    } catch (error) {
-      console.error("Failed to load local LLM config:", error);
-      setLocalStatusText("ローカル設定の読み込みに失敗しました");
     }
   };
 
@@ -187,67 +357,6 @@ export default function SettingsTab() {
       Alert.alert("エラー", "種目マスタの読み込みに失敗しました。");
     } finally {
       setLoadingExerciseMaster(false);
-    }
-  };
-
-  const handleSaveApiBaseUrl = async () => {
-    try {
-      await setStoredApiBaseUrlOverride(apiBaseUrlInput);
-      await handleCheckApiHealth(true);
-      Alert.alert(
-        "保存完了",
-        apiBaseUrlInput
-          ? "AIサーバーURLを保存しました。"
-          : "AIサーバーURLをクリアしました。",
-      );
-    } catch (error) {
-      console.error("Failed to save API base URL override:", error);
-      Alert.alert("エラー", "AIサーバーURLの保存に失敗しました。");
-    }
-  };
-
-  const handleSaveLocalLlm = async () => {
-    setSavingLocalLlm(true);
-    try {
-      await saveLocalLLMConfig({
-        apiKey: localApiKeyInput,
-        model: localModelInput,
-        apiUrl: localApiUrlInput,
-      });
-      await loadLocalLlm();
-      Alert.alert(
-        "保存完了",
-        localApiKeyInput.trim()
-          ? "ローカルGLM設定を保存しました。"
-          : "ローカルGLM設定をクリアしました。",
-      );
-    } catch (error) {
-      console.error("Failed to save local LLM config:", error);
-      Alert.alert("エラー", "ローカルGLM設定の保存に失敗しました。");
-    } finally {
-      setSavingLocalLlm(false);
-    }
-  };
-
-  const handleCheckApiHealth = async (force: boolean = true) => {
-    setCheckingApi(true);
-    try {
-      const { baseUrl, health } = await getResolvedApiHealth(force);
-      if (!baseUrl) {
-        setApiStatusText("未接続: AIサーバーURLが未設定です");
-      } else if (!health?.ok) {
-        setApiStatusText(`未接続: ${baseUrl}`);
-      } else if (!health.llm?.hasApiKey) {
-        setApiStatusText(`接続OK / APIキー未設定 / ${baseUrl}`);
-      } else {
-        const model = health.llm?.model ? ` / ${health.llm.model}` : "";
-        setApiStatusText(`接続OK${model} / ${baseUrl}`);
-      }
-    } catch (error) {
-      console.error("Failed to check API health:", error);
-      setApiStatusText("ヘルスチェック失敗");
-    } finally {
-      setCheckingApi(false);
     }
   };
 
@@ -378,14 +487,17 @@ export default function SettingsTab() {
   const groupedExercises = useMemo(() => {
     const groups = new Map<string, Exercise[]>();
     for (const exercise of filteredExercises) {
-      const groupId = getExerciseSelectionGroup(exercise);
+      const groupId =
+        exerciseGroup === "all"
+          ? getExerciseSelectionGroup(exercise)
+          : exerciseGroup;
       if (!groups.has(groupId)) {
         groups.set(groupId, []);
       }
       groups.get(groupId)?.push(exercise);
     }
     return Array.from(groups.entries());
-  }, [filteredExercises]);
+  }, [exerciseGroup, filteredExercises]);
 
   const lvpExerciseCount = useMemo(
     () => exerciseMaster.filter((exercise) => exercise.has_lvp).length,
@@ -400,6 +512,26 @@ export default function SettingsTab() {
     }).length;
   }, [exerciseMaster]);
 
+  const renderSettingSwitch = (
+    key: BooleanSettingKey,
+    label: string,
+    meta: string,
+  ) => (
+    <View key={key} style={styles.toggleRow}>
+      <View style={styles.toggleCopy}>
+        <Text style={styles.toggleLabel}>{label}</Text>
+        <Text style={styles.toggleMeta}>{meta}</Text>
+      </View>
+      <Switch
+        value={Boolean(settings[key])}
+        onValueChange={(value) =>
+          void saveSettings({ ...settings, [key]: value })
+        }
+        trackColor={{ false: "#3b2b28", true: GarageTheme.accent }}
+      />
+    </View>
+  );
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.headerRow}>
@@ -407,738 +539,848 @@ export default function SettingsTab() {
           <Text style={styles.eyebrow}>SYSTEM / SETTINGS</Text>
           <Text style={styles.title}>設定</Text>
           <Text style={styles.subtitle}>
-            アプリの挙動とAI接続先をここで揃えます。
+            メニューからカテゴリを選んで、必要な項目だけ調整します。
           </Text>
         </View>
         <HelpButton />
       </View>
 
-      <View style={styles.card}>
-        <View style={styles.toggleRow}>
-          <View>
-            <Text style={styles.toggleLabel}>メートル法</Text>
-            <Text style={styles.toggleMeta}>kg / m/s を使用</Text>
-          </View>
-          <Switch
-            value={settings.use_metric}
-            onValueChange={(value) =>
-              void saveSettings({ ...settings, use_metric: value })
-            }
-            trackColor={{ false: "#3b2b28", true: GarageTheme.accent }}
-          />
-        </View>
-
-        <View style={styles.toggleRow}>
-          <View>
-            <Text style={styles.toggleLabel}>音声フィードバック</Text>
-            <Text style={styles.toggleMeta}>レップ通知を再生</Text>
-          </View>
-          <Switch
-            value={settings.enable_audio_feedback}
-            onValueChange={(value) =>
-              void saveSettings({ ...settings, enable_audio_feedback: value })
-            }
-            trackColor={{ false: "#3b2b28", true: GarageTheme.accent }}
-          />
-        </View>
-
-        <View style={styles.toggleRow}>
-          <View>
-            <Text style={styles.toggleLabel}>
-              最高重量ベースのウォームアップ提案
-            </Text>
-            <Text style={styles.toggleMeta}>
-              Big3 のトップセット入力時に提案を表示
-            </Text>
-          </View>
-          <Switch
-            value={settings.enable_warmup_recommendations}
-            onValueChange={(value) =>
-              void saveSettings({
-                ...settings,
-                enable_warmup_recommendations: value,
-              })
-            }
-            trackColor={{ false: "#3b2b28", true: GarageTheme.accent }}
-          />
-        </View>
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>パワーリフティングVBT運用</Text>
-        <Text style={styles.toggleMeta}>
-          トップシングルで当日の状態を見て、バックオフをVelocity Lossで止める前提に合わせます。
-        </Text>
-        <View style={styles.phaseGrid}>
-          {POWERLIFTING_PHASES.map((phase) => {
-            const active = settings.target_training_phase === phase.value;
-            return (
-              <TouchableOpacity
-                key={phase.value}
+      <View style={styles.sectionMenu}>
+        {SETTINGS_SECTIONS.map((section) => {
+          const active = activeSection === section.id;
+          return (
+            <TouchableOpacity
+              key={section.id}
+              style={[
+                styles.sectionMenuCard,
+                active && styles.sectionMenuCardActive,
+              ]}
+              onPress={() => setActiveSection(section.id)}
+            >
+              <Text
                 style={[
-                  styles.phaseOption,
-                  active && styles.phaseOptionActive,
+                  styles.sectionMenuLabel,
+                  active && styles.sectionMenuLabelActive,
                 ]}
-                onPress={() =>
-                  void saveSettings({
-                    ...settings,
-                    target_training_phase: phase.value,
-                    powerlifting_block_week: DEFAULT_WEEK_BY_PHASE[phase.value],
-                  })
-                }
               >
-                <Text
-                  style={[
-                    styles.phaseOptionLabel,
-                    active && styles.phaseOptionLabelActive,
-                  ]}
-                >
-                  {phase.label}
-                </Text>
-                <Text style={styles.phaseOptionDescription}>
-                  {phase.description}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-        <View style={styles.blockWeekHeader}>
-          <Text style={styles.blockWeekTitle}>12週間ブロック</Text>
-          <Text style={styles.blockWeekMeta}>
-            Week {blockWeekPlan.week} / {blockWeekPlan.phaseLabel}
-          </Text>
-        </View>
-        <View style={styles.weekGrid}>
-          {Array.from({ length: 12 }, (_, index) => index + 1).map((week) => {
-            const active = settings.powerlifting_block_week === week;
-            return (
-              <TouchableOpacity
-                key={week}
-                style={[styles.weekChip, active && styles.weekChipActive]}
-                onPress={() =>
-                  void saveSettings({
-                    ...settings,
-                    powerlifting_block_week: week,
-                    target_training_phase: getPhaseForBlockWeek(week),
-                  })
-                }
-              >
-                <Text
-                  style={[
-                    styles.weekChipText,
-                    active && styles.weekChipTextActive,
-                  ]}
-                >
-                  {week}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-        <Text style={styles.phaseOptionDescription}>{blockWeekPlan.note}</Text>
+                {section.label}
+              </Text>
+              <Text style={styles.sectionMenuMeta}>{section.description}</Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>音声ガイド</Text>
-
-        <View style={styles.toggleRow}>
-          <View>
-            <Text style={styles.toggleLabel}>レップカウント</Text>
-            <Text style={styles.toggleMeta}>1レップごとに回数を読み上げ</Text>
+      {activeSection === "training" && (
+        <View style={styles.card}>
+          <View style={styles.toggleRow}>
+            <View>
+              <Text style={styles.toggleLabel}>メートル法</Text>
+              <Text style={styles.toggleMeta}>kg / m/s を使用</Text>
+            </View>
+            <Switch
+              value={settings.use_metric}
+              onValueChange={(value) =>
+                void saveSettings({ ...settings, use_metric: value })
+              }
+              trackColor={{ false: "#3b2b28", true: GarageTheme.accent }}
+            />
           </View>
-          <Switch
-            value={settings.enable_audio_rep_count}
-            onValueChange={(value) =>
-              void saveSettings({ ...settings, enable_audio_rep_count: value })
-            }
-            trackColor={{ false: "#3b2b28", true: GarageTheme.accent }}
-          />
-        </View>
 
-        <View style={styles.toggleRow}>
-          <View>
-            <Text style={styles.toggleLabel}>速度読み上げ</Text>
-            <Text style={styles.toggleMeta}>
-              各レップの平均速度を音声で通知
-            </Text>
+          <View style={styles.toggleRow}>
+            <View>
+              <Text style={styles.toggleLabel}>音声フィードバック</Text>
+              <Text style={styles.toggleMeta}>レップ通知を再生</Text>
+            </View>
+            <Switch
+              value={settings.enable_audio_feedback}
+              onValueChange={(value) =>
+                void saveSettings({ ...settings, enable_audio_feedback: value })
+              }
+              trackColor={{ false: "#3b2b28", true: GarageTheme.accent }}
+            />
           </View>
-          <Switch
-            value={settings.enable_audio_velocity_readout}
-            onValueChange={(value) =>
-              void saveSettings({
-                ...settings,
-                enable_audio_velocity_readout: value,
-              })
-            }
-            trackColor={{ false: "#3b2b28", true: GarageTheme.accent }}
-          />
-        </View>
 
-        <View style={styles.toggleRow}>
-          <View>
-            <Text style={styles.toggleLabel}>もっと速くキュー</Text>
-            <Text style={styles.toggleMeta}>
-              低速レップ時のみ「もっと速く」を再生
-            </Text>
-          </View>
-          <Switch
-            value={settings.enable_audio_faster_cue}
-            onValueChange={(value) =>
-              void saveSettings({ ...settings, enable_audio_faster_cue: value })
-            }
-            trackColor={{ false: "#3b2b28", true: GarageTheme.accent }}
-          />
-        </View>
-
-        <View style={styles.toggleRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.toggleLabel}>音量</Text>
-            <Text style={styles.toggleMeta}>
-              現在: {Math.round(settings.audio_volume * 100)}%
-            </Text>
+          <View style={styles.toggleRow}>
+            <View>
+              <Text style={styles.toggleLabel}>
+                最高重量ベースのウォームアップ提案
+              </Text>
+              <Text style={styles.toggleMeta}>
+                Big3 のトップセット入力時に提案を表示
+              </Text>
+            </View>
+            <Switch
+              value={settings.enable_warmup_recommendations}
+              onValueChange={(value) =>
+                void saveSettings({
+                  ...settings,
+                  enable_warmup_recommendations: value,
+                })
+              }
+              trackColor={{ false: "#3b2b28", true: GarageTheme.accent }}
+            />
           </View>
         </View>
-        <View style={styles.thresholdRow}>
-          {[0.25, 0.5, 0.75, 1.0].map((value) => {
-            const active = settings.audio_volume === value;
-            return (
-              <TouchableOpacity
-                key={value}
-                style={[
-                  styles.thresholdButton,
-                  active && styles.thresholdButtonActive,
-                ]}
-                onPress={() =>
-                  void saveSettings({
-                    ...settings,
-                    audio_volume: value,
-                  })
-                }
-              >
-                <Text
-                  style={[
-                    styles.thresholdText,
-                    active && styles.thresholdTextActive,
-                  ]}
-                >
-                  {Math.round(value * 100)}%
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      </View>
+      )}
 
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>自動スタート</Text>
-
-        <View style={styles.toggleRow}>
-          <View>
-            <Text style={styles.toggleLabel}>自動スタートモード</Text>
-            <Text style={styles.toggleMeta}>
-              センサー動作検出でセッション自動開始
-            </Text>
-          </View>
-          <Switch
-            value={settings.enable_auto_start_session}
-            onValueChange={(value) =>
-              void saveSettings({
-                ...settings,
-                enable_auto_start_session: value,
-              })
-            }
-            trackColor={{ false: "#3b2b28", true: GarageTheme.accent }}
-          />
-        </View>
-
-        <View style={styles.thresholdRow}>
-          <Text style={styles.thresholdLabel}>ROM閾値: {settings.auto_start_rom_cm} cm</Text>
+      {activeSection === "training" && (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>パワーリフティングVBT運用</Text>
           <Text style={styles.toggleMeta}>
-            この可動域を超えると自動開始
+            トップシングルで当日の状態を見て、バックオフをVelocity
+            Lossで止める前提に合わせます。
+          </Text>
+          <View style={styles.phaseGrid}>
+            {POWERLIFTING_PHASES.map((phase) => {
+              const active = settings.target_training_phase === phase.value;
+              return (
+                <TouchableOpacity
+                  key={phase.value}
+                  style={[
+                    styles.phaseOption,
+                    active && styles.phaseOptionActive,
+                  ]}
+                  onPress={() =>
+                    void saveSettings({
+                      ...settings,
+                      target_training_phase: phase.value,
+                      powerlifting_block_week:
+                        DEFAULT_WEEK_BY_PHASE[phase.value],
+                    })
+                  }
+                >
+                  <Text
+                    style={[
+                      styles.phaseOptionLabel,
+                      active && styles.phaseOptionLabelActive,
+                    ]}
+                  >
+                    {phase.label}
+                  </Text>
+                  <Text style={styles.phaseOptionDescription}>
+                    {phase.description}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          <View style={styles.blockWeekHeader}>
+            <Text style={styles.blockWeekTitle}>12週間ブロック</Text>
+            <Text style={styles.blockWeekMeta}>
+              Week {blockWeekPlan.week} / {blockWeekPlan.phaseLabel}
+            </Text>
+          </View>
+          <View style={styles.weekGrid}>
+            {Array.from({ length: 12 }, (_, index) => index + 1).map((week) => {
+              const active = settings.powerlifting_block_week === week;
+              return (
+                <TouchableOpacity
+                  key={week}
+                  style={[styles.weekChip, active && styles.weekChipActive]}
+                  onPress={() =>
+                    void saveSettings({
+                      ...settings,
+                      powerlifting_block_week: week,
+                      target_training_phase: getPhaseForBlockWeek(week),
+                    })
+                  }
+                >
+                  <Text
+                    style={[
+                      styles.weekChipText,
+                      active && styles.weekChipTextActive,
+                    ]}
+                  >
+                    {week}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          <Text style={styles.phaseOptionDescription}>
+            {blockWeekPlan.note}
           </Text>
         </View>
-        <View style={styles.thresholdRow}>
-          {[3, 5, 7, 10].map((value) => {
-            const active = settings.auto_start_rom_cm === value;
-            return (
-              <TouchableOpacity
-                key={value}
-                style={[
-                  styles.thresholdButton,
-                  active && styles.thresholdButtonActive,
-                ]}
-                onPress={() =>
-                  void saveSettings({
-                    ...settings,
-                    auto_start_rom_cm: value,
-                  })
-                }
-              >
-                <Text
-                  style={[
-                    styles.thresholdText,
-                    active && styles.thresholdTextActive,
-                  ]}
-                >
-                  {value}cm
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      </View>
+      )}
 
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>ローカルGLM接続</Text>
-        <Text style={styles.cardBody}>
-          あなた専用運用向け。ここに APIキーを入れると、AIコーチは Mac
-          サーバーなしで GLM に直接接続します。
-        </Text>
-        <TextInput
-          style={styles.input}
-          value={localApiKeyInput}
-          onChangeText={setLocalApiKeyInput}
-          placeholder="ZAI API Key"
-          placeholderTextColor={GarageTheme.textSubtle}
-          autoCapitalize="none"
-          autoCorrect={false}
-          secureTextEntry
-        />
-        <TextInput
-          style={[styles.input, styles.stackInput]}
-          value={localModelInput}
-          onChangeText={setLocalModelInput}
-          placeholder="glm-4.7"
-          placeholderTextColor={GarageTheme.textSubtle}
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
-        <TextInput
-          style={[styles.input, styles.stackInput]}
-          value={localApiUrlInput}
-          onChangeText={setLocalApiUrlInput}
-          placeholder="https://api.z.ai/api/anthropic"
-          placeholderTextColor={GarageTheme.textSubtle}
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
-        <Text style={styles.statusLabel}>状態</Text>
-        <Text style={styles.statusText}>{localStatusText}</Text>
-        <View style={styles.buttonRow}>
-          <TouchableOpacity
-            style={styles.secondaryButton}
-            onPress={() => void loadLocalLlm()}
-          >
-            <Text style={styles.secondaryButtonText}>再読込</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.primaryButton}
-            onPress={() => void handleSaveLocalLlm()}
-          >
-            {savingLocalLlm ? (
-              <ActivityIndicator color={GarageTheme.textStrong} />
-            ) : (
-              <Text style={styles.primaryButtonText}>保存</Text>
-            )}
-          </TouchableOpacity>
-        </View>
-      </View>
+      {activeSection === "audio" && (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>音声ガイド</Text>
 
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>AIサーバーURL</Text>
-        <Text style={styles.cardBody}>
-          サーバー経由運用時だけ使います。ローカルGLM接続を使う場合は未設定でも構いません。
-        </Text>
-        <TextInput
-          style={styles.input}
-          value={apiBaseUrlInput}
-          onChangeText={setApiBaseUrlInput}
-          placeholder="http://192.168.1.23:3001"
-          placeholderTextColor={GarageTheme.textSubtle}
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
-        <Text style={styles.statusLabel}>状態</Text>
-        <Text style={styles.statusText}>{apiStatusText}</Text>
-        <View style={styles.buttonRow}>
-          <TouchableOpacity
-            style={styles.secondaryButton}
-            onPress={() => void handleCheckApiHealth(true)}
-          >
-            {checkingApi ? (
-              <ActivityIndicator color={GarageTheme.textStrong} />
-            ) : (
-              <Text style={styles.secondaryButtonText}>再確認</Text>
-            )}
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.primaryButton}
-            onPress={() => void handleSaveApiBaseUrl()}
-          >
-            <Text style={styles.primaryButtonText}>保存</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      <View style={styles.card}>
-        <View style={styles.masterHeaderRow}>
-          <View style={styles.masterHeaderCopy}>
-            <Text style={styles.sectionTitle}>種目マスタ</Text>
-            <Text style={styles.cardBody}>
-              OVRサンプル由来の種目を日本語名とカテゴリで整理しています。設定から全体を確認できます。
-            </Text>
+          <View style={styles.toggleRow}>
+            <View>
+              <Text style={styles.toggleLabel}>レップカウント</Text>
+              <Text style={styles.toggleMeta}>1レップごとに回数を読み上げ</Text>
+            </View>
+            <Switch
+              value={settings.enable_audio_rep_count}
+              onValueChange={(value) =>
+                void saveSettings({
+                  ...settings,
+                  enable_audio_rep_count: value,
+                })
+              }
+              trackColor={{ false: "#3b2b28", true: GarageTheme.accent }}
+            />
           </View>
-          <TouchableOpacity
-            style={styles.syncButton}
-            onPress={() => void handleSyncExerciseMaster()}
-            disabled={loadingExerciseMaster || syncingExerciseMaster}
-          >
-            {loadingExerciseMaster || syncingExerciseMaster ? (
-              <ActivityIndicator color={GarageTheme.textStrong} />
-            ) : (
-              <Text style={styles.syncButtonText}>同期</Text>
-            )}
-          </TouchableOpacity>
-        </View>
 
-        <View style={styles.masterSummaryRow}>
-          <View style={styles.summaryTile}>
-            <Text style={styles.summaryLabel}>総種目数</Text>
-            <Text style={styles.summaryValue}>{exerciseMaster.length}</Text>
+          <View style={styles.toggleRow}>
+            <View>
+              <Text style={styles.toggleLabel}>速度読み上げ</Text>
+              <Text style={styles.toggleMeta}>
+                各レップの平均速度を音声で通知
+              </Text>
+            </View>
+            <Switch
+              value={settings.enable_audio_velocity_readout}
+              onValueChange={(value) =>
+                void saveSettings({
+                  ...settings,
+                  enable_audio_velocity_readout: value,
+                })
+              }
+              trackColor={{ false: "#3b2b28", true: GarageTheme.accent }}
+            />
           </View>
-          <View style={styles.summaryTile}>
-            <Text style={styles.summaryLabel}>LVP対応</Text>
-            <Text style={styles.summaryValue}>{lvpExerciseCount}</Text>
+
+          <View style={styles.toggleRow}>
+            <View>
+              <Text style={styles.toggleLabel}>もっと速くキュー</Text>
+              <Text style={styles.toggleMeta}>
+                低速レップ時のみ「もっと速く」を再生
+              </Text>
+            </View>
+            <Switch
+              value={settings.enable_audio_faster_cue}
+              onValueChange={(value) =>
+                void saveSettings({
+                  ...settings,
+                  enable_audio_faster_cue: value,
+                })
+              }
+              trackColor={{ false: "#3b2b28", true: GarageTheme.accent }}
+            />
           </View>
-          <View style={styles.summaryTile}>
-            <Text style={styles.summaryLabel}>OVRサンプル</Text>
-            <Text style={styles.summaryValue}>
-              {ovrSampleCoverageCount}/{OVR_SAMPLE_EXERCISE_NAMES.length}
-            </Text>
+
+          <View style={styles.toggleRow}>
+            <View>
+              <Text style={styles.toggleLabel}>セット開始リマインダー</Text>
+              <Text style={styles.toggleMeta}>
+                開始後、最初のレップが入るまで一定間隔で音を鳴らす
+              </Text>
+            </View>
+            <Switch
+              value={settings.enable_set_start_reminder}
+              onValueChange={(value) =>
+                void saveSettings({
+                  ...settings,
+                  enable_set_start_reminder: value,
+                })
+              }
+              trackColor={{ false: "#3b2b28", true: GarageTheme.accent }}
+            />
           </View>
-        </View>
 
-        <TextInput
-          style={styles.input}
-          value={exerciseSearchQuery}
-          onChangeText={setExerciseSearchQuery}
-          placeholder="種目名・カテゴリで検索"
-          placeholderTextColor={GarageTheme.textSubtle}
-        />
-
-        <View style={styles.masterActionsRow}>
-          <TouchableOpacity
-            style={[styles.actionButton, styles.actionSyncButton]}
-            onPress={handleSyncExerciseMaster}
-            disabled={syncingExerciseMaster}
-          >
-            <Text style={styles.actionButtonText}>
-              {syncingExerciseMaster ? "同期中..." : "⟳ 既定に復元"}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.actionButton, styles.addButton]}
-            onPress={() => router.push("/coach-chat")}
-          >
-            <Text style={styles.actionButtonText}>+ 新規追加</Text>
-          </TouchableOpacity>
-        </View>
-
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.groupScroll}
-          contentContainerStyle={styles.groupScrollContent}
-        >
-          {EXERCISE_SELECTION_GROUPS.map((group) => {
-            const active = exerciseGroup === group.id;
-            return (
-              <TouchableOpacity
-                key={group.id}
-                style={[styles.groupChip, active && styles.groupChipActive]}
-                onPress={() => setExerciseGroup(group.id)}
-              >
-                <Text
-                  style={[
-                    styles.groupChipText,
-                    active && styles.groupChipTextActive,
-                  ]}
-                >
-                  {group.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-
-        {loadingExerciseMaster ? (
-          <View style={styles.loadingState}>
-            <ActivityIndicator color={GarageTheme.accent} />
-            <Text style={styles.loadingText}>種目マスタを読み込み中...</Text>
+          <View style={styles.toggleRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.toggleLabel}>音量</Text>
+              <Text style={styles.toggleMeta}>
+                現在: {Math.round(settings.audio_volume * 100)}%
+              </Text>
+            </View>
           </View>
-        ) : (
-          <View style={styles.masterList}>
-            {groupedExercises.map(([groupId, exercises]) => {
-              const label =
-                EXERCISE_SELECTION_GROUPS.find((group) => group.id === groupId)
-                  ?.label ?? groupId;
+          <View style={styles.thresholdRow}>
+            {[0.25, 0.5, 0.75, 1.0].map((value) => {
+              const active = settings.audio_volume === value;
               return (
-                <View key={groupId} style={styles.masterGroupSection}>
-                  <View style={styles.masterGroupHeader}>
-                    <Text style={styles.masterGroupTitle}>{label}</Text>
-                    <Text style={styles.masterGroupCount}>
-                      {exercises.length}
-                    </Text>
-                  </View>
+                <TouchableOpacity
+                  key={value}
+                  style={[
+                    styles.thresholdButton,
+                    active && styles.thresholdButtonActive,
+                  ]}
+                  onPress={() =>
+                    void saveSettings({
+                      ...settings,
+                      audio_volume: value,
+                    })
+                  }
+                >
+                  <Text
+                    style={[
+                      styles.thresholdText,
+                      active && styles.thresholdTextActive,
+                    ]}
+                  >
+                    {Math.round(value * 100)}%
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+      )}
 
-                  {exercises.map((exercise) => {
-                    const romText =
-                      exercise.rom_range_min_cm != null &&
-                      exercise.rom_range_max_cm != null
-                        ? `${formatLoadKg(exercise.rom_range_min_cm)}-${formatLoadKg(exercise.rom_range_max_cm)} cm`
-                        : exercise.min_rom_threshold != null
-                          ? `最小ROM ${formatLoadKg(exercise.min_rom_threshold)} cm`
-                          : "ROM未設定";
+      {activeSection === "session" && (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>自動スタート</Text>
 
-                    const isEditing = editingExerciseId === exercise.id;
+          <View style={styles.toggleRow}>
+            <View>
+              <Text style={styles.toggleLabel}>自動スタートモード</Text>
+              <Text style={styles.toggleMeta}>
+                センサー動作検出でセッション自動開始
+              </Text>
+            </View>
+            <Switch
+              value={settings.enable_auto_start_session}
+              onValueChange={(value) =>
+                void saveSettings({
+                  ...settings,
+                  enable_auto_start_session: value,
+                })
+              }
+              trackColor={{ false: "#3b2b28", true: GarageTheme.accent }}
+            />
+          </View>
 
-                    return (
-                      <View
-                        key={exercise.id}
-                        style={[
-                          styles.exerciseRow,
-                          isEditing && styles.exerciseRowEditing,
-                        ]}
-                      >
-                        <View style={styles.exerciseRowMain}>
-                          <View style={styles.exerciseNameRow}>
-                            <Text style={styles.exerciseName}>
-                              {exercise.name}
+          <View style={styles.thresholdRow}>
+            <Text style={styles.thresholdLabel}>
+              ROM閾値: {settings.auto_start_rom_cm} cm
+            </Text>
+            <Text style={styles.toggleMeta}>この可動域を超えると自動開始</Text>
+          </View>
+          <View style={styles.thresholdRow}>
+            {[3, 5, 7, 10].map((value) => {
+              const active = settings.auto_start_rom_cm === value;
+              return (
+                <TouchableOpacity
+                  key={value}
+                  style={[
+                    styles.thresholdButton,
+                    active && styles.thresholdButtonActive,
+                  ]}
+                  onPress={() =>
+                    void saveSettings({
+                      ...settings,
+                      auto_start_rom_cm: value,
+                    })
+                  }
+                >
+                  <Text
+                    style={[
+                      styles.thresholdText,
+                      active && styles.thresholdTextActive,
+                    ]}
+                  >
+                    {value}cm
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+      )}
+
+      {activeSection === "session" && (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>セッション軽量化</Text>
+          <Text style={styles.cardBody}>
+            6セット目あたりで重くなる対策です。軽量モードはセッション履歴の描画とDB再取得を抑え、詳細を開いた時だけ必要なレップを読み込みます。
+          </Text>
+          {renderSettingSwitch(
+            "enable_session_lightweight_mode",
+            "軽量セッションモード",
+            "最新5セット中心に表示して計測操作を優先",
+          )}
+        </View>
+      )}
+
+      {activeSection === "session" && (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>フォーム動画</Text>
+          <Text style={styles.cardBody}>
+            セッション中に専用画面を開いて、セットに紐付けるフォーム確認動画を撮影します。
+          </Text>
+          {renderSettingSwitch(
+            "enable_video_recording",
+            "フォーム動画モード",
+            "セッション画面に録画ボタンを表示",
+          )}
+        </View>
+      )}
+
+      {activeSection === "share" && (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Mac Live Share</Text>
+          <Text style={styles.cardBody}>
+            セッション中の rep / set / 動画メタデータを、手入力したMac側URLへ送ります。ネットワーク探索はしません。
+          </Text>
+
+          {renderSettingSwitch(
+            "enable_live_share",
+            "Live Shareを有効化",
+            "失敗時は端末内キューに残し、トレーニング操作は止めません",
+          )}
+
+          <Text style={styles.statusLabel}>MAC URL</Text>
+          <TextInput
+            style={styles.input}
+            value={settings.live_share_url}
+            onChangeText={(value) =>
+              void saveSettings({ ...settings, live_share_url: value })
+            }
+            placeholder="http://MacのIPまたは.local:8788"
+            placeholderTextColor={GarageTheme.textSubtle}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="url"
+          />
+          <Text style={styles.toggleMeta}>
+            例: http://line93.local:8788 または http://192.168.x.x:8788
+          </Text>
+
+          <Text style={styles.statusLabel}>TOKEN 任意</Text>
+          <TextInput
+            style={styles.input}
+            value={settings.live_share_token}
+            onChangeText={(value) =>
+              void saveSettings({ ...settings, live_share_token: value })
+            }
+            placeholder="Mac側サーバーに --token を付けた時だけ入力"
+            placeholderTextColor={GarageTheme.textSubtle}
+            autoCapitalize="none"
+            autoCorrect={false}
+            secureTextEntry
+          />
+          <Text style={styles.cardBody}>
+            Mac側: pnpm live-share:server -- --host 0.0.0.0 --port 8788
+          </Text>
+        </View>
+      )}
+
+      {activeSection === "display" && (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>セッション表示項目</Text>
+          <Text style={styles.cardBody}>
+            通常のセッション画面に出す項目です。使わない項目を切るほどスクロール量と描画負荷が減ります。
+          </Text>
+          <Text style={styles.cardBody}>
+            「アドバイス系まとめ」をOFFにすると、個別設定がONでも助言・判定・提案カードはまとめて非表示になります。
+          </Text>
+          {SESSION_DISPLAY_TOGGLES.map((item) =>
+            renderSettingSwitch(item.key, item.label, item.meta),
+          )}
+        </View>
+      )}
+
+      {activeSection === "focus" && (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>計測中フォーカス表示</Text>
+          <Text style={styles.cardBody}>
+            セット記録中の大画面表示です。計測中に見たい情報だけ残せます。
+          </Text>
+          {FOCUS_DISPLAY_TOGGLES.map((item) =>
+            renderSettingSwitch(item.key, item.label, item.meta),
+          )}
+        </View>
+      )}
+
+      {activeSection === "exercises" && (
+        <View style={styles.card}>
+          <View style={styles.masterHeaderRow}>
+            <View style={styles.masterHeaderCopy}>
+              <Text style={styles.sectionTitle}>種目マスタ</Text>
+              <Text style={styles.cardBody}>
+                OVRサンプル由来の種目を日本語名とカテゴリで整理しています。設定から全体を確認できます。
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={styles.syncButton}
+              onPress={() => void handleSyncExerciseMaster()}
+              disabled={loadingExerciseMaster || syncingExerciseMaster}
+            >
+              {loadingExerciseMaster || syncingExerciseMaster ? (
+                <ActivityIndicator color={GarageTheme.textStrong} />
+              ) : (
+                <Text style={styles.syncButtonText}>同期</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.masterSummaryRow}>
+            <View style={styles.summaryTile}>
+              <Text style={styles.summaryLabel}>総種目数</Text>
+              <Text style={styles.summaryValue}>{exerciseMaster.length}</Text>
+            </View>
+            <View style={styles.summaryTile}>
+              <Text style={styles.summaryLabel}>LVP対応</Text>
+              <Text style={styles.summaryValue}>{lvpExerciseCount}</Text>
+            </View>
+            <View style={styles.summaryTile}>
+              <Text style={styles.summaryLabel}>OVRサンプル</Text>
+              <Text style={styles.summaryValue}>
+                {ovrSampleCoverageCount}/{OVR_SAMPLE_EXERCISE_NAMES.length}
+              </Text>
+            </View>
+          </View>
+
+          <TextInput
+            style={styles.input}
+            value={exerciseSearchQuery}
+            onChangeText={setExerciseSearchQuery}
+            placeholder="種目名・カテゴリで検索"
+            placeholderTextColor={GarageTheme.textSubtle}
+          />
+
+          <View style={styles.masterActionsRow}>
+            <TouchableOpacity
+              style={[styles.actionButton, styles.actionSyncButton]}
+              onPress={handleSyncExerciseMaster}
+              disabled={syncingExerciseMaster}
+            >
+              <Text style={styles.actionButtonText}>
+                {syncingExerciseMaster ? "同期中..." : "⟳ 既定に復元"}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.actionButton, styles.addButton]}
+              onPress={() =>
+                Alert.alert(
+                  "準備中",
+                  "種目の新規追加は次の更新で専用フォームに移します。既存種目の編集はこの画面から行えます。",
+                )
+              }
+            >
+              <Text style={styles.actionButtonText}>+ 新規追加</Text>
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.groupScroll}
+            contentContainerStyle={styles.groupScrollContent}
+          >
+            {EXERCISE_SELECTION_GROUPS.map((group) => {
+              const active = exerciseGroup === group.id;
+              return (
+                <TouchableOpacity
+                  key={group.id}
+                  style={[styles.groupChip, active && styles.groupChipActive]}
+                  onPress={() => setExerciseGroup(group.id)}
+                >
+                  <Text
+                    style={[
+                      styles.groupChipText,
+                      active && styles.groupChipTextActive,
+                    ]}
+                  >
+                    {group.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+
+          {loadingExerciseMaster ? (
+            <View style={styles.loadingState}>
+              <ActivityIndicator color={GarageTheme.accent} />
+              <Text style={styles.loadingText}>種目マスタを読み込み中...</Text>
+            </View>
+          ) : (
+            <View style={styles.masterList}>
+              {groupedExercises.map(([groupId, exercises]) => {
+                const label =
+                  EXERCISE_SELECTION_GROUPS.find(
+                    (group) => group.id === groupId,
+                  )?.label ?? groupId;
+                return (
+                  <View key={groupId} style={styles.masterGroupSection}>
+                    <View style={styles.masterGroupHeader}>
+                      <Text style={styles.masterGroupTitle}>{label}</Text>
+                      <Text style={styles.masterGroupCount}>
+                        {exercises.length}
+                      </Text>
+                    </View>
+
+                    {exercises.map((exercise) => {
+                      const romText =
+                        exercise.rom_range_min_cm != null &&
+                        exercise.rom_range_max_cm != null
+                          ? `${formatLoadKg(exercise.rom_range_min_cm)}-${formatLoadKg(exercise.rom_range_max_cm)} cm`
+                          : exercise.min_rom_threshold != null
+                            ? `最小ROM ${formatLoadKg(exercise.min_rom_threshold)} cm`
+                            : "ROM未設定";
+
+                      const isEditing = editingExerciseId === exercise.id;
+
+                      return (
+                        <View
+                          key={exercise.id}
+                          style={[
+                            styles.exerciseRow,
+                            isEditing && styles.exerciseRowEditing,
+                          ]}
+                        >
+                          <View style={styles.exerciseRowMain}>
+                            <View style={styles.exerciseNameRow}>
+                              <Text style={styles.exerciseName}>
+                                {exercise.name}
+                              </Text>
+                              {exercise.has_lvp ? (
+                                <View style={styles.lvpBadge}>
+                                  <Text style={styles.lvpBadgeText}>LVP</Text>
+                                </View>
+                              ) : null}
+                            </View>
+                            <Text style={styles.exerciseMeta}>
+                              {getExerciseCategoryLabel(exercise.category)} /{" "}
+                              {
+                                MODE_LABELS[
+                                  exercise.rep_detection_mode ?? "standard"
+                                ]
+                              }{" "}
+                              / {romText}
                             </Text>
-                            {exercise.has_lvp ? (
-                              <View style={styles.lvpBadge}>
-                                <Text style={styles.lvpBadgeText}>LVP</Text>
+                            {exercise.description ? (
+                              <Text style={styles.exerciseDescription}>
+                                {exercise.description}
+                              </Text>
+                            ) : null}
+                            {isEditing ? (
+                              <View style={styles.exerciseEditForm}>
+                                <View style={styles.exerciseEditRow}>
+                                  <Text style={styles.exerciseEditLabel}>
+                                    種目名
+                                  </Text>
+                                  <TextInput
+                                    style={styles.exerciseEditInput}
+                                    value={editingExerciseName}
+                                    onChangeText={setEditingExerciseName}
+                                    placeholder="種目名"
+                                    placeholderTextColor={
+                                      GarageTheme.textSubtle
+                                    }
+                                  />
+                                </View>
+
+                                <View style={styles.exerciseEditRow}>
+                                  <Text style={styles.exerciseEditLabel}>
+                                    カテゴリ
+                                  </Text>
+                                  <ScrollView
+                                    horizontal
+                                    showsHorizontalScrollIndicator={false}
+                                    style={styles.categorySelectorScroll}
+                                  >
+                                    {Object.keys(EXERCISE_CATEGORY_LABELS).map(
+                                      (cat) => {
+                                        const category =
+                                          cat as Exercise["category"];
+                                        const isSelected =
+                                          editingExerciseCategory === category;
+                                        return (
+                                          <TouchableOpacity
+                                            key={category}
+                                            style={[
+                                              styles.categoryChip,
+                                              isSelected &&
+                                                styles.categoryChipActive,
+                                            ]}
+                                            onPress={() =>
+                                              setEditingExerciseCategory(
+                                                category,
+                                              )
+                                            }
+                                          >
+                                            <Text
+                                              style={[
+                                                styles.categoryChipText,
+                                                isSelected &&
+                                                  styles.categoryChipTextActive,
+                                              ]}
+                                            >
+                                              {
+                                                EXERCISE_CATEGORY_LABELS[
+                                                  category
+                                                ]
+                                              }
+                                            </Text>
+                                          </TouchableOpacity>
+                                        );
+                                      },
+                                    )}
+                                  </ScrollView>
+                                </View>
+
+                                <View style={styles.exerciseEditRow}>
+                                  <Text style={styles.exerciseEditLabel}>
+                                    自動スタートROM
+                                  </Text>
+                                  <View style={styles.vlThresholdSelector}>
+                                    {[null, 3, 5, 7, 10].map((value) => {
+                                      const isSelected =
+                                        editingExerciseAutoStartRom === value;
+                                      return (
+                                        <TouchableOpacity
+                                          key={value ?? "default"}
+                                          style={[
+                                            styles.vlThresholdChip,
+                                            isSelected &&
+                                              styles.vlThresholdChipActive,
+                                          ]}
+                                          onPress={() =>
+                                            setEditingExerciseAutoStartRom(
+                                              value,
+                                            )
+                                          }
+                                        >
+                                          <Text
+                                            style={[
+                                              styles.vlThresholdChipText,
+                                              isSelected &&
+                                                styles.vlThresholdChipTextActive,
+                                            ]}
+                                          >
+                                            {value === null
+                                              ? "既定"
+                                              : `${value}cm`}
+                                          </Text>
+                                        </TouchableOpacity>
+                                      );
+                                    })}
+                                  </View>
+                                </View>
+
+                                <View style={styles.exerciseEditRow}>
+                                  <Text style={styles.exerciseEditLabel}>
+                                    トレーニングキュー
+                                  </Text>
+                                  <TextInput
+                                    style={[
+                                      styles.exerciseEditInput,
+                                      styles.textAreaInput,
+                                    ]}
+                                    value={editingTrainingCue}
+                                    onChangeText={setEditingTrainingCue}
+                                    placeholder="実行時の意識ポイント（例：胸を張る、お尻を締める）"
+                                    placeholderTextColor={
+                                      GarageTheme.textSubtle
+                                    }
+                                    multiline
+                                    numberOfLines={2}
+                                  />
+                                </View>
+
+                                <View style={styles.exerciseEditRow}>
+                                  <Text style={styles.exerciseEditLabel}>
+                                    フォーカスノート
+                                  </Text>
+                                  <TextInput
+                                    style={[
+                                      styles.exerciseEditInput,
+                                      styles.textAreaInput,
+                                    ]}
+                                    value={editingFocusNote}
+                                    onChangeText={setEditingFocusNote}
+                                    placeholder="種目ごとの注意点（例：膝が内側に入らないように）"
+                                    placeholderTextColor={
+                                      GarageTheme.textSubtle
+                                    }
+                                    multiline
+                                    numberOfLines={2}
+                                  />
+                                </View>
+
+                                <View style={styles.exerciseEditRow}>
+                                  <View style={styles.exerciseInlineToggleCopy}>
+                                    <Text
+                                      style={styles.exerciseInlineToggleLabel}
+                                    >
+                                      最初の1レップをセットアップとして無視
+                                    </Text>
+                                    <Text
+                                      style={styles.exerciseInlineToggleMeta}
+                                    >
+                                      開始位置に運ぶ反応を自動除外します
+                                    </Text>
+                                  </View>
+                                  <Switch
+                                    value={Boolean(
+                                      exercise.ignore_first_rep_as_setup,
+                                    )}
+                                    onValueChange={(value) => {
+                                      void ExerciseService.updateExercise(
+                                        exercise.id,
+                                        { ignore_first_rep_as_setup: value },
+                                      ).then(() => loadExerciseMaster());
+                                    }}
+                                    trackColor={{
+                                      false: "#3b2b28",
+                                      true: GarageTheme.accent,
+                                    }}
+                                  />
+                                </View>
+
+                                <TouchableOpacity
+                                  style={styles.saveExerciseButton}
+                                  onPress={() =>
+                                    void handleSaveExerciseEdits(exercise.id)
+                                  }
+                                >
+                                  <Text style={styles.saveExerciseButtonText}>
+                                    保存
+                                  </Text>
+                                </TouchableOpacity>
                               </View>
                             ) : null}
                           </View>
-                          <Text style={styles.exerciseMeta}>
-                            {getExerciseCategoryLabel(exercise.category)} /{" "}
-                            {
-                              MODE_LABELS[
-                                exercise.rep_detection_mode ?? "standard"
-                              ]
-                            }{" "}
-                            / {romText}
-                          </Text>
-                          {exercise.description ? (
-                            <Text style={styles.exerciseDescription}>
-                              {exercise.description}
-                            </Text>
-                          ) : null}
-                          {isEditing ? (
-                            <View style={styles.exerciseEditForm}>
-                              <View style={styles.exerciseEditRow}>
-                                <Text style={styles.exerciseEditLabel}>種目名</Text>
-                                <TextInput
-                                  style={styles.exerciseEditInput}
-                                  value={editingExerciseName}
-                                  onChangeText={setEditingExerciseName}
-                                  placeholder="種目名"
-                                  placeholderTextColor={GarageTheme.textSubtle}
-                                />
-                              </View>
-
-                              <View style={styles.exerciseEditRow}>
-                                <Text style={styles.exerciseEditLabel}>カテゴリ</Text>
-                                <ScrollView
-                                  horizontal
-                                  showsHorizontalScrollIndicator={false}
-                                  style={styles.categorySelectorScroll}
-                                >
-                                  {Object.keys(
-                                    EXERCISE_CATEGORY_LABELS,
-                                  ).map((cat) => {
-                                    const category = cat as Exercise["category"];
-                                    const isSelected =
-                                      editingExerciseCategory === category;
-                                    return (
-                                      <TouchableOpacity
-                                        key={category}
-                                        style={[
-                                          styles.categoryChip,
-                                          isSelected &&
-                                            styles.categoryChipActive,
-                                        ]}
-                                        onPress={() =>
-                                          setEditingExerciseCategory(category)
-                                        }
-                                      >
-                                        <Text
-                                          style={[
-                                            styles.categoryChipText,
-                                            isSelected &&
-                                              styles.categoryChipTextActive,
-                                          ]}
-                                        >
-                                          {
-                                            EXERCISE_CATEGORY_LABELS[
-                                              category
-                                            ]
-                                          }
-                                        </Text>
-                                      </TouchableOpacity>
-                                    );
-                                  })}
-                                </ScrollView>
-                              </View>
-
-                              <View style={styles.exerciseEditRow}>
-                                <Text style={styles.exerciseEditLabel}>
-                                  自動スタートROM
-                                </Text>
-                                <View style={styles.vlThresholdSelector}>
-                                  {[null, 3, 5, 7, 10].map((value) => {
-                                    const isSelected =
-                                      editingExerciseAutoStartRom === value;
-                                    return (
-                                      <TouchableOpacity
-                                        key={value ?? "default"}
-                                        style={[
-                                          styles.vlThresholdChip,
-                                          isSelected &&
-                                            styles.vlThresholdChipActive,
-                                        ]}
-                                        onPress={() =>
-                                          setEditingExerciseAutoStartRom(value)
-                                        }
-                                      >
-                                        <Text
-                                          style={[
-                                            styles.vlThresholdChipText,
-                                            isSelected &&
-                                              styles.vlThresholdChipTextActive,
-                                          ]}
-                                        >
-                                          {value === null
-                                            ? "既定"
-                                            : `${value}cm`}
-                                        </Text>
-                                      </TouchableOpacity>
-                                    );
-                                  })}
-                                </View>
-                              </View>
-
-                              <View style={styles.exerciseEditRow}>
-                                <Text style={styles.exerciseEditLabel}>
-                                  トレーニングキュー
-                                </Text>
-                                <TextInput
-                                  style={[styles.exerciseEditInput, styles.textAreaInput]}
-                                  value={editingTrainingCue}
-                                  onChangeText={setEditingTrainingCue}
-                                  placeholder="実行時の意識ポイント（例：胸を張る、お尻を締める）"
-                                  placeholderTextColor={GarageTheme.textSubtle}
-                                  multiline
-                                  numberOfLines={2}
-                                />
-                              </View>
-
-                              <View style={styles.exerciseEditRow}>
-                                <Text style={styles.exerciseEditLabel}>
-                                  フォーカスノート
-                                </Text>
-                                <TextInput
-                                  style={[styles.exerciseEditInput, styles.textAreaInput]}
-                                  value={editingFocusNote}
-                                  onChangeText={setEditingFocusNote}
-                                  placeholder="種目ごとの注意点（例：膝が内側に入らないように）"
-                                  placeholderTextColor={GarageTheme.textSubtle}
-                                  multiline
-                                  numberOfLines={2}
-                                />
-                              </View>
-
-                              <View style={styles.exerciseEditRow}>
-                                <View style={styles.exerciseInlineToggleCopy}>
-                                  <Text style={styles.exerciseInlineToggleLabel}>
-                                    最初の1レップをセットアップとして無視
-                                  </Text>
-                                  <Text style={styles.exerciseInlineToggleMeta}>
-                                    開始位置に運ぶ反応を自動除外します
-                                  </Text>
-                                </View>
-                                <Switch
-                                  value={Boolean(
-                                    exercise.ignore_first_rep_as_setup,
-                                  )}
-                                  onValueChange={(value) => {
-                                    void ExerciseService.updateExercise(
-                                      exercise.id,
-                                      { ignore_first_rep_as_setup: value },
-                                    ).then(() => loadExerciseMaster());
-                                  }}
-                                  trackColor={{
-                                    false: "#3b2b28",
-                                    true: GarageTheme.accent,
-                                  }}
-                                />
-                              </View>
-
-                              <TouchableOpacity
-                                style={styles.saveExerciseButton}
-                                onPress={() =>
-                                  void handleSaveExerciseEdits(exercise.id)
-                                }
-                              >
-                                <Text style={styles.saveExerciseButtonText}>
-                                  保存
-                                </Text>
-                              </TouchableOpacity>
-                            </View>
-                          ) : null}
+                          <View style={styles.exerciseActions}>
+                            <TouchableOpacity
+                              style={styles.exerciseActionBtn}
+                              onPress={() => handleEditExercise(exercise.id)}
+                            >
+                              <Text style={styles.exerciseActionText}>
+                                {isEditing ? "×" : "編集"}
+                              </Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={[
+                                styles.exerciseActionBtn,
+                                styles.exerciseDeleteBtn,
+                              ]}
+                              onPress={() =>
+                                handleDeleteExercise(exercise.id, exercise.name)
+                              }
+                            >
+                              <Text style={styles.exerciseActionText}>
+                                削除
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
                         </View>
-                        <View style={styles.exerciseActions}>
-                          <TouchableOpacity
-                            style={styles.exerciseActionBtn}
-                            onPress={() => handleEditExercise(exercise.id)}
-                          >
-                            <Text style={styles.exerciseActionText}>
-                              {isEditing ? "×" : "編集"}
-                            </Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={[
-                              styles.exerciseActionBtn,
-                              styles.exerciseDeleteBtn,
-                            ]}
-                            onPress={() =>
-                              handleDeleteExercise(exercise.id, exercise.name)
-                            }
-                          >
-                            <Text style={styles.exerciseActionText}>削除</Text>
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                    );
-                  })}
+                      );
+                    })}
+                  </View>
+                );
+              })}
+
+              {groupedExercises.length === 0 ? (
+                <View style={styles.emptyState}>
+                  <Text style={styles.emptyStateTitle}>
+                    一致する種目がありません
+                  </Text>
+                  <Text style={styles.emptyStateText}>
+                    検索条件かカテゴリを変更してください。
+                  </Text>
                 </View>
-              );
-            })}
-
-            {groupedExercises.length === 0 ? (
-              <View style={styles.emptyState}>
-                <Text style={styles.emptyStateTitle}>
-                  一致する種目がありません
-                </Text>
-                <Text style={styles.emptyStateText}>
-                  検索条件かカテゴリを変更してください。
-                </Text>
-              </View>
-            ) : null}
-          </View>
-        )}
-      </View>
+              ) : null}
+            </View>
+          )}
+        </View>
+      )}
     </ScrollView>
   );
 }
@@ -1179,6 +1421,38 @@ const styles = StyleSheet.create({
   headerText: {
     flex: 1,
   },
+  sectionMenu: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    marginBottom: 16,
+  },
+  sectionMenuCard: {
+    width: "47%",
+    borderRadius: 14,
+    backgroundColor: GarageTheme.chip,
+    borderWidth: 1,
+    borderColor: GarageTheme.borderStrong,
+    padding: 12,
+  },
+  sectionMenuCardActive: {
+    backgroundColor: "#4b2416",
+    borderColor: GarageTheme.accent,
+  },
+  sectionMenuLabel: {
+    color: GarageTheme.text,
+    fontSize: 14,
+    fontWeight: "800",
+    marginBottom: 4,
+  },
+  sectionMenuLabelActive: {
+    color: GarageTheme.textStrong,
+  },
+  sectionMenuMeta: {
+    color: GarageTheme.textMuted,
+    fontSize: 11,
+    lineHeight: 15,
+  },
   card: {
     borderRadius: 18,
     backgroundColor: GarageTheme.surface,
@@ -1192,6 +1466,10 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     paddingVertical: 10,
+  },
+  toggleCopy: {
+    flex: 1,
+    paddingRight: 12,
   },
   toggleLabel: {
     color: GarageTheme.text,

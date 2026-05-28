@@ -31,15 +31,16 @@ export class VBTLogic {
     lift: string
   ): PRRecord | null {
     const existingPR = prRecords.find((pr) => pr.lift === lift && pr.type === type);
-    if (!existingPR || currentVal > existingPR.value) {
-      const improvement = existingPR ? currentVal - existingPR.value : 0;
+    if (!existingPR) return null;
+    if (currentVal > existingPR.value) {
+      const improvement = currentVal - existingPR.value;
       return {
         id: Date.now().toString(),
         type,
         lift,
         value: currentVal,
         date: new Date().toISOString(),
-        previous_value: existingPR?.value,
+        previous_value: existingPR.value,
         improvement,
       };
     }

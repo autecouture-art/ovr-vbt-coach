@@ -28,6 +28,7 @@ export interface RepData {
   peak_velocity: number | null;
   rom_cm: number | null;
   mean_power_w: number | null;
+  peak_power_w?: number | null;
   rep_duration_ms: number | null;
   is_valid_rep: boolean;
   is_short_rom?: boolean;
@@ -61,6 +62,7 @@ export interface SetData {
   rest_duration_s?: number; // 前のセットからの休憩時間
   avg_hr?: number; // 平均心拍数
   peak_hr?: number; // 最大心拍数
+  hr_recovery_to_120_s?: number | null; // セット後ピーク心拍から120bpm以下へ戻るまでの秒数
   notes?: string;
   avg_power_w?: number | null;
   is_warmup?: boolean; // ウォームアップセットフラグ
@@ -78,6 +80,21 @@ export interface SessionData {
   end_timestamp?: string; // セッション終了時間
   avg_hr?: number; // 平均心拍数
   notes?: string;
+}
+
+export interface FormVideoRecord {
+  id: string;
+  session_id: string;
+  lift: string;
+  set_index?: number | null;
+  load_kg?: number | null;
+  local_uri: string;
+  thumbnail_uri?: string | null;
+  started_at: string;
+  ended_at: string;
+  duration_s: number;
+  created_at: string;
+  notes?: string | null;
 }
 
 // ========================================
@@ -320,6 +337,9 @@ export interface AppSettings {
   enable_audio_feedback: boolean;
   enable_voice_commands: boolean;
   enable_video_recording: boolean;
+  enable_live_share: boolean;
+  live_share_url: string;
+  live_share_token: string;
   target_training_phase: "power" | "hypertrophy" | "strength" | "peaking";
   powerlifting_block_week: number; // 1-12 week PL block guide
   audio_volume: number; // 0.0 to 1.0
@@ -327,9 +347,46 @@ export interface AppSettings {
   enable_audio_rep_count: boolean;
   enable_audio_velocity_readout: boolean;
   enable_audio_faster_cue: boolean;
+  enable_set_start_reminder: boolean; // セット開始後、最初のレップまで一定間隔で音声キュー
   enable_auto_start_session: boolean; // 自動スタートモード
   auto_start_rom_cm: number; // 自動スタートROM閾値 (cm) - デフォルト 5
   enable_vl_warning: boolean; // VL警告音オンオフ - デフォルト true
+  enable_session_lightweight_mode: boolean; // セッション中の重い履歴描画を抑える
+  session_display_advice_group: boolean; // アドバイス系カードの一括表示
+  session_display_status: boolean;
+  session_display_simulator: boolean;
+  session_display_exercise_picker: boolean;
+  session_display_vl_settings: boolean;
+  session_display_protocol: boolean;
+  session_display_lvp_build: boolean;
+  session_display_training_notes: boolean;
+  session_display_session_note: boolean;
+  session_display_session_banner: boolean;
+  session_display_intelligence: boolean;
+  session_display_attempt_guide: boolean;
+  session_display_suggestions: boolean;
+  session_display_rest_timer: boolean;
+  session_display_target_weight: boolean;
+  session_display_warmup_guide: boolean;
+  session_display_readiness: boolean;
+  session_display_set_config: boolean;
+  session_display_live_data: boolean;
+  session_display_velocity_chart: boolean;
+  session_display_vl_decision: boolean;
+  session_display_action_buttons: boolean;
+  session_display_same_load_history: boolean;
+  session_display_recent_history: boolean;
+  session_display_session_history: boolean;
+  session_display_end_session: boolean;
+  session_display_focus_simulator: boolean;
+  session_display_focus_info_grid: boolean;
+  session_display_focus_velocity: boolean;
+  session_display_focus_metrics: boolean;
+  session_display_focus_rep_counter: boolean;
+  session_display_focus_zone: boolean;
+  session_display_focus_vl: boolean;
+  session_display_focus_heart_rate: boolean;
+  session_display_focus_load: boolean;
 }
 
 // ========================================

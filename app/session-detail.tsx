@@ -99,24 +99,6 @@ export default function SessionDetailScreen() {
           <Text style={styles.summaryLine}>種目: {liftNames.join(" / ") || "なし"}</Text>
           <Text style={styles.summaryLine}>セット数: {sets.length}</Text>
           <Text style={styles.summaryLine}>総ボリューム: {Math.round(totalVolume)} kg</Text>
-          <TouchableOpacity
-            style={styles.coachButton}
-            onPress={() =>
-              router.push({
-                pathname: "/coach-chat",
-                params: {
-                  source: "session-detail",
-                  sessionId,
-                  currentExercise: liftNames[0] ?? "",
-                  totalSets: String(sets.length),
-                  totalVolume: String(Math.round(totalVolume)),
-                  message: "このセッションを振り返って改善点を教えて",
-                },
-              })
-            }
-          >
-            <Text style={styles.coachButtonText}>AIコーチに振り返りを聞く</Text>
-          </TouchableOpacity>
         </View>
 
         <View style={styles.listSection}>

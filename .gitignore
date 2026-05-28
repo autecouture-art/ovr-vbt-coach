@@ -70,3 +70,4 @@ hermes-engine/
 
 # AIリーダー作業ディレクトリ
 .ai-leader/
+.ai-backups/

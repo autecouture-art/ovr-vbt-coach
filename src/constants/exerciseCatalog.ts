@@ -2,7 +2,9 @@ import type { Exercise } from "@/src/types/index";
 
 export type ExerciseSelectionGroupId =
   | "all"
-  | "big3"
+  | "bench"
+  | "squat"
+  | "deadlift"
   | "chest"
   | "shoulders"
   | "back"
@@ -21,18 +23,18 @@ const DEFAULT_MICRO_STEPS = [0.5, 1, 2.5, 5];
 
 export const EXERCISE_CATEGORY_LABELS: Record<Exercise["category"], string> = {
   squat: "スクワット系",
-  bench: "ベンチ系",
+  bench: "ベンチプレス系",
   deadlift: "デッドリフト系",
-  press: "プレス系",
+  press: "ベンチ補助（肩プレス）",
   pull: "プル系",
   row: "ロウ系",
   vertical_pull: "懸垂・ラット系",
-  single_leg: "片脚系",
-  quad: "大腿四頭筋",
-  hamstring: "ハムストリング",
-  adductor: "内転筋",
-  glute: "臀部",
-  triceps: "上腕三頭筋",
+  single_leg: "スクワット補助（片脚）",
+  quad: "スクワット補助（四頭）",
+  hamstring: "デッド補助（ハム）",
+  adductor: "スクワット/デッド補助（内転）",
+  glute: "デッド補助（臀部）",
+  triceps: "ベンチ補助（三頭）",
   biceps: "上腕二頭筋",
   core: "体幹",
   accessory: "補助種目",
@@ -43,7 +45,9 @@ export const EXERCISE_SELECTION_GROUPS: {
   label: string;
 }[] = [
   { id: "all", label: "すべて" },
-  { id: "big3", label: "BIG3" },
+  { id: "bench", label: "ベンチ系" },
+  { id: "squat", label: "スクワット系" },
+  { id: "deadlift", label: "デッド系" },
   { id: "chest", label: "胸" },
   { id: "shoulders", label: "肩" },
   { id: "back", label: "背中" },
@@ -71,6 +75,38 @@ const DEFAULT_EXERCISE_SEEDS: ExerciseSeed[] = [
     description: "標準的なバックスクワット。ROM推定の基準種目。",
     mvt: 0.3,
     aliases: ["スクワット", "バックスクワット", "back squat"],
+  },
+  {
+    id: "low_bar_squat",
+    name: "Low Bar Squat",
+    category: "squat",
+    subcategory: "low_bar_squat",
+    has_lvp: true,
+    machine_weight_steps: DEFAULT_MICRO_STEPS,
+    min_rom_threshold: 24,
+    rep_detection_mode: "standard",
+    target_pause_ms: 0,
+    rom_range_min_cm: 36,
+    rom_range_max_cm: 62,
+    description: "ローバーポジションのスクワット。競技スクワットの履歴を分けたい時に使用。",
+    mvt: 0.3,
+    aliases: ["ローバースクワット", "ローバー", "low bar", "lowbar squat"],
+  },
+  {
+    id: "high_bar_squat",
+    name: "High Bar Squat",
+    category: "squat",
+    subcategory: "high_bar_squat",
+    has_lvp: true,
+    machine_weight_steps: DEFAULT_MICRO_STEPS,
+    min_rom_threshold: 24,
+    rep_detection_mode: "standard",
+    target_pause_ms: 0,
+    rom_range_min_cm: 36,
+    rom_range_max_cm: 62,
+    description: "ハイバーポジションのスクワット。ローバーと履歴を分けたい時に使用。",
+    mvt: 0.3,
+    aliases: ["ハイバースクワット", "ハイバー", "high bar", "highbar squat"],
   },
   {
     id: "front_squat",
@@ -128,7 +164,13 @@ const DEFAULT_EXERCISE_SEEDS: ExerciseSeed[] = [
     rom_range_max_cm: 34,
     description: "標準的なベンチプレス。GLM相談・1RM推定の中心。",
     mvt: 0.15,
-    aliases: ["ベンチプレス", "bench"],
+    aliases: [
+      "ベンチプレス",
+      "ベンチ",
+      "ノーマルベンチ",
+      "コンペベンチ",
+      "bench",
+    ],
   },
   {
     id: "larsen_bench_press",
@@ -143,7 +185,29 @@ const DEFAULT_EXERCISE_SEEDS: ExerciseSeed[] = [
     rom_range_max_cm: 32,
     description: "脚の反力を使わないベンチバリエーション。",
     mvt: 0.15,
-    aliases: ["ラーセンベンチプレス", "larsen bench"],
+    aliases: ["ラーセンベンチプレス", "ラーセンベンチ", "larsen bench"],
+  },
+  {
+    id: "close_grip_bench_press",
+    name: "Close Grip Bench Press",
+    category: "bench",
+    subcategory: "close_grip_bench",
+    has_lvp: true,
+    machine_weight_steps: DEFAULT_MICRO_STEPS,
+    min_rom_threshold: 12,
+    rep_detection_mode: "standard",
+    rom_range_min_cm: 16,
+    rom_range_max_cm: 34,
+    description: "手幅を狭くしたベンチプレス。ナローベンチの履歴を英語名へ統合する。",
+    mvt: 0.15,
+    aliases: [
+      "ナローベンチプレス",
+      "ナローベンチ",
+      "narrow bench",
+      "close grip bench",
+      "close-grip bench",
+      "cgbp",
+    ],
   },
   {
     id: "larsen_bottom_pulse_bench_press",
@@ -159,7 +223,11 @@ const DEFAULT_EXERCISE_SEEDS: ExerciseSeed[] = [
     rom_range_max_cm: 30,
     description:
       "ボトムでパルスを入れるベンチ。誤検知防止のため pause モード。",
-    aliases: ["ラーセンボトムパルスベンチプレス", "larsen bottom pulse bench", "bottom pulse bench"],
+    aliases: [
+      "ラーセンボトムパルスベンチプレス",
+      "larsen bottom pulse bench",
+      "bottom pulse bench",
+    ],
   },
   {
     id: "larsen_tempo_bench_press",
@@ -237,7 +305,11 @@ const DEFAULT_EXERCISE_SEEDS: ExerciseSeed[] = [
     rom_range_min_cm: 22,
     rom_range_max_cm: 40,
     description: "内転筋寄りのワイドスタンスデッド。",
-    aliases: ["アダクターフォーカスワイドデッドリフト", "adductor-focused wide dea", "wide deadlift"],
+    aliases: [
+      "アダクターフォーカスワイドデッドリフト",
+      "adductor-focused wide dea",
+      "wide deadlift",
+    ],
   },
   {
     id: "romanian_deadlift",
@@ -629,36 +701,89 @@ export function isBig3Exercise(
 export function getExerciseSelectionGroup(
   exercise: Exercise,
 ): ExerciseSelectionGroupId {
-  if (isBig3Exercise(exercise)) return "big3";
+  const groups = getExerciseSelectionGroups(exercise);
+  const primaryGroup = groups.find((group) =>
+    ["bench", "squat", "deadlift"].includes(group),
+  );
+  if (primaryGroup) return primaryGroup;
+
+  return groups[0] ?? "other";
+}
+
+export function getExerciseSelectionGroups(
+  exercise: Pick<Exercise, "category">,
+): ExerciseSelectionGroupId[] {
+  const groups = new Set<ExerciseSelectionGroupId>();
+
+  if (
+    exercise.category === "bench" ||
+    exercise.category === "press" ||
+    exercise.category === "triceps"
+  ) {
+    groups.add("bench");
+  }
+
+  if (
+    exercise.category === "squat" ||
+    exercise.category === "quad" ||
+    exercise.category === "single_leg" ||
+    exercise.category === "adductor"
+  ) {
+    groups.add("squat");
+  }
+
+  if (
+    exercise.category === "deadlift" ||
+    exercise.category === "hamstring" ||
+    exercise.category === "glute" ||
+    exercise.category === "adductor"
+  ) {
+    groups.add("deadlift");
+  }
 
   switch (exercise.category) {
     case "bench":
-      return "chest";
+      groups.add("chest");
+      break;
+    case "squat":
+      groups.add("quads");
+      break;
+    case "deadlift":
+      groups.add("posterior_chain");
+      break;
     case "press":
-      return "shoulders";
+      groups.add("shoulders");
+      break;
     case "pull":
     case "row":
     case "vertical_pull":
-      return "back";
-    case "squat":
+      groups.add("back");
+      break;
     case "single_leg":
     case "quad":
-      return "quads";
+      groups.add("quads");
+      break;
     case "adductor":
-      return "adductors";
-    case "deadlift":
+      groups.add("adductors");
+      break;
     case "hamstring":
     case "glute":
-      return "posterior_chain";
+      groups.add("posterior_chain");
+      break;
     case "triceps":
     case "biceps":
-      return "arms";
+      groups.add("arms");
+      break;
     case "core":
-      return "core";
+      groups.add("core");
+      break;
     case "accessory":
     default:
-      return "other";
+      groups.add("other");
+      break;
   }
+
+  return Array.from(groups);
 }
 
 export function matchesExerciseSelectionGroup(
@@ -666,7 +791,7 @@ export function matchesExerciseSelectionGroup(
   groupId: ExerciseSelectionGroupId,
 ): boolean {
   if (groupId === "all") return true;
-  return getExerciseSelectionGroup(exercise) === groupId;
+  return getExerciseSelectionGroups(exercise).includes(groupId);
 }
 
 export function getExerciseSelectionGroupLabel(exercise: Exercise): string {
@@ -690,12 +815,22 @@ export function inferExercisePreset(
   let category = fallbackCategory;
   let subcategory: string | undefined;
 
-  if (/(bench|ベンチ|larsen|ラーセン|incline|インクライン)/.test(key)) {
+  if (
+    /(bench|ベンチ|larsen|ラーセン|incline|インクライン|ナロー)/.test(key)
+  ) {
     category = "bench";
-    subcategory = "bench_variant";
-  } else if (/(squat|スクワット|ssb|frontsquat|フロント)/.test(key)) {
+    subcategory = /(closegrip|narrow|ナロー)/.test(key)
+      ? "close_grip_bench"
+      : "bench_variant";
+  } else if (
+    /(squat|スクワット|ssb|frontsquat|フロント|ローバー|ハイバー)/.test(key)
+  ) {
     category = "squat";
-    subcategory = "squat_variant";
+    subcategory = /ローバー|lowbar/.test(key)
+      ? "low_bar_squat"
+      : /ハイバー|highbar/.test(key)
+        ? "high_bar_squat"
+        : "squat_variant";
   } else if (/(deadlift|デッド|rdl|ルーマニアン|hinge)/.test(key)) {
     category = "deadlift";
     subcategory = "hinge_variant";

@@ -69,10 +69,9 @@ describe('VBTLogic', () => {
         expect(result).toBeNull();
     });
 
-    it('should return PR if no previous record exists', () => {
+    it('should not notify PR if no previous record exists', () => {
         const result = VBTLogic.checkPR(100, [], '1rm', 'Squat');
-        expect(result).not.toBeNull();
-        expect(result?.previous_value).toBeUndefined();
+        expect(result).toBeNull();
     });
   });
 });

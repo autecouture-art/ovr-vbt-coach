@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import type { RepData } from '../types/index';
-import AICoachService from '../services/AICoachService';
+import VBTGuideService from '../services/VBTGuideService';
 
 interface Props {
   reps: RepData[];
@@ -41,7 +41,7 @@ export function RepVelocityChart({ reps, setIndex, lift }: Props) {
         await Promise.all(
           setReps.map(async (rep) => {
             if (rep.mean_velocity !== null) {
-              const zone = await AICoachService.getDynamicZone(lift, rep.mean_velocity);
+              const zone = await VBTGuideService.getDynamicZone(lift, rep.mean_velocity);
               zonesMap[rep.rep_index] = zone;
             }
           })
@@ -87,7 +87,7 @@ export function RepVelocityChart({ reps, setIndex, lift }: Props) {
         const velocity = rep.mean_velocity ?? 0;
         const width = `${Math.max(6, (velocity / maxVelocity) * 100)}%` as `${number}%`;
         // 動的ゾーンがあれば使用、なければ固定ゾーンを使用
-        const zone = dynamicZones[rep.rep_index] || AICoachService.getZone(velocity);
+        const zone = dynamicZones[rep.rep_index] || VBTGuideService.getZone(velocity);
         const color = zone.color || zone;
         return (
           <View key={rep.id ?? `${rep.set_index}-${rep.rep_index}`} style={styles.row}>

@@ -96,29 +96,6 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ navigation }) => {
     navigation.navigate('SessionDetail', { session, sets: session.sets });
   };
 
-  const handleHistoryCoachPress = () => {
-    const totalSets = sessions.reduce((sum, session) => sum + session.derivedTotalSets, 0);
-    const totalVolume = sessions.reduce((sum, session) => sum + session.derivedTotalVolume, 0);
-    navigation.navigate('CoachChat', {
-      source: 'history',
-      message: '最近のトレーニング履歴を要約して',
-      totalSets,
-      totalVolume: Math.round(totalVolume),
-      currentExercise: sessions[0]?.lifts?.[0] ?? '',
-    });
-  };
-
-  const handleSessionCoachPress = (session: HistorySession) => {
-    navigation.navigate('CoachChat', {
-      source: 'history-session',
-      sessionId: session.session_id,
-      currentExercise: session.lifts[0] ?? '',
-      totalSets: session.derivedTotalSets,
-      totalVolume: Math.round(session.derivedTotalVolume),
-      message: 'このセッションを振り返って改善点を教えて',
-    });
-  };
-
   const formatDate = (dateStr: string, sessionId?: string): string => {
     try {
       const date = parseISO(dateStr);
@@ -263,12 +240,6 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ navigation }) => {
 
       <View style={styles.cardActions}>
         <Text style={styles.detailLink}>DETAIL</Text>
-        <TouchableOpacity
-          style={styles.sessionCoachButton}
-          onPress={() => handleSessionCoachPress(session)}
-        >
-          <Text style={styles.sessionCoachButtonText}>COACH</Text>
-        </TouchableOpacity>
       </View>
     </TouchableOpacity>
   );
@@ -478,9 +449,6 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ navigation }) => {
           >
             <Text style={styles.headerExerciseButtonText}>種目別</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.headerCoachButton} onPress={handleHistoryCoachPress}>
-            <Text style={styles.headerCoachButtonText}>SUMMARY</Text>
-          </TouchableOpacity>
         </View>
       </View>
 
@@ -591,19 +559,6 @@ const styles = StyleSheet.create({
   },
   headerExerciseButtonText: {
     color: '#ffffff',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  headerCoachButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 999,
-    backgroundColor: GarageTheme.panel,
-    borderWidth: 1,
-    borderColor: GarageTheme.borderStrong,
-  },
-  headerCoachButtonText: {
-    color: GarageTheme.accentSoft,
     fontSize: 12,
     fontWeight: '700',
   },
@@ -952,19 +907,6 @@ const styles = StyleSheet.create({
     color: GarageTheme.info,
     fontWeight: '700',
     letterSpacing: 1,
-  },
-  sessionCoachButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: GarageTheme.surface,
-    borderWidth: 1,
-    borderColor: GarageTheme.borderStrong,
-  },
-  sessionCoachButtonText: {
-    color: GarageTheme.accentSoft,
-    fontSize: 12,
-    fontWeight: '700',
   },
   summaryCard: {
     margin: 16,

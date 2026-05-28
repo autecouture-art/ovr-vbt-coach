@@ -18,7 +18,7 @@ import { useIsFocused } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import DatabaseService from "@/src/services/DatabaseService";
 import { GarageTheme } from "@/src/constants/garageTheme";
-import AICoachService from "@/src/services/AICoachService";
+import VBTGuideService from "@/src/services/VBTGuideService";
 import VBTCalculations, { getVelocityAt1RM } from "@/src/utils/VBTCalculations";
 import {
   EXERCISE_SELECTION_GROUPS,
@@ -47,6 +47,11 @@ type ExerciseComparisonPoint = {
   e1rm: number;
   label: string;
   setCount: number;
+};
+
+type PersonalVelocityEstimate = {
+  value: number;
+  source: "履歴MVT" | "保存MVT" | "種目MVT" | "LVP推定";
 };
 
 const DEFAULT_VELOCITY_ZONES = [
@@ -166,24 +171,58 @@ const buildDailyE1rmTrend = (sets: SetData[]): DailyE1rmPoint[] => {
     }));
 };
 
+const estimateHistoricalMvt = (sets: SetData[]): PersonalVelocityEstimate | null => {
+  const validSets = sets.filter(
+    (set) =>
+      !set.is_warmup &&
+      set.load_kg > 0 &&
+      typeof set.avg_velocity === "number" &&
+      set.avg_velocity >= 0.08 &&
+      set.avg_velocity <= 0.6,
+  );
+  if (validSets.length === 0) return null;
+
+  const maxLoad = Math.max(...validSets.map((set) => set.load_kg));
+  const heavySets = validSets.filter((set) => set.load_kg >= maxLoad * 0.9);
+  if (heavySets.length === 0) return null;
+
+  const velocities = heavySets
+    .map((set) => set.avg_velocity!)
+    .sort((a, b) => a - b);
+  const lowVelocity = velocities[Math.floor(velocities.length * 0.15)] ?? velocities[0];
+  return {
+    value: Number(lowVelocity.toFixed(2)),
+    source: "履歴MVT",
+  };
+};
+
 const getPersonalVelocityAt1RM = (
   lvp: LVPData,
   exercise?: Exercise,
-): number => {
-  if (typeof lvp.mvt === "number" && lvp.mvt > 0) return lvp.mvt;
-  if (typeof exercise?.mvt === "number" && exercise.mvt > 0) {
-    return exercise.mvt;
+  historyEstimate?: PersonalVelocityEstimate | null,
+): PersonalVelocityEstimate => {
+  if (historyEstimate?.value && historyEstimate.value > 0) {
+    return historyEstimate;
   }
-  return getVelocityAt1RM(lvp);
+  if (typeof lvp.mvt === "number" && lvp.mvt > 0) {
+    return { value: lvp.mvt, source: "保存MVT" };
+  }
+  if (typeof exercise?.mvt === "number" && exercise.mvt > 0) {
+    return { value: exercise.mvt, source: "種目MVT" };
+  }
+  return { value: getVelocityAt1RM(lvp), source: "LVP推定" };
 };
 
 const estimateOneRmFromProfile = (
   lvp: LVPData,
   exercise?: Exercise,
+  historyEstimate?: PersonalVelocityEstimate | null,
 ): number | null => {
   if (lvp.slope >= 0) return null;
   const estimate =
-    (getPersonalVelocityAt1RM(lvp, exercise) - lvp.intercept) / lvp.slope;
+    (getPersonalVelocityAt1RM(lvp, exercise, historyEstimate).value -
+      lvp.intercept) /
+    lvp.slope;
   return Number.isFinite(estimate) && estimate > 0 ? estimate : null;
 };
 
@@ -239,6 +278,8 @@ export default function GraphScreen() {
   >([]);
   const [loading, setLoading] = useState(true);
   const [e1rmEstimate, setE1rmEstimate] = useState<number | null>(null);
+  const [historyMvtEstimate, setHistoryMvtEstimate] =
+    useState<PersonalVelocityEstimate | null>(null);
   const [exercisesList, setExercisesList] = useState<Exercise[]>([]);
 
   useEffect(() => {
@@ -282,13 +323,18 @@ export default function GraphScreen() {
     [exercisesList, selectedExercise],
   );
 
-  const personalVelocityAt1RM = useMemo(
+  const personalVelocityEstimate = useMemo(
     () =>
       lvpData
-        ? getPersonalVelocityAt1RM(lvpData, selectedExerciseRecord)
+        ? getPersonalVelocityAt1RM(
+            lvpData,
+            selectedExerciseRecord,
+            historyMvtEstimate,
+          )
         : null,
-    [lvpData, selectedExerciseRecord],
+    [historyMvtEstimate, lvpData, selectedExerciseRecord],
   );
+  const personalVelocityAt1RM = personalVelocityEstimate?.value ?? null;
 
   useEffect(() => {
     if (filteredExercises.length === 0) return;
@@ -370,6 +416,8 @@ export default function GraphScreen() {
       setExerciseComparisons(comparisons);
       setExerciseTrendSets(selectedExerciseSets);
       setRecentSets(selectedExerciseSets.slice(0, 20));
+      const measuredMvt = estimateHistoricalMvt(selectedExerciseSets);
+      setHistoryMvtEstimate(measuredMvt);
 
       const savedLvp = await DatabaseService.getLVPProfile(selectedExercise);
       const velocityPoints = selectedExerciseSets
@@ -405,13 +453,18 @@ export default function GraphScreen() {
       setLvpData(resolvedLvp);
       setE1rmEstimate(
         resolvedLvp
-          ? estimateOneRmFromProfile(resolvedLvp, selectedExerciseRecord)
+          ? estimateOneRmFromProfile(
+              resolvedLvp,
+              selectedExerciseRecord,
+              measuredMvt,
+            )
           : null,
       );
     } catch (error) {
       console.error("LVPデータ読み込み失敗:", error);
       setLvpData(null);
       setE1rmEstimate(null);
+      setHistoryMvtEstimate(null);
     } finally {
       setLoading(false);
     }
@@ -437,6 +490,7 @@ export default function GraphScreen() {
     const estimatedOneRm = estimateOneRmFromProfile(
       lvpData,
       selectedExerciseRecord,
+      historyMvtEstimate,
     );
     const loads =
       historyLoads.length > 0
@@ -458,7 +512,7 @@ export default function GraphScreen() {
         {loads.map((load) => {
           const vel = Math.max(0, lvpData.intercept + lvpData.slope * load);
           const pct = Math.min(100, Math.max(0, (vel / maxVel) * 100));
-          const zone = AICoachService.getZone(vel);
+          const zone = VBTGuideService.getZone(vel);
           return (
             <View key={load} style={styles.barRow}>
               <Text style={styles.barLabel}>{load}kg</Text>
@@ -780,7 +834,7 @@ export default function GraphScreen() {
         </Text>
         {recentSets.map((set, idx) => {
           const vel = set.avg_velocity ?? 0;
-          const zone = AICoachService.getZone(vel);
+          const zone = VBTGuideService.getZone(vel);
           return (
             <View key={idx} style={styles.trendRow}>
               <Text style={styles.trendSetLabel}>#{set.set_index}</Text>
@@ -921,7 +975,9 @@ export default function GraphScreen() {
                   <Text style={styles.statValue}>
                     {personalVelocityAt1RM?.toFixed(2)}
                   </Text>
-                  <Text style={styles.statUnit}>m/s</Text>
+                  <Text style={styles.statUnit}>
+                    m/s {personalVelocityEstimate?.source ?? ""}
+                  </Text>
                 </View>
                 <View style={styles.statCard}>
                   <Text style={styles.statLabel}>R²</Text>
