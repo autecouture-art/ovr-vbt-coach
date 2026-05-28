@@ -251,6 +251,11 @@ const summarizeEvents = (lines) => {
     lastSet?.payload?.lift ??
     sessions.at(-1)?.payload?.current_lift ??
     "-";
+  const lastReceivedAt = lines.at(-1)?.received_at ?? null;
+  const lastReceivedMs = lastReceivedAt ? new Date(lastReceivedAt).getTime() : NaN;
+  const freshnessSeconds = Number.isFinite(lastReceivedMs)
+    ? Math.max(0, Math.round((Date.now() - lastReceivedMs) / 1000))
+    : null;
 
   return {
     event_count: events.length,
@@ -261,10 +266,13 @@ const summarizeEvents = (lines) => {
     current_lift: currentLift,
     last_event_type: lastEvent?.type ?? "-",
     last_event_at: lastEvent?.created_at ?? lines.at(-1)?.received_at ?? null,
+    last_received_at: lastReceivedAt,
+    freshness_s: freshnessSeconds,
     last_set: lastSet,
     recent_sets: sets.slice(-12).reverse(),
     recent_reps: reps.slice(-12).reverse(),
     recent_videos: videos.slice(-6).reverse(),
+    recent_events: lines.slice(-18).reverse(),
     analysis: buildSetAnalysis(sets),
   };
 };
@@ -344,6 +352,70 @@ ${videoRows || "| - | - | - | - | - |"}
 この実測データを根拠に、疲労度、次セット重量、休憩時間、フォーム/ROM低下、PR扱いの妥当性を実用的に判断してください。`;
 };
 
+const escapeCsv = (value) => {
+  if (value == null) return "";
+  const text = String(value);
+  if (/[",\n\r]/.test(text)) {
+    return `"${text.replaceAll('"', '""')}"`;
+  }
+  return text;
+};
+
+const buildEventsCsv = (lines) => {
+  const header = [
+    "received_at",
+    "type",
+    "created_at",
+    "lift",
+    "set_index",
+    "rep_index",
+    "load_kg",
+    "reps",
+    "avg_velocity",
+    "mean_velocity",
+    "peak_velocity",
+    "velocity_loss",
+    "rom_cm",
+    "avg_rom_cm",
+    "avg_power_w",
+    "mean_power_w",
+    "peak_hr",
+    "hr_bpm",
+    "duration_s",
+    "local_uri",
+  ];
+  const rows = lines.map((line) => {
+    const event = line.event ?? {};
+    const p = event.payload ?? {};
+    return [
+      line.received_at,
+      event.type,
+      event.created_at,
+      p.lift ?? p.current_lift,
+      p.set_index,
+      p.rep_index,
+      p.load_kg ?? p.current_load_kg,
+      p.reps,
+      p.avg_velocity,
+      p.mean_velocity,
+      p.peak_velocity,
+      p.velocity_loss,
+      p.rom_cm,
+      p.avg_rom_cm,
+      p.avg_power_w,
+      p.mean_power_w,
+      p.peak_hr,
+      p.hr_bpm,
+      p.duration_s,
+      p.local_uri,
+    ];
+  });
+
+  return [header, ...rows]
+    .map((row) => row.map(escapeCsv).join(","))
+    .join("\n");
+};
+
 const dashboardHtml = () => `<!doctype html>
 <html lang="ja">
 <head>
@@ -370,6 +442,7 @@ const dashboardHtml = () => `<!doctype html>
     .chip { border-radius: 999px; padding: 7px 10px; background: #2a241f; border: 1px solid #45372c; font-size: 12px; font-weight: 750; }
     .chip.watch { border-color: #c7932e; color: #ffd166; }
     .chip.major { border-color: #d05252; color: #ff9a9a; }
+    .stale { color: #ff9a9a; }
     .metric-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-top: 16px; }
     .metric { background: #100f0e; border: 1px solid #302a24; border-radius: 8px; padding: 10px; }
     .metric-label { color: #a8a097; font-size: 11px; }
@@ -397,6 +470,7 @@ const dashboardHtml = () => `<!doctype html>
     <div class="actions">
       <button id="copyPacket">GPTパケットをコピー</button>
       <a class="button" id="packetLink" href="/gpt-packet" target="_blank">GPTパケットを開く</a>
+      <a class="button" id="csvLink" href="/events.csv" target="_blank">CSVを書き出す</a>
       <a class="button" href="/health" target="_blank">health</a>
     </div>
     <div class="grid">
@@ -404,6 +478,7 @@ const dashboardHtml = () => `<!doctype html>
       <div class="card"><div class="muted">Sets</div><div class="value" id="sets">0</div></div>
       <div class="card"><div class="muted">Reps</div><div class="value" id="reps">0</div></div>
       <div class="card"><div class="muted">Videos</div><div class="value" id="videos">0</div></div>
+      <div class="card"><div class="muted">Last Event</div><div class="value" id="freshness">-</div></div>
     </div>
     <section class="card analysis section" id="analysisCard">
       <div class="analysis-head">
@@ -443,6 +518,10 @@ const dashboardHtml = () => `<!doctype html>
       <table><thead><tr><th>rep</th><th>lift</th><th>load</th><th>mean</th><th>peak</th><th>ROM</th><th>power</th><th>HR</th><th>time</th></tr></thead><tbody id="repsBody"></tbody></table>
     </section>
     <section class="card section">
+      <h2>Timeline</h2>
+      <table><thead><tr><th>received</th><th>type</th><th>lift</th><th>set</th><th>rep</th><th>load</th><th>summary</th></tr></thead><tbody id="timelineBody"></tbody></table>
+    </section>
+    <section class="card section">
       <h2>Latest Raw Event</h2>
       <pre id="raw">{}</pre>
     </section>
@@ -452,6 +531,7 @@ const dashboardHtml = () => `<!doctype html>
     const tokenParam = params.get("token");
     const tokenQuery = tokenParam ? "?token=" + encodeURIComponent(tokenParam) : "";
     if (tokenParam) document.getElementById("packetLink").href = "/gpt-packet" + tokenQuery;
+    if (tokenParam) document.getElementById("csvLink").href = "/events.csv" + tokenQuery;
     const fmt = (value, digits = 2, suffix = "") => typeof value === "number" ? value.toFixed(digits) + suffix : "-";
     const clock = (value) => value ? new Date(value).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) : "-";
     const row = (cells) => "<tr>" + cells.map((cell) => "<td>" + String(cell ?? "-") + "</td>").join("") + "</tr>";
@@ -464,6 +544,19 @@ const dashboardHtml = () => `<!doctype html>
       const max = Math.max(...values, 0.01);
       return values.map((value) => '<div class="bar ' + className + '" title="' + value.toFixed(2) + '" style="height:' + Math.max(5, Math.round((value / max) * 66)) + 'px"></div>').join("");
     };
+    const freshnessText = (seconds) => {
+      if (typeof seconds !== "number") return "-";
+      if (seconds < 60) return seconds + "s ago";
+      return Math.floor(seconds / 60) + "m " + (seconds % 60) + "s ago";
+    };
+    const eventSummary = (event) => {
+      const p = event.payload || {};
+      if (event.type === "set_completed") return "AV " + fmt(p.avg_velocity) + " / VL " + fmt(p.velocity_loss, 1, "%") + " / ROM " + fmt(p.avg_rom_cm, 1, " cm");
+      if (event.type === "rep_recorded") return "mean " + fmt(p.mean_velocity) + " / peak " + fmt(p.peak_velocity) + " / ROM " + fmt(p.rom_cm, 1, " cm");
+      if (event.type === "form_video_saved") return "video " + (p.duration_s ?? "-") + "s";
+      if (event.type === "session_started") return "session started";
+      return "-";
+    };
     async function refresh() {
       try {
         const response = await fetch("/events/recent" + tokenQuery);
@@ -475,6 +568,9 @@ const dashboardHtml = () => `<!doctype html>
         document.getElementById("sets").textContent = summary.set_count ?? 0;
         document.getElementById("reps").textContent = summary.rep_count ?? 0;
         document.getElementById("videos").textContent = summary.video_count ?? 0;
+        const freshness = document.getElementById("freshness");
+        freshness.textContent = freshnessText(summary.freshness_s);
+        freshness.classList.toggle("stale", typeof summary.freshness_s === "number" && summary.freshness_s > 30);
         const analysis = summary.analysis || {};
         const analysisCard = document.getElementById("analysisCard");
         analysisCard.classList.remove("good", "watch", "major");
@@ -499,6 +595,11 @@ const dashboardHtml = () => `<!doctype html>
           const p = event.payload || {};
           return row([p.rep_index, p.lift, fmt(p.load_kg, 1, " kg"), fmt(p.mean_velocity), fmt(p.peak_velocity), fmt(p.rom_cm, 1, " cm"), fmt(p.mean_power_w, 0, " W"), p.hr_bpm, clock(p.timestamp || event.created_at)]);
         }).join("") || row(["-", "-", "-", "-", "-", "-", "-", "-", "-"]);
+        document.getElementById("timelineBody").innerHTML = summary.recent_events.map((line) => {
+          const event = line.event || {};
+          const p = event.payload || {};
+          return row([clock(line.received_at), event.type, p.lift || p.current_lift || "-", p.set_index, p.rep_index, fmt(p.load_kg || p.current_load_kg, 1, " kg"), eventSummary(event)]);
+        }).join("") || row(["-", "-", "-", "-", "-", "-", "-"]);
         document.getElementById("raw").textContent = JSON.stringify(data.latest ?? {}, null, 2);
       } catch (error) {
         document.getElementById("status").textContent = "error / " + error.message;
@@ -575,6 +676,22 @@ const server = createServer(async (request, response) => {
         Number.parseInt(url.searchParams.get("limit") ?? "200", 10),
       );
       sendText(response, 200, buildGptPacket(lines), "text/markdown");
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname === "/events.csv") {
+      if (!isAuthorized(request, url)) {
+        sendJson(response, 401, { ok: false, error: "unauthorized" });
+        return;
+      }
+      const lines = await readRecentEvents(
+        Number.parseInt(url.searchParams.get("limit") ?? "2000", 10),
+      );
+      response.writeHead(200, {
+        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Disposition": 'attachment; filename="repvelo-live-share-events.csv"',
+      });
+      response.end(buildEventsCsv(lines));
       return;
     }
 

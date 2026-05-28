@@ -103,6 +103,7 @@ Codex / Claude / GLM / Gemini を含む全エージェントは、改善作業�
 | 2026-05-27-05 | data-share | トレーニングデータをMacへリアルタイム共有したい | implemented | high | codex | src/services/LiveShareService.ts, scripts/repvelo_live_share_server.mjs, app/(tabs)/settings.tsx, app/(tabs)/session.tsx, src/hooks/useSessionLogic.ts, app/form-video-recorder.tsx, docs/REALTIME_DATA_SHARE_PLAN.md | untested | 実機/Mac同一LANでLive Share確認待ち | Mac側ローカル受信スクリプト、設定画面のURL/token、非同期イベント送信、失敗時キュー、session_started/rep_recorded/set_completed/form_video_savedを実装。ネットワーク探索なし |
 | 2026-05-28-01 | data-share | Live ShareをMacで見やすくし、GPT相談パケットを生成したい | implemented | medium | codex | scripts/repvelo_live_share_server.mjs, docs/REALTIME_DATA_SHARE_PLAN.md | local_smoke_checked | 実機イベントでダッシュボード確認待ち | 受信サーバーに `/dashboard`, `/events/recent`, `/gpt-packet` を追加。直近セット/rep/動画メタデータと最新raw eventを表示し、直近イベントからMarkdown相談パケットをコピー可能にした |
 | 2026-05-28-02 | data-share | MacダッシュボードでAV/ROM/HR傾向から次セット判断を見たい | implemented | high | codex | scripts/repvelo_live_share_server.mjs, docs/REALTIME_DATA_SHARE_PLAN.md | local_smoke_checked | 実機イベントで判定確認待ち | Live Share JSONLから同重量AV低下、同種目ROM低下、VL高め、Peak HR高めを判定。ダッシュボードにLIVE DECISION、推奨文、フラグ、同重量AV/同種目ROMミニバーを追加し、GPTパケットにも分析サマリーを含めた |
+| 2026-05-28-03 | data-share | Macダッシュボードでイベント鮮度・タイムライン・CSVを書き出したい | implemented | medium | codex | scripts/repvelo_live_share_server.mjs, docs/REALTIME_DATA_SHARE_PLAN.md | local_smoke_checked | 実機イベントで表示確認待ち | `/events.csv` を追加し、dashboardに最終イベント経過時間、直近イベントタイムライン、CSV書き出しボタンを追加。token設定時はCSVもtoken必須 |
 
 ## Active Focus
 

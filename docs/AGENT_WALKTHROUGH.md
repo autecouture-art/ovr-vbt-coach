@@ -1382,3 +1382,42 @@ Results:
 Remaining:
 
 - Real-device check with a longer session to tune thresholds.
+
+## 2026-05-28 (Codex)
+
+Scope: Improve Live Share dashboard operations for reviewing and exporting events.
+
+Safety:
+
+- Stayed inside repo-local dashboard/server code.
+- No network discovery, scanning, or device probing.
+- CSV export reads only the configured Live Share JSONL file.
+
+Actions:
+
+- Updated `scripts/repvelo_live_share_server.mjs`.
+  - Added `/events.csv` endpoint.
+  - Added dashboard CSV export button.
+  - Added last-event freshness display.
+  - Added recent event timeline with compact summaries.
+  - `/events.csv` requires token when the server token is set.
+- Updated `docs/REALTIME_DATA_SHARE_PLAN.md`.
+- Updated `docs/IMPROVEMENT_TRACKER.md` with `2026-05-28-03`.
+
+Results:
+
+- `node --check scripts/repvelo_live_share_server.mjs` passed.
+- `git diff --check` passed.
+- Local export smoke check passed:
+  - posted `rep_recorded` and `set_completed`
+  - `/events/recent?token=...` returned `freshness_s` and timeline events
+  - `/events.csv?token=...` returned CSV rows
+  - `/dashboard?token=...` contained CSV, Timeline, and Last Event UI
+- `pnpm -s tsc --noEmit` passed.
+- `pnpm -s lint` passed.
+- `pnpm -s test` passed: 28 tests passed, 1 skipped.
+- `pnpm -s build` passed.
+
+Remaining:
+
+- Real-device check with iPhone events and dashboard left open during training.
