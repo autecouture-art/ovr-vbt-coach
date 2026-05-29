@@ -19,6 +19,15 @@ const host = getArg("--host", "127.0.0.1");
 const port = Number.parseInt(getArg("--port", "8788"), 10);
 const output = path.resolve(getArg("--output", DEFAULT_OUTPUT));
 const token = getArg("--token", process.env.REPVELO_LIVE_SHARE_TOKEN ?? "");
+const defaultThresholds = {
+  av_drop_watch_pct: Number.parseFloat(getArg("--av-drop-watch", "5")),
+  av_drop_major_pct: Number.parseFloat(getArg("--av-drop-major", "10")),
+  rom_drop_watch_cm: Number.parseFloat(getArg("--rom-drop-watch", "2")),
+  rom_drop_major_cm: Number.parseFloat(getArg("--rom-drop-major", "4")),
+  vl_watch_pct: Number.parseFloat(getArg("--vl-watch", "15")),
+  vl_major_pct: Number.parseFloat(getArg("--vl-major", "20")),
+  peak_hr_watch_bpm: Number.parseFloat(getArg("--hr-watch", "160")),
+};
 
 if (!Number.isFinite(port) || port <= 0 || port > 65535) {
   console.error("Invalid --port. Use a number between 1 and 65535.");
@@ -60,6 +69,40 @@ const isAuthorized = (request, url) => {
   const headerToken = request.headers["x-repvelo-live-token"];
   const queryToken = url.searchParams.get("token");
   return headerToken === token || queryToken === token;
+};
+
+const withThresholdOverrides = (url) => {
+  const readOverride = (key, fallback) => {
+    const raw = url.searchParams.get(key);
+    if (raw == null) return fallback;
+    const value = Number.parseFloat(raw);
+    return Number.isFinite(value) ? value : fallback;
+  };
+
+  return {
+    av_drop_watch_pct: readOverride(
+      "avDropWatch",
+      defaultThresholds.av_drop_watch_pct,
+    ),
+    av_drop_major_pct: readOverride(
+      "avDropMajor",
+      defaultThresholds.av_drop_major_pct,
+    ),
+    rom_drop_watch_cm: readOverride(
+      "romDropWatch",
+      defaultThresholds.rom_drop_watch_cm,
+    ),
+    rom_drop_major_cm: readOverride(
+      "romDropMajor",
+      defaultThresholds.rom_drop_major_cm,
+    ),
+    vl_watch_pct: readOverride("vlWatch", defaultThresholds.vl_watch_pct),
+    vl_major_pct: readOverride("vlMajor", defaultThresholds.vl_major_pct),
+    peak_hr_watch_bpm: readOverride(
+      "hrWatch",
+      defaultThresholds.peak_hr_watch_bpm,
+    ),
+  };
 };
 
 const readRecentEvents = async (limit = 200) => {
@@ -113,7 +156,7 @@ const getEventTime = (event) => {
 const getWorkingSets = (sets) =>
   sets.filter((event) => event?.payload?.is_warmup !== true);
 
-const buildSetAnalysis = (sets) => {
+const buildSetAnalysis = (sets, thresholds = defaultThresholds) => {
   const chronological = getWorkingSets(sets).sort(
     (a, b) => getEventTime(a) - getEventTime(b),
   );
@@ -174,28 +217,28 @@ const buildSetAnalysis = (sets) => {
   const restS = asNumber(lastPayload.rest_duration_s);
 
   const flags = [];
-  if (avDropPct != null && avDropPct >= 5) {
+  if (avDropPct != null && avDropPct >= thresholds.av_drop_watch_pct) {
     flags.push({
-      severity: avDropPct >= 10 ? "major" : "watch",
+      severity: avDropPct >= thresholds.av_drop_major_pct ? "major" : "watch",
       label: "AV低下",
       detail: `同重量最高から ${avDropPct.toFixed(1)}% 低下`,
     });
   }
-  if (romDropCm != null && romDropCm >= 2) {
+  if (romDropCm != null && romDropCm >= thresholds.rom_drop_watch_cm) {
     flags.push({
-      severity: romDropCm >= 4 ? "major" : "watch",
+      severity: romDropCm >= thresholds.rom_drop_major_cm ? "major" : "watch",
       label: "ROM低下",
       detail: `基準ROMから -${romDropCm.toFixed(1)} cm`,
     });
   }
-  if (vlPct != null && vlPct >= 15) {
+  if (vlPct != null && vlPct >= thresholds.vl_watch_pct) {
     flags.push({
-      severity: vlPct >= 20 ? "major" : "watch",
+      severity: vlPct >= thresholds.vl_major_pct ? "major" : "watch",
       label: "VL高め",
       detail: `${vlPct.toFixed(1)}%`,
     });
   }
-  if (peakHr != null && peakHr >= 160) {
+  if (peakHr != null && peakHr >= thresholds.peak_hr_watch_bpm) {
     flags.push({
       severity: "watch",
       label: "心拍高め",
@@ -235,10 +278,11 @@ const buildSetAnalysis = (sets) => {
     rest_s: restS,
     same_load_sets: sameLoadSets.slice(-6),
     lift_sets: liftSets.slice(-12),
+    thresholds,
   };
 };
 
-const summarizeEvents = (lines) => {
+const summarizeEvents = (lines, thresholds = defaultThresholds) => {
   const events = lines.map((line) => line.event);
   const sets = events.filter((event) => event.type === "set_completed");
   const reps = events.filter((event) => event.type === "rep_recorded");
@@ -273,12 +317,12 @@ const summarizeEvents = (lines) => {
     recent_reps: reps.slice(-12).reverse(),
     recent_videos: videos.slice(-6).reverse(),
     recent_events: lines.slice(-18).reverse(),
-    analysis: buildSetAnalysis(sets),
+    analysis: buildSetAnalysis(sets, thresholds),
   };
 };
 
-const buildGptPacket = (lines) => {
-  const summary = summarizeEvents(lines);
+const buildGptPacket = (lines, thresholds = defaultThresholds) => {
+  const summary = summarizeEvents(lines, thresholds);
   const sets = summary.recent_sets.slice().reverse();
   const reps = summary.recent_reps.slice().reverse();
   const videos = summary.recent_videos.slice().reverse();
@@ -332,6 +376,7 @@ const buildGptPacket = (lines) => {
           .join(", ")
       : "none"
   }
+- Thresholds: AV watch ${summary.analysis.thresholds.av_drop_watch_pct}% / AV major ${summary.analysis.thresholds.av_drop_major_pct}% / ROM watch ${summary.analysis.thresholds.rom_drop_watch_cm}cm / ROM major ${summary.analysis.thresholds.rom_drop_major_cm}cm / VL watch ${summary.analysis.thresholds.vl_watch_pct}% / VL major ${summary.analysis.thresholds.vl_major_pct}% / HR watch ${summary.analysis.thresholds.peak_hr_watch_bpm}bpm
 
 ## Recent Sets
 | set | lift | load | reps | AV | VL | ROM | power | peak HR | time |
@@ -451,6 +496,9 @@ const dashboardHtml = () => `<!doctype html>
     .bar { width: 16px; min-height: 4px; border-radius: 4px 4px 0 0; background: #ffd166; opacity: 0.85; }
     .bar.rom { background: #7bdff2; }
     .split { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+    .control-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+    label { display: block; color: #a8a097; font-size: 11px; font-weight: 750; margin-bottom: 5px; }
+    input { box-sizing: border-box; width: 100%; border: 1px solid #45372c; border-radius: 8px; background: #0f0e0d; color: #f5f2ea; padding: 9px 10px; font-size: 14px; }
     .section { margin-top: 18px; }
     table { width: 100%; border-collapse: collapse; font-size: 13px; }
     th, td { text-align: left; border-bottom: 1px solid #302a24; padding: 9px 8px; white-space: nowrap; }
@@ -473,6 +521,19 @@ const dashboardHtml = () => `<!doctype html>
       <a class="button" id="csvLink" href="/events.csv" target="_blank">CSVを書き出す</a>
       <a class="button" href="/health" target="_blank">health</a>
     </div>
+    <section class="card section">
+      <h2>Thresholds</h2>
+      <div class="control-grid">
+        <div><label>AV watch %</label><input data-threshold="avDropWatch" type="number" step="0.5" /></div>
+        <div><label>AV major %</label><input data-threshold="avDropMajor" type="number" step="0.5" /></div>
+        <div><label>ROM watch cm</label><input data-threshold="romDropWatch" type="number" step="0.5" /></div>
+        <div><label>ROM major cm</label><input data-threshold="romDropMajor" type="number" step="0.5" /></div>
+        <div><label>VL watch %</label><input data-threshold="vlWatch" type="number" step="0.5" /></div>
+        <div><label>VL major %</label><input data-threshold="vlMajor" type="number" step="0.5" /></div>
+        <div><label>HR watch bpm</label><input data-threshold="hrWatch" type="number" step="1" /></div>
+      </div>
+      <p class="muted">ここで変えた値はこのブラウザに保存され、判定とGPTパケットに反映されます。</p>
+    </section>
     <div class="grid">
       <div class="card"><div class="muted">Current Lift</div><div class="value" id="currentLift">-</div></div>
       <div class="card"><div class="muted">Sets</div><div class="value" id="sets">0</div></div>
@@ -529,9 +590,41 @@ const dashboardHtml = () => `<!doctype html>
   <script>
     const params = new URLSearchParams(location.search);
     const tokenParam = params.get("token");
-    const tokenQuery = tokenParam ? "?token=" + encodeURIComponent(tokenParam) : "";
-    if (tokenParam) document.getElementById("packetLink").href = "/gpt-packet" + tokenQuery;
-    if (tokenParam) document.getElementById("csvLink").href = "/events.csv" + tokenQuery;
+    const defaults = ${JSON.stringify({
+      avDropWatch: defaultThresholds.av_drop_watch_pct,
+      avDropMajor: defaultThresholds.av_drop_major_pct,
+      romDropWatch: defaultThresholds.rom_drop_watch_cm,
+      romDropMajor: defaultThresholds.rom_drop_major_cm,
+      vlWatch: defaultThresholds.vl_watch_pct,
+      vlMajor: defaultThresholds.vl_major_pct,
+      hrWatch: defaultThresholds.peak_hr_watch_bpm,
+    })};
+    const thresholdInputs = Array.from(document.querySelectorAll("[data-threshold]"));
+    thresholdInputs.forEach((input) => {
+      const key = input.dataset.threshold;
+      input.value = localStorage.getItem("repveloLive_" + key) ?? String(defaults[key]);
+      input.addEventListener("input", () => {
+        localStorage.setItem("repveloLive_" + key, input.value);
+        updateLinks();
+        refresh();
+      });
+    });
+    const makeQuery = () => {
+      const query = new URLSearchParams();
+      if (tokenParam) query.set("token", tokenParam);
+      thresholdInputs.forEach((input) => {
+        const value = Number.parseFloat(input.value);
+        if (Number.isFinite(value)) query.set(input.dataset.threshold, String(value));
+      });
+      const text = query.toString();
+      return text ? "?" + text : "";
+    };
+    const updateLinks = () => {
+      const query = makeQuery();
+      document.getElementById("packetLink").href = "/gpt-packet" + query;
+      document.getElementById("csvLink").href = "/events.csv" + query;
+    };
+    updateLinks();
     const fmt = (value, digits = 2, suffix = "") => typeof value === "number" ? value.toFixed(digits) + suffix : "-";
     const clock = (value) => value ? new Date(value).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) : "-";
     const row = (cells) => "<tr>" + cells.map((cell) => "<td>" + String(cell ?? "-") + "</td>").join("") + "</tr>";
@@ -559,7 +652,7 @@ const dashboardHtml = () => `<!doctype html>
     };
     async function refresh() {
       try {
-        const response = await fetch("/events/recent" + tokenQuery);
+        const response = await fetch("/events/recent" + makeQuery());
         if (!response.ok) throw new Error("HTTP " + response.status);
         const data = await response.json();
         const summary = data.summary;
@@ -606,7 +699,7 @@ const dashboardHtml = () => `<!doctype html>
       }
     }
     document.getElementById("copyPacket").addEventListener("click", async () => {
-      const response = await fetch("/gpt-packet" + tokenQuery);
+      const response = await fetch("/gpt-packet" + makeQuery());
       const text = await response.text();
       await navigator.clipboard.writeText(text);
       document.getElementById("status").textContent = "GPT packet copied";
@@ -637,6 +730,7 @@ const server = createServer(async (request, response) => {
         ok: true,
         app: "RepVeloCoach Live Share",
         output,
+        thresholds: defaultThresholds,
         dashboard: `http://${host}:${port}/dashboard`,
       });
       return;
@@ -658,11 +752,12 @@ const server = createServer(async (request, response) => {
       const lines = await readRecentEvents(
         Number.parseInt(url.searchParams.get("limit") ?? "200", 10),
       );
+      const thresholds = withThresholdOverrides(url);
       sendJson(response, 200, {
         ok: true,
         output,
         latest: lines.at(-1) ?? null,
-        summary: summarizeEvents(lines),
+        summary: summarizeEvents(lines, thresholds),
       });
       return;
     }
@@ -675,7 +770,12 @@ const server = createServer(async (request, response) => {
       const lines = await readRecentEvents(
         Number.parseInt(url.searchParams.get("limit") ?? "200", 10),
       );
-      sendText(response, 200, buildGptPacket(lines), "text/markdown");
+      sendText(
+        response,
+        200,
+        buildGptPacket(lines, withThresholdOverrides(url)),
+        "text/markdown",
+      );
       return;
     }
 

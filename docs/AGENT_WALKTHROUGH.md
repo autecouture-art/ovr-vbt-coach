@@ -1421,3 +1421,41 @@ Results:
 Remaining:
 
 - Real-device check with iPhone events and dashboard left open during training.
+
+## 2026-05-30 (Codex)
+
+Scope: Make Live Share dashboard thresholds adjustable.
+
+Safety:
+
+- Stayed inside repo-local dashboard/server code.
+- No network discovery, scanning, or device probing.
+- Threshold changes are local settings for analysis only; they do not alter app data.
+
+Actions:
+
+- Updated `scripts/repvelo_live_share_server.mjs`.
+  - Added CLI defaults for AV drop, ROM drop, VL, and peak HR thresholds.
+  - Added dashboard threshold inputs persisted in browser localStorage.
+  - `/events/recent` and `/gpt-packet` now accept threshold query overrides.
+  - GPT packet includes the active thresholds used for analysis.
+- Updated `docs/REALTIME_DATA_SHARE_PLAN.md`.
+- Updated `docs/IMPROVEMENT_TRACKER.md` with `2026-05-30-01`.
+
+Results:
+
+- Local threshold smoke check passed:
+  - default thresholds produced `watch`
+  - stricter query overrides produced `major`
+  - GPT packet included the active thresholds
+  - dashboard HTML included threshold controls and localStorage persistence
+- `node --check scripts/repvelo_live_share_server.mjs` passed.
+- `git diff --check` passed.
+- `pnpm -s tsc --noEmit` passed.
+- `pnpm -s lint` passed.
+- `pnpm -s test` passed: 28 tests passed, 1 skipped.
+- `pnpm -s build` passed.
+
+Remaining:
+
+- Tune thresholds with real session data from iPhone.

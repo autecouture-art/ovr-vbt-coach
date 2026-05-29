@@ -133,6 +133,17 @@ http://localhost:8788/events.csv
 - 最終イベントからの経過時間
 - 直近イベントタイムライン
 - CSVエクスポート
+- ダッシュボード上のしきい値調整
+
+しきい値はCLI引数でも変更できる。
+
+```bash
+pnpm live-share:server -- --host 0.0.0.0 --port 8788 \
+  --av-drop-watch 5 --av-drop-major 10 \
+  --rom-drop-watch 2 --rom-drop-major 4 \
+  --vl-watch 15 --vl-major 20 \
+  --hr-watch 160
+```
 
 ## セキュリティ境界
 
@@ -148,6 +159,7 @@ http://localhost:8788/events.csv
 - Mac側リアルタイムダッシュボード。実装済み。
 - Mac側ダッシュボードのAV/ROM/HRミニ分析。実装済み。
 - Mac側ダッシュボードのイベントタイムライン/CSV出力。実装済み。
+- Mac側ダッシュボードの判定しきい値調整。実装済み。
 - Firestore同期。
 - 動画本体の手動アップロード/共有。
 - ChatGPT相談パケットをMac側で自動生成。実装済み。

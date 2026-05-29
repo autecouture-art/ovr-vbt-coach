@@ -104,6 +104,7 @@ Codex / Claude / GLM / Gemini を含む全エージェントは、改善作業�
 | 2026-05-28-01 | data-share | Live ShareをMacで見やすくし、GPT相談パケットを生成したい | implemented | medium | codex | scripts/repvelo_live_share_server.mjs, docs/REALTIME_DATA_SHARE_PLAN.md | local_smoke_checked | 実機イベントでダッシュボード確認待ち | 受信サーバーに `/dashboard`, `/events/recent`, `/gpt-packet` を追加。直近セット/rep/動画メタデータと最新raw eventを表示し、直近イベントからMarkdown相談パケットをコピー可能にした |
 | 2026-05-28-02 | data-share | MacダッシュボードでAV/ROM/HR傾向から次セット判断を見たい | implemented | high | codex | scripts/repvelo_live_share_server.mjs, docs/REALTIME_DATA_SHARE_PLAN.md | local_smoke_checked | 実機イベントで判定確認待ち | Live Share JSONLから同重量AV低下、同種目ROM低下、VL高め、Peak HR高めを判定。ダッシュボードにLIVE DECISION、推奨文、フラグ、同重量AV/同種目ROMミニバーを追加し、GPTパケットにも分析サマリーを含めた |
 | 2026-05-28-03 | data-share | Macダッシュボードでイベント鮮度・タイムライン・CSVを書き出したい | implemented | medium | codex | scripts/repvelo_live_share_server.mjs, docs/REALTIME_DATA_SHARE_PLAN.md | local_smoke_checked | 実機イベントで表示確認待ち | `/events.csv` を追加し、dashboardに最終イベント経過時間、直近イベントタイムライン、CSV書き出しボタンを追加。token設定時はCSVもtoken必須 |
+| 2026-05-30-01 | data-share | MacダッシュボードのAV/ROM/VL/HRしきい値を調整したい | implemented | high | codex | scripts/repvelo_live_share_server.mjs, docs/REALTIME_DATA_SHARE_PLAN.md | local_smoke_checked | 実機でしきい値調整確認待ち | CLI引数とダッシュボード入力でAV低下、ROM低下、VL、Peak HRのしきい値を調整可能にした。ブラウザ側はlocalStorage保存し、判定とGPTパケットへ同じしきい値を反映 |
 
 ## Active Focus
 
