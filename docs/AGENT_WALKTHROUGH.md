@@ -1459,3 +1459,37 @@ Results:
 Remaining:
 
 - Tune thresholds with real session data from iPhone.
+
+## 2026-05-30 (Codex)
+
+Scope: Move form video recording into a session-screen overlay.
+
+Safety:
+
+- Stayed inside repo-local app code and documentation.
+- No network discovery, scanning, or device probing.
+- Existing full-screen recorder remains as a fallback path.
+
+Actions:
+
+- Added `src/components/FormVideoOverlay.tsx`.
+  - Mounts camera only while the overlay is visible.
+  - Records, stops, discards, and saves form videos without leaving session mode.
+  - Reuses `VideoRecordingService` and sends `form_video_saved` to Live Share.
+- Updated `app/(tabs)/session.tsx`.
+  - `フォーム録画` now opens the overlay instead of navigating away.
+  - Saved videos increment the target set video count immediately.
+- Updated `docs/FORM_VIDEO_RECORDING_PLAN.md`.
+- Updated `docs/IMPROVEMENT_TRACKER.md` with `2026-05-30-02`.
+
+Results:
+
+- `pnpm -s tsc --noEmit` passed.
+- `pnpm -s lint` passed.
+- `pnpm -s test` passed: 28 tests passed, 1 skipped.
+- `git diff --check` passed.
+- `pnpm -s build` passed.
+
+Remaining:
+
+- Real-device check for camera permission, overlay recording, save, and set detail playback.

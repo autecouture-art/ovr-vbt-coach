@@ -46,6 +46,7 @@ import { RepDetailModal } from "@/src/components/RepDetailModal";
 import { SetEditModal } from "@/src/components/SetEditModal";
 import { RepVelocityChart } from "@/src/components/RepVelocityChart";
 import { ManualRepModal } from "@/src/components/ManualRepModal";
+import { FormVideoOverlay } from "@/src/components/FormVideoOverlay";
 import { calculateWarmupSteps, isBig3 } from "@/src/utils/WarmupLogic";
 import {
   formatLoadKg,
@@ -873,6 +874,7 @@ export default function SessionScreen() {
 
   const [inputTargetWeight, setInputTargetWeight] = useState("");
   const [inputLoad, setInputLoad] = useState(formatLoadKg(currentLoad));
+  const [formVideoOverlayVisible, setFormVideoOverlayVisible] = useState(false);
   const [formVideoCountsBySet, setFormVideoCountsBySet] = useState<
     Record<string, number>
   >({});
@@ -1503,18 +1505,20 @@ export default function SessionScreen() {
       return;
     }
 
-    router.push(
-      {
-        pathname: "/form-video-recorder",
-        params: {
-          session_id: currentSession.session_id,
-          lift: currentRecordingLift,
-          set_index: String(currentSetIndex),
-          load_kg: String(currentLoad),
-        },
-      } as unknown as Parameters<typeof router.push>[0],
-    );
+    setFormVideoOverlayVisible(true);
   };
+
+  const handleFormVideoOverlaySaved = useCallback(
+    (record: FormVideoRecord) => {
+      if (!record.lift || record.set_index == null) return;
+      const key = getSetKey(record.lift, record.set_index);
+      setFormVideoCountsBySet((previous) => ({
+        ...previous,
+        [key]: (previous[key] ?? 0) + 1,
+      }));
+    },
+    [getSetKey],
+  );
 
   const handleToggleSensorInputMuted = () => {
     setSensorInputMuted(!sensorInputMuted);
@@ -3767,6 +3771,16 @@ export default function SessionScreen() {
           setShowManualRepModal(false);
         }}
         currentLoad={currentLoad}
+      />
+
+      <FormVideoOverlay
+        visible={formVideoOverlayVisible}
+        sessionId={currentSession?.session_id ?? ""}
+        lift={currentRecordingLift}
+        setIndex={currentSetIndex}
+        loadKg={currentLoad}
+        onClose={() => setFormVideoOverlayVisible(false)}
+        onSaved={handleFormVideoOverlaySaved}
       />
 
       {!isMeasuring && tooltipData && (
