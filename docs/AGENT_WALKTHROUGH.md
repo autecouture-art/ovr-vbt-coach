@@ -1493,3 +1493,43 @@ Results:
 Remaining:
 
 - Real-device check for camera permission, overlay recording, save, and set detail playback.
+
+## 2026-05-31 (Codex)
+
+Scope: Build and upload RepVeloCoach to TestFlight.
+
+Safety:
+
+- Followed repo-local TestFlight workflow in `TESTFLIGHT_DEPLOYMENT.md` and `scripts/deploy.sh`.
+- Used normal Apple/Fastlane upload path only.
+- No network discovery, scanning, or probing.
+
+Actions:
+
+- Confirmed previous successful upload was build `89`.
+- Bumped and aligned build number to `90` in:
+  - `app.config.ts`
+  - `ios/RepVeloCoach/Info.plist`
+  - `ios/RepVeloCoach.xcodeproj/project.pbxproj`
+- Ran:
+  - `source ~/.zshrc && FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT=20 FASTLANE_XCODEBUILD_SETTINGS_RETRIES=6 bash scripts/deploy.sh`
+- Updated `CURRENT_STATUS.md`.
+
+Results:
+
+- Archive succeeded.
+- IPA exported:
+  - `ios/fastlane_export/RepVeloCoach.ipa`
+- TestFlight/App Store Connect upload succeeded for version `2.3.5` build `90`.
+- Fastlane confirmation:
+  - `Successfully uploaded package to App Store Connect`
+  - `Lane beta finished successfully`
+- Fastlane timing:
+  - `build_app`: 552 seconds
+  - `upload_to_testflight`: 61 seconds
+
+Remaining:
+
+- Wait for App Store Connect/TestFlight processing, usually 15-30 minutes.
+- Verify build `90` appears in TestFlight.
+- Real-device check for session form-video overlay and Live Share threshold UI.
