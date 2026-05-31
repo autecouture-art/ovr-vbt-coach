@@ -167,6 +167,9 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({
       set_type: setType,
       avg_velocity: parsedAvgVelocity,
       velocity_loss: parsedVelocityLoss,
+      velocity_loss_avg: parsedVelocityLoss,
+      velocity_loss_last: parsedVelocityLoss,
+      velocity_loss_min: parsedVelocityLoss,
       avg_rom_cm: parsedRomCm,
       rpe: rpeValue,
       e1rm: VBTCalculations.estimate1RMFromReps(
@@ -500,6 +503,9 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({
         set_type: setType,
         avg_velocity: parsedAvgVelocity,
         velocity_loss: parsedVelocityLoss,
+        velocity_loss_avg: parsedVelocityLoss,
+        velocity_loss_last: parsedVelocityLoss,
+        velocity_loss_min: parsedVelocityLoss,
         avg_rom_cm: parsedRomCm,
         rpe: rpeValue,
         e1rm,
@@ -1054,7 +1060,11 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({
                         ? `AV ${set.avg_velocity.toFixed(2)}m/s`
                         : ""}
                       {set.velocity_loss != null
-                        ? ` / VL ${set.velocity_loss.toFixed(1)}%`
+                        ? ` / VL avg/last/min ${set.velocity_loss.toFixed(1)} / ${(
+                            set.velocity_loss_last ?? set.velocity_loss
+                          ).toFixed(1)} / ${(
+                            set.velocity_loss_min ?? set.velocity_loss
+                          ).toFixed(1)}%`
                         : ""}
                       {set.avg_rom_cm != null
                         ? ` / ROM ${set.avg_rom_cm.toFixed(1)}cm`

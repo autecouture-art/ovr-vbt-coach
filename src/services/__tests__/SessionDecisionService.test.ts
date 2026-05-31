@@ -66,4 +66,31 @@ describe("SessionDecisionService", () => {
     expect(decision.avgHrTo120Working).toBe(160);
     expect(decision.hrDataReliability).toBe("good");
   });
+
+  it("uses VL_last for fatigue decisions while preserving legacy VL_avg", () => {
+    const decision = SessionDecisionService.analyze({
+      currentLoad: 122.5,
+      currentHeartRate: 128,
+      purpose: "form_consistency",
+      sets: [
+        makeSet({
+          set_index: 1,
+          velocity_loss: 12.5,
+          velocity_loss_avg: 12.5,
+          velocity_loss_last: 28.6,
+          velocity_loss_min: 28.6,
+        }),
+      ],
+    });
+
+    expect(decision.trendFlags.vlHigh).toBe(true);
+    expect(decision.workingSets[0]).toMatchObject({
+      vl: 12.5,
+      vlAvg: 12.5,
+      vlLast: 28.6,
+      vlMin: 28.6,
+      vlJudgementMetric: "vlLast",
+    });
+    expect(decision.reasonBullets.join(" ")).toContain("VL_last");
+  });
 });

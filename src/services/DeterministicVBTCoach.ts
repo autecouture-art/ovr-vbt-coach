@@ -6,6 +6,10 @@ import {
   getTopSingleTargetText,
   type PowerliftingProtocol,
 } from '../utils/PowerliftingVBTProtocol';
+import {
+  getVelocityLossForJudgement,
+  getVelocityLossSafety,
+} from '../utils/VBTCalculations';
 
 export type VBTCoachAction =
   | 'collect_data'
@@ -69,8 +73,9 @@ const confidenceForSet = (
   hasMvt: boolean,
 ): VBTCoachConfidence => {
   if (!set || !isFinitePositive(set.avg_velocity)) return 'low';
-  if (!hasMvt) return set.velocity_loss != null ? 'medium' : 'low';
-  if (set.velocity_loss != null) return 'high';
+  const velocityLoss = getVelocityLossForJudgement(set);
+  if (!hasMvt) return velocityLoss != null ? 'medium' : 'low';
+  if (velocityLoss != null) return 'high';
   return 'medium';
 };
 
@@ -267,7 +272,8 @@ export class DeterministicVBTCoach {
     setPurpose: SetType | 'unknown';
     hasMvt: boolean;
   }): DeterministicVBTCoachDecision {
-    const velocityLoss = lastSet.velocity_loss;
+    const velocityLoss = getVelocityLossForJudgement(lastSet);
+    const velocityLossMin = getVelocityLossSafety(lastSet);
     const reasons = ['backoff_or_work_set'];
     const loadAdjustmentPercent = readiness?.loadAdjustmentPercent ?? 0;
 
@@ -277,7 +283,7 @@ export class DeterministicVBTCoach {
         confidence: confidenceForSet(lastSet, hasMvt),
         severity: 'info',
         message: `平均速度 ${lastSet.avg_velocity?.toFixed(2)} m/s を記録しました。`,
-        suggestedAction: `次はVL ${threshold}%以内で止める準備をします。`,
+        suggestedAction: `次はVL_last ${threshold}%以内で止める準備をします。`,
         reasons: [...reasons, 'missing_velocity_loss'],
         protocol,
         setPurpose,
@@ -298,9 +304,15 @@ export class DeterministicVBTCoach {
         action: 'stop_set',
         confidence: confidenceForSet(lastSet, hasMvt),
         severity: 'alert',
-        message: `VL ${velocityLoss.toFixed(1)}% が上限 ${threshold}% に到達しました。`,
+        message: `VL_last ${velocityLoss.toFixed(1)}% が上限 ${threshold}% に到達しました。`,
         suggestedAction: 'この種目の本セットは止めます。続けるなら2.5〜5%落として最小セットにします。',
-        reasons: [...reasons, 'velocity_loss_exceeded'],
+        reasons: [
+          ...reasons,
+          'velocity_loss_last_exceeded',
+          ...(velocityLossMin != null && velocityLossMin >= 30
+            ? ['velocity_loss_min_safety_warning']
+            : []),
+        ],
         protocol,
         setPurpose,
         velocityLossThreshold: threshold,
@@ -314,7 +326,7 @@ export class DeterministicVBTCoach {
         action: 'watch',
         confidence: confidenceForSet(lastSet, hasMvt),
         severity: 'warning',
-        message: `VL上限まであと${Math.max(0, threshold - velocityLoss).toFixed(1)}%です。`,
+        message: `VL_last上限まであと${Math.max(0, threshold - velocityLoss).toFixed(1)}%です。`,
         suggestedAction: '次レップで速度かROMが崩れたら止めます。',
         reasons: [...reasons, 'near_velocity_loss_limit'],
         protocol,
@@ -329,7 +341,7 @@ export class DeterministicVBTCoach {
       action: 'continue',
       confidence: confidenceForSet(lastSet, hasMvt),
       severity: 'success',
-      message: `VL ${velocityLoss.toFixed(1)}% は上限 ${threshold}% 内です。`,
+      message: `VL_last ${velocityLoss.toFixed(1)}% は上限 ${threshold}% 内です。`,
       suggestedAction: protocol.guidance,
       reasons: [...reasons, 'inside_velocity_loss_limit'],
       protocol,

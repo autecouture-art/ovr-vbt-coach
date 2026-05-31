@@ -305,8 +305,10 @@ export const useSessionLogic = (
           ? validRoms.reduce((sum, rom) => sum + rom, 0) / validRoms.length
           : null;
 
-      // Velocity Loss: セット内最高速度 vs 平均速度 (calculateSetVelocityLoss使用)
-      const vLoss = VBTCalculations.calculateSetVelocityLoss(validReps) ?? 0;
+      // Velocity Loss: avgは互換、last/minは判定用
+      const velocityLossMetrics =
+        VBTCalculations.calculateVelocityLossMetrics(validReps);
+      const vLoss = velocityLossMetrics.vlAvg ?? 0;
 
       // e1RMは有効レップ数(validReps.length)を基準に計算（reps <= 0の場合はnull）
       const e1rm =
@@ -351,6 +353,9 @@ export const useSessionLogic = (
         set_type: "normal",
         avg_velocity: avgVel,
         velocity_loss: vLoss,
+        velocity_loss_avg: velocityLossMetrics.vlAvg,
+        velocity_loss_last: velocityLossMetrics.vlLast,
+        velocity_loss_min: velocityLossMetrics.vlMin,
         avg_rom_cm: avgRom,
         e1rm: e1rm,
         timestamp: endTimestamp,
@@ -380,6 +385,10 @@ export const useSessionLogic = (
         avg_velocity: newSet.avg_velocity,
         peak_velocity: peakVel,
         velocity_loss: newSet.velocity_loss,
+        velocity_loss_avg: newSet.velocity_loss_avg,
+        velocity_loss_last: newSet.velocity_loss_last,
+        velocity_loss_min: newSet.velocity_loss_min,
+        vl_judgement_metric: "vlLast",
         avg_rom_cm: newSet.avg_rom_cm,
         avg_power_w: newSet.avg_power_w,
         avg_hr: newSet.avg_hr,
@@ -783,17 +792,6 @@ export const useSessionLogic = (
         }
 
         // 4. Calculate Derived Metrics
-        const firstTrackedRep = currentRepHistory.find(
-          (rep) => !rep.is_excluded && !rep.is_failed && rep.is_valid_rep,
-        );
-        const firstRepVel =
-          firstTrackedRep?.mean_velocity ?? data.mean_velocity;
-        // VL計算：firstRepVelが0の場合は0除算を防ぐためにvLossを0に設定
-        const vLoss =
-          firstRepVel > 0
-            ? VBTLogic.calculateVelocityLoss(firstRepVel, data.mean_velocity)
-            : 0;
-
         const isShort = currentExercise
           ? VBTCalculations.isShortROM(data.rom_cm, currentExercise)
           : false;
@@ -850,6 +848,10 @@ export const useSessionLogic = (
 
         // 6. Intelligent 1RM Estimator (セッション中の全レップデータを活用)
         const allReps = [...currentRepHistory, newRep];
+        const liveVelocityLossMetrics =
+          VBTCalculations.calculateVelocityLossMetrics(allReps);
+        const vLoss =
+          liveVelocityLossMetrics.vlLast ?? liveVelocityLossMetrics.vlAvg ?? 0;
 
         if (data.mean_velocity > 0) {
           const lvp =
@@ -953,7 +955,7 @@ export const useSessionLogic = (
           vLoss >= currentVLThreshold
         ) {
           if (currentSettings.enable_audio_feedback) {
-            const reason = `速度低下率${vLoss.toFixed(1)}%が閾値(${currentVLThreshold}%)を超えました`;
+            const reason = `VL_last ${vLoss.toFixed(1)}%が閾値(${currentVLThreshold}%)を超えました`;
             AudioService.announceStopSet(reason);
           }
 

@@ -49,8 +49,8 @@ const MonitorScreen: React.FC<MonitorScreenProps> = ({ navigation }) => {
 
   useEffect(() => {
     if (repData.length > 0) {
-      const vl = VBTCalculations.calculateVelocityLoss(repData);
-      setVelocityLoss(vl);
+      const metrics = VBTCalculations.calculateVelocityLossMetrics(repData);
+      setVelocityLoss(metrics.vlLast ?? metrics.vlAvg);
     }
   }, [repData]);
 
@@ -139,6 +139,8 @@ const MonitorScreen: React.FC<MonitorScreenProps> = ({ navigation }) => {
       const meanVelocities = repData
         .map((rep) => rep.mean_velocity)
         .filter((value): value is number => value !== null);
+      const velocityLossMetrics =
+        VBTCalculations.calculateVelocityLossMetrics(repData);
 
       const setData: SetData = {
         session_id: sessionId,
@@ -152,7 +154,10 @@ const MonitorScreen: React.FC<MonitorScreenProps> = ({ navigation }) => {
           meanVelocities.length > 0
             ? meanVelocities.reduce((sum, value) => sum + value, 0) / meanVelocities.length
             : null,
-        velocity_loss: velocityLoss,
+        velocity_loss: velocityLossMetrics.vlAvg,
+        velocity_loss_avg: velocityLossMetrics.vlAvg,
+        velocity_loss_last: velocityLossMetrics.vlLast,
+        velocity_loss_min: velocityLossMetrics.vlMin,
         timestamp: new Date().toISOString(),
       };
 

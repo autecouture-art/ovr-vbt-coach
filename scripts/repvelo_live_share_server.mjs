@@ -126,6 +126,13 @@ const formatMetric = (value, digits = 2, suffix = "") =>
     ? `${value.toFixed(digits)}${suffix}`
     : "-";
 
+const getVlAvg = (payload) => asNumber(payload?.velocity_loss_avg) ?? asNumber(payload?.velocity_loss);
+const getVlLast = (payload) => asNumber(payload?.velocity_loss_last) ?? asNumber(payload?.velocity_loss);
+const getVlMin = (payload) =>
+  asNumber(payload?.velocity_loss_min) ?? getVlLast(payload) ?? getVlAvg(payload);
+const formatVlTriplet = (payload) =>
+  `${formatMetric(getVlAvg(payload), 1)} / ${formatMetric(getVlLast(payload), 1)} / ${formatMetric(getVlMin(payload), 1)}%`;
+
 const formatTime = (timestamp) => {
   if (!timestamp) return "-";
   const date = new Date(timestamp);
@@ -212,7 +219,8 @@ const buildSetAnalysis = (sets, thresholds = defaultThresholds) => {
   const romDropCm =
     currentRom != null && baselineRom != null ? baselineRom - currentRom : null;
 
-  const vlPct = asNumber(lastPayload.velocity_loss);
+  const vlPct = getVlLast(lastPayload);
+  const vlMinPct = getVlMin(lastPayload);
   const peakHr = asNumber(lastPayload.peak_hr);
   const restS = asNumber(lastPayload.rest_duration_s);
 
@@ -234,8 +242,15 @@ const buildSetAnalysis = (sets, thresholds = defaultThresholds) => {
   if (vlPct != null && vlPct >= thresholds.vl_watch_pct) {
     flags.push({
       severity: vlPct >= thresholds.vl_major_pct ? "major" : "watch",
-      label: "VL高め",
+      label: "VL_last高め",
       detail: `${vlPct.toFixed(1)}%`,
+    });
+  }
+  if (vlMinPct != null && vlMinPct >= Math.max(25, thresholds.vl_major_pct)) {
+    flags.push({
+      severity: vlMinPct >= 30 ? "major" : "watch",
+      label: "VL_min失速",
+      detail: `${vlMinPct.toFixed(1)}%`,
     });
   }
   if (peakHr != null && peakHr >= thresholds.peak_hr_watch_bpm) {
@@ -330,7 +345,7 @@ const buildGptPacket = (lines, thresholds = defaultThresholds) => {
   const setRows = sets
     .map((event) => {
       const p = event.payload ?? {};
-      return `| ${p.set_index ?? "-"} | ${p.lift ?? "-"} | ${formatMetric(p.load_kg, 1, " kg")} | ${p.reps ?? "-"} | ${formatMetric(p.avg_velocity, 2)} | ${formatMetric(p.velocity_loss, 1, "%")} | ${formatMetric(p.avg_rom_cm, 1, " cm")} | ${formatMetric(p.avg_power_w, 0, " W")} | ${p.peak_hr ?? "-"} | ${formatTime(p.end_timestamp ?? event.created_at)} |`;
+      return `| ${p.set_index ?? "-"} | ${p.lift ?? "-"} | ${formatMetric(p.load_kg, 1, " kg")} | ${p.reps ?? "-"} | ${formatMetric(p.avg_velocity, 2)} | ${formatVlTriplet(p)} | ${formatMetric(p.avg_rom_cm, 1, " cm")} | ${formatMetric(p.avg_power_w, 0, " W")} | ${p.peak_hr ?? "-"} | ${formatTime(p.end_timestamp ?? event.created_at)} |`;
     })
     .join("\n");
 
@@ -367,7 +382,7 @@ const buildGptPacket = (lines, thresholds = defaultThresholds) => {
 - AV drop: ${formatMetric(summary.analysis.av_drop_pct, 1, "%")}
 - ROM: ${formatMetric(summary.analysis.rom_cm, 1, " cm")}
 - ROM drop: ${formatMetric(summary.analysis.rom_drop_cm, 1, " cm")}
-- VL: ${formatMetric(summary.analysis.vl_pct, 1, "%")}
+- VL_last: ${formatMetric(summary.analysis.vl_pct, 1, "%")}
 - Peak HR: ${summary.analysis.peak_hr ?? "-"} bpm
 - Flags: ${
     summary.analysis.flags.length > 0
@@ -379,8 +394,8 @@ const buildGptPacket = (lines, thresholds = defaultThresholds) => {
 - Thresholds: AV watch ${summary.analysis.thresholds.av_drop_watch_pct}% / AV major ${summary.analysis.thresholds.av_drop_major_pct}% / ROM watch ${summary.analysis.thresholds.rom_drop_watch_cm}cm / ROM major ${summary.analysis.thresholds.rom_drop_major_cm}cm / VL watch ${summary.analysis.thresholds.vl_watch_pct}% / VL major ${summary.analysis.thresholds.vl_major_pct}% / HR watch ${summary.analysis.thresholds.peak_hr_watch_bpm}bpm
 
 ## Recent Sets
-| set | lift | load | reps | AV | VL | ROM | power | peak HR | time |
-|---:|---|---:|---:|---:|---:|---:|---:|---:|---|
+| set | lift | load | reps | AV | VL avg/last/min | ROM | power | peak HR | time |
+|---:|---|---:|---:|---:|---|---:|---:|---:|---|
 ${setRows || "| - | - | - | - | - | - | - | - | - | - |"}
 
 ## Recent Reps
@@ -420,6 +435,9 @@ const buildEventsCsv = (lines) => {
     "mean_velocity",
     "peak_velocity",
     "velocity_loss",
+    "velocity_loss_avg",
+    "velocity_loss_last",
+    "velocity_loss_min",
     "rom_cm",
     "avg_rom_cm",
     "avg_power_w",
@@ -445,6 +463,9 @@ const buildEventsCsv = (lines) => {
       p.mean_velocity,
       p.peak_velocity,
       p.velocity_loss,
+      p.velocity_loss_avg,
+      p.velocity_loss_last,
+      p.velocity_loss_min,
       p.rom_cm,
       p.avg_rom_cm,
       p.avg_power_w,
@@ -556,7 +577,7 @@ const dashboardHtml = () => `<!doctype html>
         <div class="metric"><div class="metric-label">AV Drop</div><div class="metric-value" id="analysisAvDrop">-</div></div>
         <div class="metric"><div class="metric-label">ROM</div><div class="metric-value" id="analysisRom">-</div></div>
         <div class="metric"><div class="metric-label">ROM Drop</div><div class="metric-value" id="analysisRomDrop">-</div></div>
-        <div class="metric"><div class="metric-label">VL</div><div class="metric-value" id="analysisVl">-</div></div>
+        <div class="metric"><div class="metric-label">VL_last</div><div class="metric-value" id="analysisVl">-</div></div>
         <div class="metric"><div class="metric-label">Peak HR</div><div class="metric-value" id="analysisHr">-</div></div>
       </div>
       <div class="split">
@@ -572,7 +593,7 @@ const dashboardHtml = () => `<!doctype html>
     </section>
     <section class="card section">
       <h2>Recent Sets</h2>
-      <table><thead><tr><th>set</th><th>lift</th><th>load</th><th>reps</th><th>AV</th><th>VL</th><th>ROM</th><th>HR</th><th>time</th></tr></thead><tbody id="setsBody"></tbody></table>
+      <table><thead><tr><th>set</th><th>lift</th><th>load</th><th>reps</th><th>AV</th><th>VL avg/last/min</th><th>ROM</th><th>HR</th><th>time</th></tr></thead><tbody id="setsBody"></tbody></table>
     </section>
     <section class="card section">
       <h2>Recent Reps</h2>
@@ -626,6 +647,10 @@ const dashboardHtml = () => `<!doctype html>
     };
     updateLinks();
     const fmt = (value, digits = 2, suffix = "") => typeof value === "number" ? value.toFixed(digits) + suffix : "-";
+    const vlAvg = (p) => typeof p.velocity_loss_avg === "number" ? p.velocity_loss_avg : p.velocity_loss;
+    const vlLast = (p) => typeof p.velocity_loss_last === "number" ? p.velocity_loss_last : p.velocity_loss;
+    const vlMin = (p) => typeof p.velocity_loss_min === "number" ? p.velocity_loss_min : vlLast(p);
+    const fmtVlTriplet = (p) => fmt(vlAvg(p), 1) + " / " + fmt(vlLast(p), 1) + " / " + fmt(vlMin(p), 1) + "%";
     const clock = (value) => value ? new Date(value).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) : "-";
     const row = (cells) => "<tr>" + cells.map((cell) => "<td>" + String(cell ?? "-") + "</td>").join("") + "</tr>";
     const renderFlags = (flags) => flags.length > 0
@@ -644,7 +669,7 @@ const dashboardHtml = () => `<!doctype html>
     };
     const eventSummary = (event) => {
       const p = event.payload || {};
-      if (event.type === "set_completed") return "AV " + fmt(p.avg_velocity) + " / VL " + fmt(p.velocity_loss, 1, "%") + " / ROM " + fmt(p.avg_rom_cm, 1, " cm");
+      if (event.type === "set_completed") return "AV " + fmt(p.avg_velocity) + " / VL avg/last/min " + fmtVlTriplet(p) + " / ROM " + fmt(p.avg_rom_cm, 1, " cm");
       if (event.type === "rep_recorded") return "mean " + fmt(p.mean_velocity) + " / peak " + fmt(p.peak_velocity) + " / ROM " + fmt(p.rom_cm, 1, " cm");
       if (event.type === "form_video_saved") return "video " + (p.duration_s ?? "-") + "s";
       if (event.type === "session_started") return "session started";
@@ -682,7 +707,7 @@ const dashboardHtml = () => `<!doctype html>
         document.getElementById("romSpark").innerHTML = renderSpark(analysis.lift_sets || [], "avg_rom_cm", "rom");
         document.getElementById("setsBody").innerHTML = summary.recent_sets.map((event) => {
           const p = event.payload || {};
-          return row([p.set_index, p.lift, fmt(p.load_kg, 1, " kg"), p.reps, fmt(p.avg_velocity), fmt(p.velocity_loss, 1, "%"), fmt(p.avg_rom_cm, 1, " cm"), p.peak_hr, clock(p.end_timestamp || event.created_at)]);
+          return row([p.set_index, p.lift, fmt(p.load_kg, 1, " kg"), p.reps, fmt(p.avg_velocity), fmtVlTriplet(p), fmt(p.avg_rom_cm, 1, " cm"), p.peak_hr, clock(p.end_timestamp || event.created_at)]);
         }).join("") || row(["-", "-", "-", "-", "-", "-", "-", "-", "-"]);
         document.getElementById("repsBody").innerHTML = summary.recent_reps.map((event) => {
           const p = event.payload || {};

@@ -7,6 +7,7 @@ import { SetEditModal } from "@/src/components/SetEditModal";
 import { GarageTheme } from "@/src/constants/garageTheme";
 import { firstRouteParam } from "@/src/utils/routeParams";
 import { formatSessionLabel } from "@/src/utils/session";
+import { formatVelocityLossTriplet } from "@/src/utils/VBTCalculations";
 import type { SessionData, SetData } from "@/src/types/index";
 
 export default function SessionDetailScreen() {
@@ -118,7 +119,7 @@ export default function SessionDetailScreen() {
               {set.rpe != null ? <Text style={styles.setMeta}>RPE {set.rpe}</Text> : null}
               {set.e1rm ? <Text style={styles.setMeta}>e1RM {set.e1rm.toFixed(1)} kg</Text> : null}
               {set.velocity_loss !== null ? (
-                <Text style={styles.setMeta}>VL {set.velocity_loss.toFixed(1)}%</Text>
+                <Text style={styles.setMeta}>VL avg/last/min {formatVelocityLossTriplet(set)}</Text>
               ) : null}
               {set.notes ? <Text style={styles.notes}>{set.notes}</Text> : null}
             </View>

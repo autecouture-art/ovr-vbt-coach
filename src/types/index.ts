@@ -53,6 +53,9 @@ export interface SetData {
   set_type: SetType;
   avg_velocity: number | null;
   velocity_loss: number | null;
+  velocity_loss_avg?: number | null;
+  velocity_loss_last?: number | null;
+  velocity_loss_min?: number | null;
   avg_rom_cm?: number | null;
   rpe?: number;
   e1rm?: number | null;

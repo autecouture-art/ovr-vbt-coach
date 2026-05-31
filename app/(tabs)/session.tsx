@@ -56,6 +56,10 @@ import {
 import { GarageTheme } from "@/src/constants/garageTheme";
 import { estimateRPEFromVelocityLoss } from "@/src/utils/RPECalculator";
 import {
+  formatVelocityLossTriplet,
+  getVelocityLossForJudgement,
+} from "@/src/utils/VBTCalculations";
+import {
   calculateRecoverySignal,
   getPeakHeartRate,
 } from "@/src/utils/HeartRateUtils";
@@ -134,6 +138,17 @@ const formatDateTimeWithSeconds = (date: Date): string =>
     second: "2-digit",
     hour12: false,
   });
+
+const formatVLTrendTriplet = (set: {
+  vlAvg?: number | null;
+  vlLast?: number | null;
+  vlMin?: number | null;
+  vl?: number | null;
+}): string => {
+  const format = (value: number | null | undefined) =>
+    value == null || !Number.isFinite(value) ? "-" : value.toFixed(1);
+  return `${format(set.vlAvg ?? set.vl)} / ${format(set.vlLast ?? set.vl)} / ${format(set.vlMin ?? set.vl)}%`;
+};
 
 const SESSION_LIGHTWEIGHT_SET_LIMIT = 5;
 const SESSION_RECOVERY_MAX_AGE_MS = 18 * 60 * 60 * 1000;
@@ -1565,14 +1580,14 @@ export default function SessionScreen() {
       const workingRows = sessionDecision.workingSets
         .map(
           (set) =>
-            `| ${set.set} | ${formatNumber(set.load, 1)} | ${set.reps} | ${formatNumber(set.av)} | ${formatNumber(set.avChangePct, 1, "%")} | ${formatNumber(set.vl, 1, "%")} | ${formatNumber(set.rom, 1, " cm")} | ${formatNumber(set.romDiff, 1, " cm")} | ${formatNumber(set.e1rm, 1)} | ${formatNumber(set.avgHR, 0)} | ${formatNumber(set.peakHR, 0)} | ${formatNullableSeconds(set.hrTo120)} | ${formatNullableSeconds(set.rest)} |`,
+            `| ${set.set} | ${formatNumber(set.load, 1)} | ${set.reps} | ${formatNumber(set.av)} | ${formatNumber(set.avChangePct, 1, "%")} | ${formatVLTrendTriplet(set)} | ${formatNumber(set.rom, 1, " cm")} | ${formatNumber(set.romDiff, 1, " cm")} | ${formatNumber(set.e1rm, 1)} | ${formatNumber(set.avgHR, 0)} | ${formatNumber(set.peakHR, 0)} | ${formatNullableSeconds(set.hrTo120)} | ${formatNullableSeconds(set.rest)} |`,
         )
         .join("\n");
       const sameLoadRows = sameLoadRecentHistory
         .slice(0, 8)
         .map(
           (set) =>
-            `| ${set.timestamp.split("T")[0]} | ${set.lift} | ${formatNumber(set.load_kg, 1, " kg")} | ${set.reps} | ${formatNumber(set.avg_velocity)} | ${formatNumber(set.velocity_loss, 1, "%")} | ${formatNumber(set.avg_rom_cm, 1, " cm")} | ${formatNumber(set.e1rm, 1, " kg")} |`,
+            `| ${set.timestamp.split("T")[0]} | ${set.lift} | ${formatNumber(set.load_kg, 1, " kg")} | ${set.reps} | ${formatNumber(set.avg_velocity)} | ${formatVelocityLossTriplet(set)} | ${formatNumber(set.avg_rom_cm, 1, " cm")} | ${formatNumber(set.e1rm, 1, " kg")} |`,
         )
         .join("\n");
       const appDecisionJson = {
@@ -1607,6 +1622,12 @@ export default function SessionScreen() {
           reasons: sessionDecision.reasonBullets,
           passCriteria: sessionDecision.passCriteria,
           stopCriteria: sessionDecision.stopCriteria,
+          vlJudgementMetric: "vlLast",
+        },
+        velocityLoss: {
+          vlJudgementMetric: "vlLast",
+          description:
+            "vl/vlAvgは最速repから平均速度、vlLastは最速repから最終rep、vlMinは最速repから最遅repの低下率",
         },
         summary: {
           allSetAvgAV: sessionDecision.allSetAvgAV,
@@ -1663,7 +1684,7 @@ export default function SessionScreen() {
         `- 終了条件: ${sessionDecision.stopCriteria.join(" / ")}`,
         "",
         "## 4. 作業セットのみの要約",
-        "| set | load | reps | AV | AV変化 | VL | ROM | ROM差 | e1RM | avgHR | peakHR | HR→120 | rest |",
+        "| set | load | reps | AV | AV変化 | VL avg/last/min | ROM | ROM差 | e1RM | avgHR | peakHR | HR→120 | rest |",
         "|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
         workingRows || "| - | - | - | - | - | - | - | - | - | - | - | - | - |",
         "",
@@ -1694,7 +1715,7 @@ export default function SessionScreen() {
         "- ROM条件を満たしたセットのみでPR判定するか: yes",
         "",
         "## 8. 直近同重量履歴",
-        "| date | lift | load | reps | AV | VL | ROM | e1RM |",
+        "| date | lift | load | reps | AV | VL avg/last/min | ROM | e1RM |",
         "|---|---|---:|---:|---:|---:|---:|---:|",
         sameLoadRows || "| - | - | - | - | - | - | - | - |",
         "",
@@ -1739,7 +1760,7 @@ export default function SessionScreen() {
         .slice(-10)
         .map(
           (set) =>
-            `| ${set.set_index} | ${set.lift} | ${formatNumber(set.load_kg, 1, " kg")} | ${set.reps} | ${formatNumber(set.avg_velocity)} | ${formatNumber(set.velocity_loss, 1, "%")} | ${formatNumber(set.avg_power_w, 0, " W")} | ${set.start_timestamp ?? "-"} | ${set.end_timestamp ?? set.timestamp ?? "-"} |`,
+            `| ${set.set_index} | ${set.lift} | ${formatNumber(set.load_kg, 1, " kg")} | ${set.reps} | ${formatNumber(set.avg_velocity)} | ${formatVelocityLossTriplet(set)} | ${formatNumber(set.avg_power_w, 0, " W")} | ${set.start_timestamp ?? "-"} | ${set.end_timestamp ?? set.timestamp ?? "-"} |`,
         )
         .join("\n");
       const currentReps = repHistory
@@ -1790,8 +1811,8 @@ export default function SessionScreen() {
           : "- なし",
         "",
         "## 直近完了セット",
-        "| set | lift | load | reps | AV | VL | power | start | end |",
-        "|---:|---|---:|---:|---:|---:|---:|---|---|",
+        "| set | lift | load | reps | AV | VL avg/last/min | power | start | end |",
+        "|---:|---|---:|---:|---:|---|---:|---|---|",
         lastSets || "| - | - | - | - | - | - | - | - | - |",
         "",
         "## 現在セットの未完了rep",
@@ -2126,7 +2147,7 @@ export default function SessionScreen() {
                 ]}
               >
                 <Text style={styles.focusModeVlLabel}>
-                  VL {liveVelocityLossDecision.velocityLoss.toFixed(1)}%
+                  VL_last {liveVelocityLossDecision.velocityLoss.toFixed(1)}%
                 </Text>
                 <Text style={styles.focusModeVlText}>
                   {liveVelocityLossDecision.status === "stop"
@@ -3401,10 +3422,10 @@ export default function SessionScreen() {
                           {set.velocity_loss != null ? (
                             <View style={styles.recentHistoryStat}>
                               <Text style={styles.recentHistoryStatLabel}>
-                                VL
+                                VL avg/last/min
                               </Text>
                               <Text style={styles.recentHistoryStatValue}>
-                                {set.velocity_loss.toFixed(1)}%
+                                {formatVelocityLossTriplet(set)}
                               </Text>
                             </View>
                           ) : null}
@@ -3550,9 +3571,14 @@ export default function SessionScreen() {
                               set.avg_velocity,
                             )
                           : null));
+                  const velocityLossForJudgement =
+                    getVelocityLossForJudgement(set);
                   const estimatedRPE =
-                    set.velocity_loss != null
-                      ? estimateRPEFromVelocityLoss(set.velocity_loss, set.reps)
+                    velocityLossForJudgement != null
+                      ? estimateRPEFromVelocityLoss(
+                          velocityLossForJudgement,
+                          set.reps,
+                        )
                       : null;
                   const trendSets = getSetTrendWindow(setHistory, set);
 
@@ -3626,9 +3652,9 @@ export default function SessionScreen() {
                               : "-"}
                           </Text>
                           <Text style={styles.setMetricChipText}>
-                            VL{" "}
+                            VL avg/last/min{" "}
                             {set.velocity_loss != null
-                              ? `${set.velocity_loss.toFixed(1)}%`
+                              ? formatVelocityLossTriplet(set)
                               : "-"}
                           </Text>
                           <Text style={styles.setMetricChipText}>

@@ -1533,3 +1533,41 @@ Remaining:
 - Wait for App Store Connect/TestFlight processing, usually 15-30 minutes.
 - Verify build `90` appears in TestFlight.
 - Real-device check for session form-video overlay and Live Share threshold UI.
+
+## 2026-06-01 (Codex)
+
+Scope: Split Velocity Loss into avg/last/min metrics and use last/min for decisions.
+
+Safety:
+
+- Repo-local code/test work only.
+- No network discovery, scanning, probing, or external automation.
+
+Actions:
+
+- Added `calculateVelocityLossMetrics()` in `src/utils/VBTCalculations.ts`.
+  - `vlAvg`: fastest rep to set average, kept as the legacy `velocity_loss`.
+  - `vlLast`: fastest rep to final valid rep, used for main VBT decisions.
+  - `vlMin`: fastest rep to slowest valid rep, used as a safety warning.
+- Added `velocity_loss_avg`, `velocity_loss_last`, and `velocity_loss_min` to `SetData` and SQLite migration.
+- Updated session completion, monitor save, manual save, and Live Share set events to carry the split VL values.
+- Updated session decision and deterministic coach logic to prefer `VL_last`; `VL_min` now flags large within-set stalls.
+- Updated session UI, session detail, diagnostics, Mac Live Share dashboard/CSV/GPT packet, and GPT copy packet to show `VL avg/last/min` plus `vlJudgementMetric: "vlLast"`.
+- Added tests for the user-provided VL cases:
+  - `[0.42, 0.39, 0.36, 0.30]`
+  - `[0.41, 0.42, 0.41, 0.38, 0.34]`
+  - `[0.44, 0.43, 0.40, 0.36, 0.39]`
+- Updated `docs/IMPROVEMENT_TRACKER.md` with `2026-06-01-01`.
+
+Results:
+
+- `pnpm -s check` passed.
+- Targeted tests passed: 15 tests.
+- `pnpm -s lint` passed.
+- `pnpm -s test` passed: 34 tests passed, 1 skipped.
+- `pnpm -s build` passed.
+
+Remaining:
+
+- Real-device check during a multi-rep set to confirm the UI reads as intended.
+- Confirm whether focus-mode live VL label should stay as `VL_last` or use a shorter Japanese label.

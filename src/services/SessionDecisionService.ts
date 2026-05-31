@@ -1,5 +1,10 @@
 import type { SetData } from "../types/index";
 import { roundToHalfKg } from "../constants/exerciseCatalog";
+import {
+  getVelocityLossAvg,
+  getVelocityLossForJudgement,
+  getVelocityLossSafety,
+} from "../utils/VBTCalculations";
 
 export type NextSetPurpose =
   | "menu_completion"
@@ -30,6 +35,10 @@ export interface SetTrendRow {
   av: number | null;
   avChangePct: number | null;
   vl: number | null;
+  vlAvg: number | null;
+  vlLast: number | null;
+  vlMin: number | null;
+  vlJudgementMetric: "vlLast";
   rom: number | null;
   romDiff: number | null;
   e1rm: number | null;
@@ -68,6 +77,7 @@ export interface SessionDecision {
     hrHigh: boolean;
     hrRecoveryDelayed: boolean;
     vlHigh: boolean;
+    vlMinHigh: boolean;
     e1RMDrop: boolean;
     possibleTechniqueFatigue: boolean;
   };
@@ -194,9 +204,14 @@ export class SessionDecisionService {
     const hrHigh = (input.currentHeartRate ?? 0) >= 145;
     const hrRecoveryDelayed =
       avgHrTo120Working != null && avgHrTo120Working >= 180;
-    const vlHigh = workingSets.some(
-      (set) => set.velocity_loss != null && set.velocity_loss >= 15,
-    );
+    const vlHigh = workingSets.some((set) => {
+      const vlLast = getVelocityLossForJudgement(set);
+      return vlLast != null && vlLast >= 15;
+    });
+    const vlMinHigh = workingSets.some((set) => {
+      const vlMin = getVelocityLossSafety(set);
+      return vlMin != null && vlMin >= 25;
+    });
     const bestE1RM =
       workingSets
         .map((set) => set.e1rm)
@@ -232,7 +247,10 @@ export class SessionDecisionService {
       );
     }
     if (vlHigh) {
-      reasonBullets.push("VL 15%以上のセットあり");
+      reasonBullets.push("VL_last 15%以上のセットあり");
+    }
+    if (vlMinHigh) {
+      reasonBullets.push("VL_min 25%以上: セット内に大きな失速repあり");
     }
 
     const qualityPriority =
@@ -256,7 +274,7 @@ export class SessionDecisionService {
     }
 
     const fatigueStatus: DecisionStatus =
-      hrHigh || hrRecoveryDelayed || (sameLoadAVDrop && vlHigh)
+      hrHigh || hrRecoveryDelayed || (sameLoadAVDrop && vlHigh) || vlMinHigh
         ? "moderate_to_high"
         : sameLoadAVDrop || vlHigh
           ? "watch"
@@ -289,7 +307,7 @@ export class SessionDecisionService {
 
     const passCriteria = [
       baselineROM != null ? `ROM ${formatNumber(Math.max(0, baselineROM - 0.5), 1, "cm")}以上` : "ROMを前セット以上",
-      "VL 10%以内",
+      "VL_last 10%以内",
       input.targetVelocityRange
         ? `AV ${formatNumber(input.targetVelocityRange[0])}〜${formatNumber(input.targetVelocityRange[1])} m/s`
         : "AVを急落させない",
@@ -297,6 +315,7 @@ export class SessionDecisionService {
     const stopCriteria = [
       baselineROM != null ? `ROM ${formatNumber(baselineROM - 1.5, 1, "cm")}以下なら終了/種目変更` : "ROMが明確に浅くなったら終了/種目変更",
       "HR 145以上なら休憩延長",
+      "VL_last 20%超、またはVL_min 30%超なら重量を下げる/種目終了候補",
       "同重量AVがさらに5%以上落ちたら重量を下げる",
     ];
 
@@ -332,6 +351,7 @@ export class SessionDecisionService {
         hrHigh,
         hrRecoveryDelayed,
         vlHigh,
+        vlMinHigh,
         e1RMDrop,
         possibleTechniqueFatigue,
       },
@@ -343,7 +363,11 @@ export class SessionDecisionService {
           reps: set.reps,
           av: set.avg_velocity ?? null,
           avChangePct,
-          vl: set.velocity_loss ?? null,
+          vl: getVelocityLossAvg(set),
+          vlAvg: getVelocityLossAvg(set),
+          vlLast: getVelocityLossForJudgement(set),
+          vlMin: getVelocityLossSafety(set),
+          vlJudgementMetric: "vlLast",
           rom: set.avg_rom_cm ?? null,
           romDiff:
             set.avg_rom_cm != null && baselineROM != null

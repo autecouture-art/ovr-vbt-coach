@@ -84,6 +84,27 @@ describe('DeterministicVBTCoach', () => {
     expect(decision.velocityLossThreshold).toBe(25);
   });
 
+  it('uses VL_last over legacy VL_avg for stop decisions', () => {
+    const decision = DeterministicVBTCoach.evaluate({
+      setHistory: [
+        makeSet({
+          set_type: 'backoff',
+          velocity_loss: 12.5,
+          velocity_loss_avg: 12.5,
+          velocity_loss_last: 28.6,
+          velocity_loss_min: 28.6,
+        }),
+      ],
+      exercise,
+      phase: 'strength',
+    });
+
+    expect(decision.action).toBe('stop_set');
+    expect(decision.message).toContain('VL_last');
+    expect(decision.reasons).toContain('velocity_loss_last_exceeded');
+  });
+
+
   it('warns when a backoff set is near the threshold', () => {
     const decision = DeterministicVBTCoach.evaluate({
       setHistory: [makeSet({ set_type: 'backoff', velocity_loss: 23 })],

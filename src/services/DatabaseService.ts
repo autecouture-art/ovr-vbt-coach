@@ -153,6 +153,9 @@ class DatabaseService {
         set_type TEXT NOT NULL,
         avg_velocity REAL,
         velocity_loss REAL,
+        velocity_loss_avg REAL,
+        velocity_loss_last REAL,
+        velocity_loss_min REAL,
         avg_rom_cm REAL,
         rpe REAL,
         e1rm REAL,
@@ -297,6 +300,9 @@ class DatabaseService {
       { table: "sets", column: "avg_power_w", type: "REAL" },
       { table: "sets", column: "avg_rom_cm", type: "REAL" },
       { table: "sets", column: "is_warmup", type: "INTEGER DEFAULT 0" },
+      { table: "sets", column: "velocity_loss_avg", type: "REAL" },
+      { table: "sets", column: "velocity_loss_last", type: "REAL" },
+      { table: "sets", column: "velocity_loss_min", type: "REAL" },
       // Reps 追加カラム
       { table: "reps", column: "is_excluded", type: "INTEGER DEFAULT 0" },
       { table: "reps", column: "exclusion_reason", type: "TEXT" },
@@ -515,8 +521,8 @@ class DatabaseService {
 
     await this.db.runAsync(
       `INSERT INTO sets (session_id, lift, set_index, load_kg, reps, device_type, set_type,
-        avg_velocity, velocity_loss, avg_rom_cm, rpe, e1rm, timestamp, start_timestamp, end_timestamp, rest_duration_s, avg_hr, peak_hr, hr_recovery_to_120_s, avg_power_w, is_warmup, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        avg_velocity, velocity_loss, velocity_loss_avg, velocity_loss_last, velocity_loss_min, avg_rom_cm, rpe, e1rm, timestamp, start_timestamp, end_timestamp, rest_duration_s, avg_hr, peak_hr, hr_recovery_to_120_s, avg_power_w, is_warmup, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         setData.session_id,
         setData.lift,
@@ -527,6 +533,12 @@ class DatabaseService {
         setData.set_type,
         setData.avg_velocity,
         setData.velocity_loss,
+        setData.velocity_loss_avg ?? setData.velocity_loss ?? null,
+        setData.velocity_loss_last ?? setData.velocity_loss ?? null,
+        setData.velocity_loss_min ??
+          setData.velocity_loss_last ??
+          setData.velocity_loss ??
+          null,
         setData.avg_rom_cm ?? null,
         setData.rpe || null,
         setData.e1rm || null,
@@ -652,6 +664,18 @@ class DatabaseService {
       updateFields.push("velocity_loss = ?");
       queryParams.push(setData.velocity_loss);
     }
+    if (setData.velocity_loss_avg !== undefined) {
+      updateFields.push("velocity_loss_avg = ?");
+      queryParams.push(setData.velocity_loss_avg);
+    }
+    if (setData.velocity_loss_last !== undefined) {
+      updateFields.push("velocity_loss_last = ?");
+      queryParams.push(setData.velocity_loss_last);
+    }
+    if (setData.velocity_loss_min !== undefined) {
+      updateFields.push("velocity_loss_min = ?");
+      queryParams.push(setData.velocity_loss_min);
+    }
     if (setData.rpe !== undefined) {
       updateFields.push("rpe = ?");
       queryParams.push(setData.rpe);
@@ -691,6 +715,9 @@ class DatabaseService {
     reps: number;
     avg_velocity: number;
     velocity_loss: number;
+    velocity_loss_avg: number | null;
+    velocity_loss_last: number | null;
+    velocity_loss_min: number | null;
     e1rm?: number | null;
   } | null> {
     if (!(await this.ensureReady())) return null;
@@ -716,6 +743,9 @@ class DatabaseService {
         reps: 0,
         avg_velocity: 0,
         velocity_loss: 0,
+        velocity_loss_avg: null,
+        velocity_loss_last: null,
+        velocity_loss_min: null,
         e1rm: undefined,
       };
     }
@@ -725,8 +755,10 @@ class DatabaseService {
       validReps.reduce((sum, r) => sum + (r.mean_velocity ?? 0), 0) /
       validReps.length;
 
-    // 5. Velocity Lossを計算（セット内最高速度 vs 平均速度）
-    const vLoss = VBTCalculations.calculateSetVelocityLoss(validReps) ?? 0;
+    // 5. Velocity Lossを計算（avgは互換、last/minは判定用）
+    const velocityLossMetrics =
+      VBTCalculations.calculateVelocityLossMetrics(validReps);
+    const vLoss = velocityLossMetrics.vlAvg ?? 0;
 
     // 6. e1RMを計算（reps <= 0の場合はnull）
     const e1rm =
@@ -736,6 +768,9 @@ class DatabaseService {
       reps: validReps.length,
       avg_velocity: avgVel,
       velocity_loss: vLoss,
+      velocity_loss_avg: velocityLossMetrics.vlAvg,
+      velocity_loss_last: velocityLossMetrics.vlLast,
+      velocity_loss_min: velocityLossMetrics.vlMin,
       e1rm: e1rm,
     };
   }

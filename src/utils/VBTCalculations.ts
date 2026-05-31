@@ -3,7 +3,14 @@
  * Core logic for Velocity-Based Training calculations
  */
 
-import type { RepData, LVPData, VelocityZone, Exercise } from '../types/index';
+import type { RepData, LVPData, VelocityZone, Exercise, SetData } from '../types/index';
+
+export interface VelocityLossMetrics {
+  vlAvg: number | null;
+  vlLast: number | null;
+  vlMin: number | null;
+  vlJudgementMetric: "vlLast";
+}
 
 /**
  * Calculate mean and standard deviation
@@ -46,28 +53,67 @@ export function filterOutliers(reps: RepData[]): RepData[] {
   });
 }
 
+const roundVelocityLoss = (value: number): number =>
+  Math.round(value * 10) / 10;
+
+const getValidMeanVelocities = (reps: RepData[]): number[] =>
+  reps
+    .filter(
+      (rep) =>
+        rep.is_valid_rep &&
+        !rep.is_excluded &&
+        !rep.is_failed &&
+        rep.mean_velocity != null &&
+        rep.mean_velocity > 0,
+    )
+    .map((rep) => rep.mean_velocity as number);
+
 /**
- * Calculate Set Velocity Loss
- * Calculates velocity degradation from best rep to average velocity across entire set
- * This represents overall fatigue within the set
- * @param reps Array of rep data
- * @returns Velocity Loss percentage (0-100), or null if insufficient data
- *
- * Formula: VL = (best_velocity - avg_velocity) / best_velocity * 100
+ * Calculate three Velocity Loss metrics from valid reps:
+ * - vlAvg: fastest rep to set average (legacy/backward-compatible metric)
+ * - vlLast: fastest rep to final valid rep (primary decision metric)
+ * - vlMin: fastest rep to slowest valid rep (safety warning metric)
+ */
+export function calculateVelocityLossMetrics(reps: RepData[]): VelocityLossMetrics {
+  const velocities = getValidMeanVelocities(reps);
+  if (velocities.length < 2) {
+    return {
+      vlAvg: null,
+      vlLast: null,
+      vlMin: null,
+      vlJudgementMetric: "vlLast",
+    };
+  }
+
+  const fastest = Math.max(...velocities);
+  if (fastest <= 0) {
+    return {
+      vlAvg: null,
+      vlLast: null,
+      vlMin: null,
+      vlJudgementMetric: "vlLast",
+    };
+  }
+
+  const averageVelocity =
+    velocities.reduce((sum, velocity) => sum + velocity, 0) / velocities.length;
+  const last = velocities[velocities.length - 1];
+  const slowest = Math.min(...velocities);
+
+  return {
+    vlAvg: roundVelocityLoss(((fastest - averageVelocity) / fastest) * 100),
+    vlLast: roundVelocityLoss(((fastest - last) / fastest) * 100),
+    vlMin: roundVelocityLoss(((fastest - slowest) / fastest) * 100),
+    vlJudgementMetric: "vlLast",
+  };
+}
+
+/**
+ * Calculate Set Velocity Loss.
+ * Kept as the legacy average-based VL for backward compatibility.
  */
 export function calculateSetVelocityLoss(reps: RepData[]): number | null {
-  const validReps = reps.filter((rep) => rep.is_valid_rep && rep.mean_velocity !== null);
-
-  if (validReps.length < 2) return null;
-
-  const velocities = validReps.map((rep) => rep.mean_velocity as number);
-  const bestVelocity = Math.max(...velocities);
-  const avgVelocity = velocities.reduce((sum, v) => sum + v, 0) / velocities.length;
-
-  if (bestVelocity === 0) return null;
-
-  const velocityLoss = ((bestVelocity - avgVelocity) / bestVelocity) * 100;
-  return Math.round(velocityLoss * 100) / 100; // Round to 2 decimal places
+  return calculateVelocityLossMetrics(reps).vlAvg;
 }
 
 /**
@@ -76,6 +122,36 @@ export function calculateSetVelocityLoss(reps: RepData[]): number | null {
  */
 export function calculateVelocityLoss(reps: RepData[]): number | null {
   return calculateSetVelocityLoss(reps);
+}
+
+export function getVelocityLossAvg(set: Pick<SetData, "velocity_loss" | "velocity_loss_avg">): number | null {
+  return set.velocity_loss_avg ?? set.velocity_loss ?? null;
+}
+
+export function getVelocityLossForJudgement(
+  set: Pick<SetData, "velocity_loss" | "velocity_loss_last">,
+): number | null {
+  return set.velocity_loss_last ?? set.velocity_loss ?? null;
+}
+
+export function getVelocityLossSafety(
+  set: Pick<SetData, "velocity_loss" | "velocity_loss_last" | "velocity_loss_min">,
+): number | null {
+  return set.velocity_loss_min ?? getVelocityLossForJudgement(set) ?? null;
+}
+
+export function formatVelocityLossTriplet(
+  set: Pick<
+    SetData,
+    "velocity_loss" | "velocity_loss_avg" | "velocity_loss_last" | "velocity_loss_min"
+  >,
+): string {
+  const vlAvg = getVelocityLossAvg(set);
+  const vlLast = getVelocityLossForJudgement(set);
+  const vlMin = getVelocityLossSafety(set);
+  const format = (value: number | null) =>
+    value == null || !Number.isFinite(value) ? "-" : value.toFixed(1);
+  return `${format(vlAvg)} / ${format(vlLast)} / ${format(vlMin)}%`;
 }
 
 /**
@@ -557,8 +633,13 @@ export { estimateRPEFromVelocityLoss, estimateRPEFromMeanVelocity } from './RPEC
 
 export default {
   filterOutliers,
+  calculateVelocityLossMetrics,
   calculateVelocityLoss,
   calculateSetVelocityLoss,
+  getVelocityLossAvg,
+  getVelocityLossForJudgement,
+  getVelocityLossSafety,
+  formatVelocityLossTriplet,
   estimate1RM,
   estimate1RMFromReps,
   calculateLVP,
