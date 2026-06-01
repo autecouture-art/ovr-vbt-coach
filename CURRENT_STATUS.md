@@ -11,13 +11,13 @@
 - App name: RepVelo VBT Coach
 - iOS bundle id: `com.autecouture.repvelocoach.hh`
 - Marketing version: `2.3.5`
-- Native iOS build number in `ios/RepVeloCoach/Info.plist`: `90`
-- Expo config build number in `app.config.ts`: `90`
-- Latest successful TestFlight upload: build `90` (uploaded 2026-05-31 21:02:56 JST)
+- Native iOS build number in `ios/RepVeloCoach/Info.plist`: `91`
+- Expo config build number in `app.config.ts`: `91`
+- Latest successful TestFlight upload: build `91` (uploaded 2026-06-02 05:07:45 JST)
 
 ## Build Number Status
-- `app.config.ts`, `ios/RepVeloCoach/Info.plist`, and `ios/RepVeloCoach.xcodeproj/project.pbxproj` are aligned at build `90`.
-- For the next release, bump to a value higher than `90` and keep all three sources synchronized.
+- `app.config.ts`, `ios/RepVeloCoach/Info.plist`, and `ios/RepVeloCoach.xcodeproj/project.pbxproj` are aligned at build `91`.
+- For the next release, bump to a value higher than `91` and keep all three sources synchronized.
 
 ## Current Working Tree
 - Working tree was clean immediately before the successful build `76` upload.
@@ -48,6 +48,9 @@
   - Live Share dashboard thresholds can be adjusted from the Mac dashboard.
   - Session screen form video recording now opens as an overlay instead of leaving the session screen.
   - Existing full-screen recorder remains available as a fallback path.
+- **Build 91 Release**:
+  - TestFlight rebuild containing the split VL metrics and session-screen form video toggle.
+  - Fastlane now supports safer retry controls for low-parallel archives.
 - Previous implementations:
   - Direct GLM mode with local API key
   - AI Coach error reporting improvements
@@ -79,8 +82,8 @@
 
 ## Validation Status
 - TypeScript check passed: `pnpm -s tsc --noEmit`
-- TestFlight upload succeeded for version `2.3.5` build `90`.
-- Build numbers are aligned across all three sources (app.config.ts, Info.plist, project.pbxproj) at `90`.
+- TestFlight upload succeeded for version `2.3.5` build `91`.
+- Build numbers are aligned across all three sources (app.config.ts, Info.plist, project.pbxproj) at `91`.
 - Real-device verification is still required for:
   - AI Coach live send success
   - Session detail appearing immediately after set completion
@@ -97,6 +100,15 @@
 - Command: `source ~/.zshrc && FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT=20 FASTLANE_XCODEBUILD_SETTINGS_RETRIES=6 bash scripts/deploy.sh`
 - Notes: build number was bumped and aligned from 89 to 90 before upload. TestFlight processing may take 15-30 minutes.
 
+## Latest TestFlight Upload (2026-06-02)
+- Version: `2.3.5`
+- Build: `91`
+- Upload result: succeeded at 2026-06-02 05:07:45 JST
+- IPA: `ios/fastlane_export/RepVeloCoach.ipa`
+- dSYM: `ios/fastlane_export/RepVeloCoach.app.dSYM.zip`
+- Command: `source ~/.zshrc && REPVELO_CLEAN=false REPVELO_EXTRA_XCARGS='-jobs 1 COMPILER_INDEX_STORE_ENABLE=NO' FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT=20 FASTLANE_XCODEBUILD_SETTINGS_RETRIES=6 bash scripts/deploy.sh`
+- Notes: external-volume builds repeatedly hit `xcodebuild` `Bus error: 10` with `getcwd` errors, so the repo was copied to `/Users/hoshinohideyuki/Developer/repvelo-testflight-staging` for the archive/upload. The exported IPA and dSYM were copied back to `ios/fastlane_export`. TestFlight processing may take 15-30 minutes.
+
 ## Build And Upload
 Use the repo-local canonical path above. The agent-neutral release workflow is documented in:
 - `TESTFLIGHT_DEPLOYMENT.md`
@@ -105,6 +117,9 @@ Use the repo-local canonical path above. The agent-neutral release workflow is d
 
 Typical upload command:
 - `source ~/.zshrc && FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT=20 FASTLANE_XCODEBUILD_SETTINGS_RETRIES=6 bash scripts/deploy.sh`
+
+If the external `/Volumes/0RICON_APP` workspace hits `xcodebuild` `Bus error: 10` or `getcwd` errors, copy the repo to an internal staging folder and run:
+- `source ~/.zshrc && REPVELO_CLEAN=false REPVELO_EXTRA_XCARGS='-jobs 1 COMPILER_INDEX_STORE_ENABLE=NO' FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT=20 FASTLANE_XCODEBUILD_SETTINGS_RETRIES=6 bash scripts/deploy.sh`
 
 Rules:
 - Bump `CFBundleVersion` in `ios/RepVeloCoach/Info.plist` before any new upload.
@@ -119,7 +134,7 @@ These are already enforced in `AGENTS.md`:
 - Record TestFlight build numbers and upload results.
 
 ## Recommended Next Steps
-1. Device-test build 90 focusing on:
+1. Device-test build 91 focusing on:
    - Long session behavior around 6+ sets and recovery after relaunch.
    - English canonical exercise migration for existing Katakana lift history.
    - VBT decision card readability during rest.

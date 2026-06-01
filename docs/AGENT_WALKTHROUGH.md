@@ -1592,3 +1592,34 @@ Results:
 Remaining:
 
 - Real-device check: turn it on from the session screen, start a session, choose an exercise, and confirm `フォーム録画` appears in the action buttons.
+
+## 2026-06-02 (Codex TestFlight)
+
+Scope: Build and upload RepVeloCoach `2.3.5 (91)` to TestFlight.
+
+Actions:
+
+- Bumped and aligned iOS build number to `91` in:
+  - `app.config.ts`
+  - `ios/RepVeloCoach/Info.plist`
+  - `ios/RepVeloCoach.xcodeproj/project.pbxproj`
+- Added Fastfile environment controls for safer release retries:
+  - `REPVELO_EXTRA_XCARGS`
+  - `REPVELO_CLEAN=false`
+- Initial archive attempts from the external `/Volumes/0RICON_APP` workspace repeatedly failed with `xcodebuild` `Bus error: 10` and `getcwd` errors.
+- Copied the repo to `/Users/hoshinohideyuki/Developer/repvelo-testflight-staging` and reran the release build there to avoid external-volume cwd instability.
+- Copied the successful IPA and dSYM back to `ios/fastlane_export`.
+
+Results:
+
+- Archive succeeded.
+- IPA export succeeded.
+- App Store Connect upload succeeded at 2026-06-02 05:07:45 JST.
+- Uploaded build: `2.3.5 (91)`.
+- IPA: `ios/fastlane_export/RepVeloCoach.ipa`.
+- dSYM: `ios/fastlane_export/RepVeloCoach.app.dSYM.zip`.
+
+Remaining:
+
+- Wait for TestFlight processing in App Store Connect, usually 15-30 minutes.
+- Real-device check build `91`, especially session form-video toggle, split VL metrics, and long-session behavior.
