@@ -1571,3 +1571,24 @@ Remaining:
 
 - Real-device check during a multi-rep set to confirm the UI reads as intended.
 - Confirm whether focus-mode live VL label should stay as `VL_last` or use a shorter Japanese label.
+
+## 2026-06-01 (Codex follow-up)
+
+Scope: Make form-video recording mode configurable from the session screen.
+
+Actions:
+
+- Added a `フォーム動画` quick settings card to `app/(tabs)/session.tsx`.
+- The card toggles `enable_video_recording` without visiting Settings.
+- Enabling it also sets `session_display_action_buttons` to true so the `フォーム録画` button is not hidden by display settings.
+- The setting is persisted through `saveAppSettings()`.
+- Updated `docs/IMPROVEMENT_TRACKER.md` with `2026-06-01-02`.
+
+Results:
+
+- `pnpm -s check` passed.
+- `pnpm -s lint` passed.
+
+Remaining:
+
+- Real-device check: turn it on from the session screen, start a session, choose an exercise, and confirm `フォーム録画` appears in the action buttons.

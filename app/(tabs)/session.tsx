@@ -37,6 +37,7 @@ import ExerciseService from "@/src/services/ExerciseService";
 import SessionRecoveryService from "@/src/services/SessionRecoveryService";
 import VideoRecordingService from "@/src/services/VideoRecordingService";
 import LiveShareService from "@/src/services/LiveShareService";
+import { saveAppSettings } from "@/src/services/AppSettingsService";
 import SessionDecisionService, {
   type NextSetPurpose,
 } from "@/src/services/SessionDecisionService";
@@ -78,6 +79,7 @@ import {
 } from "@/src/utils/PowerliftingVBTProtocol";
 import type {
   Exercise,
+  AppSettings,
   FormVideoRecord,
   LVPData,
   PRRecord,
@@ -668,6 +670,29 @@ export default function SessionScreen() {
     Boolean(currentSession?.session_id) &&
     Boolean(currentLift || currentExercise?.name);
   const currentRecordingLift = currentLift || currentExercise?.name || "";
+  const handleToggleFormVideoRecording = useCallback(async () => {
+    const shouldEnable = !settings.enable_video_recording;
+    const nextSettings: AppSettings = {
+      ...settings,
+      enable_video_recording: shouldEnable,
+      session_display_action_buttons: shouldEnable
+        ? true
+        : settings.session_display_action_buttons,
+    };
+
+    updateSettings(nextSettings);
+    try {
+      const saved = await saveAppSettings(nextSettings);
+      updateSettings(saved);
+    } catch (error) {
+      console.error("[SessionScreen] Failed to save form video setting:", error);
+      updateSettings(settings);
+      Alert.alert(
+        "設定保存エラー",
+        "フォーム動画モードの保存に失敗しました。",
+      );
+    }
+  }, [settings, updateSettings]);
   const lastCompletedSetAt = setHistory[setHistory.length - 1]?.timestamp ?? null;
   const showAdviceDisplay = settings.session_display_advice_group;
   const nextSetPurposeLabel =
@@ -2417,6 +2442,49 @@ export default function SessionScreen() {
               )}
             </View>
           )}
+
+          <View style={styles.vlSettingsCard}>
+            <View style={styles.vlSettingsHeader}>
+              <View style={{ flex: 1, paddingRight: 12 }}>
+                <Text style={styles.vlSettingsTitle}>フォーム動画</Text>
+                <Text style={styles.vlSettingsMeta}>
+                  {settings.enable_video_recording
+                    ? "セッション画面に録画ボタンを表示中"
+                    : "セッション画面から録画ボタンを出す"}
+                </Text>
+              </View>
+              <View style={styles.vlToggleRow}>
+                <Text style={styles.vlToggleLabel}>オン</Text>
+                <TouchableOpacity
+                  style={[
+                    styles.vlToggleButton,
+                    settings.enable_video_recording
+                      ? styles.vlToggleButtonOn
+                      : styles.vlToggleOff,
+                  ]}
+                  onPress={() => {
+                    void handleToggleFormVideoRecording();
+                  }}
+                >
+                  <View
+                    style={[
+                      styles.vlToggleKnob,
+                      settings.enable_video_recording
+                        ? styles.vlToggleKnobOn
+                        : styles.vlToggleKnobOff,
+                    ]}
+                  />
+                </TouchableOpacity>
+              </View>
+            </View>
+            <Text style={styles.liveHintText}>
+              {settings.enable_video_recording
+                ? formRecordingAvailable
+                  ? "下の操作ボタンに「フォーム録画」が出ています。"
+                  : "セッション開始と種目選択後に「フォーム録画」が出ます。"
+                : "ONにすると、下の操作ボタンに「フォーム録画」を表示します。"}
+            </Text>
+          </View>
 
           {showAdviceDisplay &&
             settings.session_display_protocol &&
