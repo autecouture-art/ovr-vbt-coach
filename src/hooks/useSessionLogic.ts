@@ -46,11 +46,74 @@ const MIN_ROM_DEFAULT_CM = 10.0;
 const LOAD_LOWER_BOUND_RATIO = 0.3;
 // オートスタートROMのデフォルト閾値（cm）
 const AUTO_START_ROM_DEFAULT_CM = 5.0;
+const MAX_REASONABLE_VELOCITY_MPS = 3.5;
+const MAX_REASONABLE_ROM_CM = 250;
+const MAX_REASONABLE_POWER_W = 10000;
+const MAX_REASONABLE_REP_DURATION_MS = 30000;
 
 // PR検知コールバック型
 type PRCallback = (pr: PRRecord) => void;
 // 自動スタートコールバック型
 type AutoStartCallback = () => void;
+
+const toFiniteNumberOrNull = (value: unknown): number | null =>
+  typeof value === "number" && Number.isFinite(value) ? value : null;
+
+const normalizeRepVeloData = (data: RepVeloData): RepVeloData | null => {
+  const meanVelocity = toFiniteNumberOrNull(data.mean_velocity);
+  const peakVelocity = toFiniteNumberOrNull(data.peak_velocity);
+  const romCm = toFiniteNumberOrNull(data.rom_cm);
+  const repDurationMs = toFiniteNumberOrNull(data.rep_duration_ms);
+
+  if (
+    meanVelocity == null ||
+    peakVelocity == null ||
+    romCm == null ||
+    repDurationMs == null
+  ) {
+    console.warn("[useSessionLogic] Ignoring incomplete VBT payload", data);
+    return null;
+  }
+
+  if (
+    meanVelocity <= 0 ||
+    meanVelocity > MAX_REASONABLE_VELOCITY_MPS ||
+    peakVelocity < 0 ||
+    peakVelocity > MAX_REASONABLE_VELOCITY_MPS ||
+    romCm <= 0 ||
+    romCm > MAX_REASONABLE_ROM_CM ||
+    repDurationMs < 0 ||
+    repDurationMs > MAX_REASONABLE_REP_DURATION_MS
+  ) {
+    console.warn("[useSessionLogic] Ignoring out-of-range VBT payload", data);
+    return null;
+  }
+
+  const meanPower = toFiniteNumberOrNull(data.mean_power_w);
+  const peakPower = toFiniteNumberOrNull(data.peak_power_w);
+
+  return {
+    ...data,
+    mean_velocity: meanVelocity,
+    peak_velocity: peakVelocity,
+    rom_cm: romCm,
+    rep_duration_ms: repDurationMs,
+    mean_power_w:
+      meanPower != null &&
+      meanPower > 0 &&
+      meanPower <= MAX_REASONABLE_POWER_W
+        ? meanPower
+        : undefined,
+    peak_power_w:
+      peakPower != null &&
+      peakPower > 0 &&
+      peakPower <= MAX_REASONABLE_POWER_W
+        ? peakPower
+        : undefined,
+    timestamp:
+      toFiniteNumberOrNull(data.timestamp) != null ? data.timestamp : Date.now(),
+  };
+};
 
 export const useSessionLogic = (
   onPRDetected?: PRCallback,
@@ -638,6 +701,12 @@ export const useSessionLogic = (
 
   const handleDataReceived = useCallback(
     async (data: RepVeloData) => {
+      const normalizedData = normalizeRepVeloData(data);
+      if (!normalizedData) {
+        return;
+      }
+      data = normalizedData;
+
       // 0. Auto-start mode: セッションが開始されていない場合で、自動スタートモードが有効な場合に自動開始
       // refから最新の状態を取得（パフォーマンス最適化）
       const currentSettings = settingsRef.current;

@@ -35,6 +35,10 @@ if (Platform.OS === 'android') {
 const SERVICE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
 const SCAN_DURATION = 5000; // 5 seconds
 const EXPECTED_DATA_SIZE = 16; // bytes
+const MAX_REASONABLE_VELOCITY_MPS = 3.5;
+const MAX_REASONABLE_ROM_CM = 250;
+const MAX_REASONABLE_POWER_W = 10000;
+const MAX_REASONABLE_REP_DURATION_MS = 30000;
 
 // Helper function to decode base64 to byte array (React Native compatible)
 function base64ToBytes(base64: string): Uint8Array {
@@ -50,6 +54,10 @@ function base64ToBytes(base64: string): Uint8Array {
 function readUInt16LE(bytes: Uint8Array, offset: number): number {
   if (offset + 2 > bytes.length) return 0;
   return bytes[offset] | (bytes[offset + 1] << 8);
+}
+
+function isFiniteRange(value: number, min: number, max: number): boolean {
+  return Number.isFinite(value) && value >= min && value <= max;
 }
 
 export interface BLEServiceCallbacks {
@@ -791,13 +799,37 @@ class BLEService {
       const peak_power_w = peak_p_raw * 1.0;
       const rep_duration_ms = duration_raw;
 
+      if (
+        !isFiniteRange(mean_velocity, 0.01, MAX_REASONABLE_VELOCITY_MPS) ||
+        !isFiniteRange(peak_velocity, 0, MAX_REASONABLE_VELOCITY_MPS) ||
+        !isFiniteRange(rom_cm, 0.1, MAX_REASONABLE_ROM_CM) ||
+        !isFiniteRange(rep_duration_ms, 0, MAX_REASONABLE_REP_DURATION_MS)
+      ) {
+        console.warn('[BLE] Ignoring out-of-range velocity packet', {
+          mean_velocity,
+          peak_velocity,
+          rom_cm,
+          rep_duration_ms,
+          raw_peak_v: peak_v_raw,
+          raw_mean_v: mean_v_raw,
+          raw_rom: rom_raw,
+        });
+        return null;
+      }
+
       return {
         mean_velocity,
         peak_velocity,
         rom_cm,
         rep_duration_ms,
-        mean_power_w,
-        peak_power_w,
+        mean_power_w:
+          isFiniteRange(mean_power_w, 0, MAX_REASONABLE_POWER_W)
+            ? mean_power_w
+            : undefined,
+        peak_power_w:
+          isFiniteRange(peak_power_w, 0, MAX_REASONABLE_POWER_W)
+            ? peak_power_w
+            : undefined,
         timestamp: Date.now(),
         // Raw values for debugging
         raw_peak_v: peak_v_raw,

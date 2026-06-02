@@ -1623,3 +1623,28 @@ Remaining:
 
 - Wait for TestFlight processing in App Store Connect, usually 15-30 minutes.
 - Real-device check build `91`, especially session form-video toggle, split VL metrics, and long-session behavior.
+
+## 2026-06-03 (Codex crash triage)
+
+Scope: Investigate and harden the crash reported when entering Session mode after VBT connection.
+
+Actions:
+
+- Reviewed the recent `VL avg/last/min` and session form-video changes as the likely regression window.
+- Checked `AGENTS.md` and `docs/IMPROVEMENT_TRACKER.md` before editing.
+- Added runtime VBT payload normalization in `src/hooks/useSessionLogic.ts`.
+  - Incomplete, `NaN`, or out-of-range payloads are ignored before they reach live UI rendering, audio readouts, VL calculations, or auto-start logic.
+  - Power values are kept only when finite and within a reasonable range.
+- Added equivalent range guards in `src/services/BLEService.ts` so malformed native BLE packets are dropped immediately after parsing.
+- Recorded the issue as `2026-06-03-01` in `docs/IMPROVEMENT_TRACKER.md`.
+
+Results:
+
+- `pnpm -s check` passed.
+- Targeted VBT tests passed: 7 tests.
+- Full test suite passed: 34 tests passed, 1 skipped.
+
+Remaining:
+
+- Real-device verification: connect VBT, open Session mode, confirm no crash, then record at least one set.
+- If it still crashes, collect the iOS crash log or RepVelo diagnostic export immediately after restart because the next likely cause would be native BLE/camera interaction rather than JS value handling.
