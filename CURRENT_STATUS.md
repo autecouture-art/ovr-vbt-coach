@@ -3,7 +3,7 @@
 ## Canonical Workspace
 - Repo root: /Volumes/0RICON_APP/Developer/MyFiles/repvelocoach-git-sync-20260320/repo
 - Branch: main
-- HEAD at record time: 007e9e6 (`feat: add session form video overlay`)
+- HEAD at record time: current `chore: record TestFlight build 92` commit
 - Treat this repo as the only active source of truth.
 - Legacy folders such as `/Volumes/0RICON_APP/Developer/MyFiles/RepVeloCoach` and `/Volumes/0RICON_APP/Developer/MyFiles/ovr-vbt-coach-local` are reference/archive only unless explicitly proven newer.
 
@@ -11,18 +11,18 @@
 - App name: RepVelo VBT Coach
 - iOS bundle id: `com.autecouture.repvelocoach.hh`
 - Marketing version: `2.3.5`
-- Native iOS build number in `ios/RepVeloCoach/Info.plist`: `91`
-- Expo config build number in `app.config.ts`: `91`
-- Latest successful TestFlight upload: build `91` (uploaded 2026-06-02 05:07:45 JST)
+- Native iOS build number in `ios/RepVeloCoach/Info.plist`: `92`
+- Expo config build number in `app.config.ts`: `92`
+- Latest successful TestFlight upload: build `92` (uploaded 2026-06-03 12:45:26 JST)
 
 ## Build Number Status
-- `app.config.ts`, `ios/RepVeloCoach/Info.plist`, and `ios/RepVeloCoach.xcodeproj/project.pbxproj` are aligned at build `91`.
-- For the next release, bump to a value higher than `91` and keep all three sources synchronized.
+- `app.config.ts`, `ios/RepVeloCoach/Info.plist`, and `ios/RepVeloCoach.xcodeproj/project.pbxproj` are aligned at build `92`.
+- For the next release, bump to a value higher than `92` and keep all three sources synchronized.
 
 ## Current Working Tree
-- Working tree was clean immediately before the successful build `76` upload.
+- Working tree was clean immediately after recording the successful build `92` upload.
 
-## What Was Implemented Recently (Latest Build 89)
+## What Was Implemented Recently
 - **Phase 1 & 2 Improvements** (build 78):
   - VL warning toggle in settings
   - Volume control UI (25/50/75/100%)
@@ -51,6 +51,10 @@
 - **Build 91 Release**:
   - TestFlight rebuild containing the split VL metrics and session-screen form video toggle.
   - Fastlane now supports safer retry controls for low-parallel archives.
+- **Build 92 Release**:
+  - Hardened VBT/BLE payload handling to prevent crashes when opening Session mode after VBT connection.
+  - Confirmed external SSD volume was mounted and writable, but external-Xcode execution still reproduced `xcodebuild` `Bus error: 10`.
+  - TestFlight build succeeded by running the staged archive with an internal copy of Xcode via `REPVELO_XCODE_APP`.
 - Previous implementations:
   - Direct GLM mode with local API key
   - AI Coach error reporting improvements
@@ -82,8 +86,8 @@
 
 ## Validation Status
 - TypeScript check passed: `pnpm -s tsc --noEmit`
-- TestFlight upload succeeded for version `2.3.5` build `91`.
-- Build numbers are aligned across all three sources (app.config.ts, Info.plist, project.pbxproj) at `91`.
+- TestFlight upload succeeded for version `2.3.5` build `92`.
+- Build numbers are aligned across all three sources (app.config.ts, Info.plist, project.pbxproj) at `92`.
 - Real-device verification is still required for:
   - AI Coach live send success
   - Session detail appearing immediately after set completion
@@ -109,6 +113,15 @@
 - Command: `source ~/.zshrc && REPVELO_CLEAN=false REPVELO_EXTRA_XCARGS='-jobs 1 COMPILER_INDEX_STORE_ENABLE=NO' FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT=20 FASTLANE_XCODEBUILD_SETTINGS_RETRIES=6 bash scripts/deploy.sh`
 - Notes: external-volume builds repeatedly hit `xcodebuild` `Bus error: 10` with `getcwd` errors, so the repo was copied to `/Users/hoshinohideyuki/Developer/repvelo-testflight-staging` for the archive/upload. The exported IPA and dSYM were copied back to `ios/fastlane_export`. TestFlight processing may take 15-30 minutes.
 
+## Latest TestFlight Upload (2026-06-03)
+- Version: `2.3.5`
+- Build: `92`
+- Upload result: succeeded at 2026-06-03 12:45:26 JST
+- IPA: `ios/fastlane_export/RepVeloCoach.ipa`
+- dSYM: `ios/fastlane_export/RepVeloCoach.app.dSYM.zip`
+- Command: `source ~/.zshrc && REPVELO_XCODE_APP=/Users/hoshinohideyuki/Developer/Xcode-RepVelo.app REPVELO_CLEAN=false REPVELO_EXTRA_XCARGS='-jobs 1 COMPILER_INDEX_STORE_ENABLE=NO' FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT=20 FASTLANE_XCODEBUILD_SETTINGS_RETRIES=6 bash scripts/deploy.sh`
+- Notes: `/Volumes/0RICON_APP` was mounted read-write with sufficient free space, but `/Applications/Xcode.app` points to the external SSD and repeated archive attempts hit `xcodebuild` `Bus error: 10`. Copying Xcode to `/Users/hoshinohideyuki/Developer/Xcode-RepVelo.app` and using `REPVELO_XCODE_APP` allowed archive, IPA export, and App Store Connect upload to complete. TestFlight processing may take 15-30 minutes.
+
 ## Build And Upload
 Use the repo-local canonical path above. The agent-neutral release workflow is documented in:
 - `TESTFLIGHT_DEPLOYMENT.md`
@@ -120,6 +133,9 @@ Typical upload command:
 
 If the external `/Volumes/0RICON_APP` workspace hits `xcodebuild` `Bus error: 10` or `getcwd` errors, copy the repo to an internal staging folder and run:
 - `source ~/.zshrc && REPVELO_CLEAN=false REPVELO_EXTRA_XCARGS='-jobs 1 COMPILER_INDEX_STORE_ENABLE=NO' FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT=20 FASTLANE_XCODEBUILD_SETTINGS_RETRIES=6 bash scripts/deploy.sh`
+
+If `/Applications/Xcode.app` itself is a symlink to the external SSD and `Bus error: 10` continues from the internal staging folder, use an internal Xcode copy:
+- `source ~/.zshrc && REPVELO_XCODE_APP=/Users/hoshinohideyuki/Developer/Xcode-RepVelo.app REPVELO_CLEAN=false REPVELO_EXTRA_XCARGS='-jobs 1 COMPILER_INDEX_STORE_ENABLE=NO' FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT=20 FASTLANE_XCODEBUILD_SETTINGS_RETRIES=6 bash scripts/deploy.sh`
 
 Rules:
 - Bump `CFBundleVersion` in `ios/RepVeloCoach/Info.plist` before any new upload.
@@ -134,8 +150,9 @@ These are already enforced in `AGENTS.md`:
 - Record TestFlight build numbers and upload results.
 
 ## Recommended Next Steps
-1. Device-test build 91 focusing on:
+1. Device-test build 92 focusing on:
    - Long session behavior around 6+ sets and recovery after relaunch.
+   - VBT connection -> Session mode no-crash verification.
    - English canonical exercise migration for existing Katakana lift history.
    - VBT decision card readability during rest.
    - GPT copy/open flow.

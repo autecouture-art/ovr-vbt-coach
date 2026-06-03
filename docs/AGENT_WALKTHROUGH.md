@@ -1648,3 +1648,37 @@ Remaining:
 
 - Real-device verification: connect VBT, open Session mode, confirm no crash, then record at least one set.
 - If it still crashes, collect the iOS crash log or RepVelo diagnostic export immediately after restart because the next likely cause would be native BLE/camera interaction rather than JS value handling.
+
+## 2026-06-03 (Codex TestFlight build 92)
+
+Scope: Build and upload RepVeloCoach `2.3.5 (92)` to TestFlight after the VBT Session-mode crash fix.
+
+Actions:
+
+- Checked the external SSD state before continuing:
+  - `/Volumes/0RICON_APP` was mounted read-write and had enough free space.
+  - SMART status was unavailable through the USB enclosure.
+  - `/Applications/Xcode.app` was a symlink to `/Volumes/0RICON_APP/Xcode.app`.
+- Retried the staged release build from `/Users/hoshinohideyuki/Developer/repvelo-testflight-staging`.
+- Confirmed repeated `xcodebuild` `Bus error: 10` failures when using the external-SSD Xcode path.
+- Copied Xcode to `/Users/hoshinohideyuki/Developer/Xcode-RepVelo.app`.
+- Updated `scripts/deploy.sh` to support `REPVELO_XCODE_APP`, allowing the release script to use an explicit internal Xcode app without changing global Xcode selection.
+- Re-ran the build with:
+  - `REPVELO_XCODE_APP=/Users/hoshinohideyuki/Developer/Xcode-RepVelo.app`
+  - `REPVELO_CLEAN=false`
+  - `REPVELO_EXTRA_XCARGS='-jobs 1 COMPILER_INDEX_STORE_ENABLE=NO'`
+- Copied the successful IPA and dSYM back to `ios/fastlane_export`.
+
+Results:
+
+- Archive succeeded.
+- IPA export succeeded.
+- App Store Connect upload succeeded at 2026-06-03 12:45:26 JST.
+- Uploaded build: `2.3.5 (92)`.
+- IPA: `ios/fastlane_export/RepVeloCoach.ipa`.
+- dSYM: `ios/fastlane_export/RepVeloCoach.app.dSYM.zip`.
+
+Remaining:
+
+- Wait for TestFlight processing in App Store Connect, usually 15-30 minutes.
+- Real-device check build `92`, especially VBT connection -> Session mode, long-session behavior, and form video overlay.
