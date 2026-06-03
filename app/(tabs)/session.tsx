@@ -37,6 +37,9 @@ import ExerciseService from "@/src/services/ExerciseService";
 import SessionRecoveryService from "@/src/services/SessionRecoveryService";
 import VideoRecordingService from "@/src/services/VideoRecordingService";
 import LiveShareService from "@/src/services/LiveShareService";
+import CrashReportService, {
+  type VBTScreenCrashContext,
+} from "@/src/services/CrashReportService";
 import { saveAppSettings } from "@/src/services/AppSettingsService";
 import SessionDecisionService, {
   type NextSetPurpose,
@@ -405,6 +408,9 @@ export default function SessionScreen() {
   const [recentExerciseHistory, setRecentExerciseHistory] = useState<SetData[]>(
     [],
   );
+  const [previousVbtCrashContext, setPreviousVbtCrashContext] =
+    useState<VBTScreenCrashContext | null>(null);
+  const lastCrashContextSavedAtRef = useRef(0);
   const [lvpProfile, setLvpProfile] = useState<LVPData | null>(null);
   const targetVelocityRange = useMemo<[number, number] | null>(() => {
     const mvt = currentExercise?.mvt ?? lvpProfile?.mvt ?? null;
@@ -434,6 +440,86 @@ export default function SessionScreen() {
     (!settings.enable_session_lightweight_mode &&
       settings.session_display_session_history) ||
     repDetailVisible;
+
+  useEffect(() => {
+    let mounted = true;
+    void CrashReportService.getLastVBTScreenContext().then((snapshot) => {
+      if (mounted) {
+        setPreviousVbtCrashContext(snapshot);
+      }
+    });
+
+    return () => {
+      mounted = false;
+      void CrashReportService.clearVBTScreenContext();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isConnected && !isSessionActive && !currentSession?.session_id) {
+      return;
+    }
+
+    const now = Date.now();
+    if (now - lastCrashContextSavedAtRef.current < 1500) {
+      return;
+    }
+    lastCrashContextSavedAtRef.current = now;
+
+    const latestCompletedSet =
+      setHistory.length > 0 ? setHistory[setHistory.length - 1] : null;
+
+    void CrashReportService.saveVBTScreenContext({
+      session_id: currentSession?.session_id ?? null,
+      is_session_active: isSessionActive,
+      is_paused: isPaused,
+      pause_reason: pauseReason ?? null,
+      is_connected: isConnected,
+      sensor_input_muted: sensorInputMuted,
+      current_lift: currentLift,
+      current_exercise_name: currentExercise?.name ?? null,
+      current_load: currentLoad,
+      current_reps: currentReps,
+      current_set_index: currentSetIndex,
+      completed_set_count: setHistory.length,
+      current_rep_count: repHistory.length,
+      current_heart_rate: currentHeartRate,
+      live_data: liveData,
+      latest_completed_set: latestCompletedSet,
+      settings_snapshot: {
+        lightweight_mode: Boolean(settings.enable_session_lightweight_mode),
+        session_history: Boolean(settings.session_display_session_history),
+        velocity_chart: Boolean(settings.session_display_velocity_chart),
+        recent_history: Boolean(settings.session_display_recent_history),
+        same_load_history: Boolean(settings.session_display_same_load_history),
+        form_video: Boolean(settings.enable_video_recording),
+      },
+    }).catch((error) => {
+      console.warn("[SessionScreen] Failed to save VBT crash context:", error);
+    });
+  }, [
+    currentExercise?.name,
+    currentHeartRate,
+    currentLift,
+    currentLoad,
+    currentReps,
+    currentSession?.session_id,
+    currentSetIndex,
+    isConnected,
+    isPaused,
+    isSessionActive,
+    liveData,
+    pauseReason,
+    repHistory.length,
+    sensorInputMuted,
+    setHistory,
+    settings.enable_session_lightweight_mode,
+    settings.enable_video_recording,
+    settings.session_display_recent_history,
+    settings.session_display_same_load_history,
+    settings.session_display_session_history,
+    settings.session_display_velocity_chart,
+  ]);
 
   const refreshSessionAllReps = useCallback(async () => {
     if (!currentSession?.session_id) {
@@ -1863,6 +1949,49 @@ export default function SessionScreen() {
     }
   };
 
+  const handleShareVBTScreenCrashReport = async () => {
+    try {
+      const snapshot =
+        previousVbtCrashContext ??
+        (await CrashReportService.getLastVBTScreenContext());
+      if (!snapshot) {
+        Alert.alert(
+          "クラッシュ記録なし",
+          "前回のVBT接続クラッシュ疑いスナップショットは見つかりませんでした。現在の診断コピーを使ってください。",
+        );
+        return;
+      }
+
+      const report = CrashReportService.buildVBTCrashMarkdown(snapshot);
+      await Clipboard.setStringAsync(report);
+
+      const file = await CrashReportService.writeVBTCrashReportFile(report);
+      const canShare = await Sharing.isAvailableAsync();
+      if (canShare) {
+        await Sharing.shareAsync(file.uri, {
+          mimeType: "text/markdown",
+          UTI: "net.daringfireball.markdown",
+          dialogTitle: "GmailでCodexへクラッシュ状況を共有",
+        });
+      }
+
+      Alert.alert(
+        canShare ? "クラッシュ報告を共有しました" : "クラッシュ報告をコピーしました",
+        canShare
+          ? "共有先でGmailを選ぶと、Codexへ貼りやすいクラッシュ状況レポートを送れます。本文もクリップボードにコピー済みです。"
+          : "共有シートが使えないため、本文をクリップボードにコピーしました。",
+      );
+      setPreviousVbtCrashContext(null);
+      await CrashReportService.clearVBTScreenContext();
+    } catch (error) {
+      console.error("[SessionScreen] Failed to share VBT crash report:", error);
+      Alert.alert(
+        "共有失敗",
+        "クラッシュ報告の作成に失敗しました。現在の診断コピーを試してください。",
+      );
+    }
+  };
+
   const isMeasuring = isSessionActive && !isPaused;
 
   // セッション終了 & DBへの集計保存
@@ -2226,10 +2355,32 @@ export default function SessionScreen() {
             </TouchableOpacity>
           </View>
 
-          <View style={styles.diagnosticBar}>
-            <Text style={styles.diagnosticBarText}>
-              固まった/再起動後の原因調査
-            </Text>
+          <View
+            style={[
+              styles.diagnosticBar,
+              previousVbtCrashContext ? styles.diagnosticBarWarning : null,
+            ]}
+          >
+            <View style={styles.diagnosticTextGroup}>
+              <Text style={styles.diagnosticBarText}>
+                {previousVbtCrashContext
+                  ? "前回VBT接続クラッシュ疑い"
+                  : "固まった/再起動後の原因調査"}
+              </Text>
+              {previousVbtCrashContext ? (
+                <Text style={styles.diagnosticBarSubText}>
+                  Gmail共有でCodexへ状況を送れます
+                </Text>
+              ) : null}
+            </View>
+            {previousVbtCrashContext ? (
+              <TouchableOpacity
+                style={[styles.diagnosticButton, styles.diagnosticShareButton]}
+                onPress={() => void handleShareVBTScreenCrashReport()}
+              >
+                <Text style={styles.diagnosticShareButtonText}>Gmail共有</Text>
+              </TouchableOpacity>
+            ) : null}
             <TouchableOpacity
               style={styles.diagnosticButton}
               onPress={() => void handleCopyFreezeDiagnostic()}
@@ -4997,10 +5148,24 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: 10,
   },
+  diagnosticBarWarning: {
+    borderColor: GarageTheme.warning,
+    backgroundColor: "rgba(245, 158, 11, 0.12)",
+  },
+  diagnosticTextGroup: {
+    flex: 1,
+    gap: 3,
+  },
   diagnosticBarText: {
     color: GarageTheme.textSubtle,
     fontSize: 12,
     fontWeight: "700",
+  },
+  diagnosticBarSubText: {
+    color: GarageTheme.warning,
+    fontSize: 11,
+    fontWeight: "700",
+    lineHeight: 15,
     flex: 1,
   },
   diagnosticButton: {
@@ -5011,8 +5176,17 @@ const styles = StyleSheet.create({
     borderColor: GarageTheme.warning,
     backgroundColor: GarageTheme.panel,
   },
+  diagnosticShareButton: {
+    borderColor: GarageTheme.accent,
+    backgroundColor: "rgba(59, 130, 246, 0.14)",
+  },
   diagnosticButtonText: {
     color: GarageTheme.warning,
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  diagnosticShareButtonText: {
+    color: GarageTheme.accent,
     fontSize: 12,
     fontWeight: "800",
   },

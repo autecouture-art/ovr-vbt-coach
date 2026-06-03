@@ -1682,3 +1682,32 @@ Remaining:
 
 - Wait for TestFlight processing in App Store Connect, usually 15-30 minutes.
 - Real-device check build `92`, especially VBT connection -> Session mode, long-session behavior, and form video overlay.
+
+## 2026-06-04 (Codex VBT crash diagnostics)
+
+Scope: Add a user-facing path to share VBT connection crash context with Codex through Gmail/share sheet after build `92` still crashed on real device.
+
+Actions:
+
+- Marked `2026-06-03-01` back to `needs_revision` because build `92` still crashes when VBT is connected.
+- Added `src/services/CrashReportService.ts`.
+  - Saves a compact VBT/session screen context snapshot to AsyncStorage while the session screen is active.
+  - Captures connection state, muted state, current lift/load/reps/set, live VBT data, latest completed set, heart rate, and key display/video settings.
+  - Builds a Markdown crash report intended for Codex/Gmail sharing.
+  - Writes the report as a local Markdown file.
+- Updated `app/(tabs)/session.tsx`.
+  - Loads the previous VBT screen snapshot on mount.
+  - Shows `前回VBT接続クラッシュ疑い` when a prior session-screen context remains after relaunch.
+  - Adds a `Gmail共有` action that copies the report and opens the share sheet so Gmail can be selected.
+  - Keeps the existing `診断コピー` path.
+- Added tracker item `2026-06-04-01`.
+
+Results:
+
+- `pnpm -s check` passed.
+- Targeted VBT tests passed: 7 tests.
+
+Remaining:
+
+- Build/upload a new TestFlight build before this diagnostics path can be used on the iPhone.
+- After the next crash, reopen the app, tap `Gmail共有`, choose Gmail, and send/paste the Markdown report back to Codex.

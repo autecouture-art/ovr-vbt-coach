@@ -1,0 +1,232 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as FileSystem from "expo-file-system/legacy";
+
+import type { RepVeloData, SetData } from "@/src/types/index";
+
+const VBT_SCREEN_CONTEXT_KEY = "@repvelocoach_vbt_screen_crash_context_v1";
+const VBT_CONTEXT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+export type VBTScreenCrashContext = {
+  schema: "repvelocoach.vbt-screen-crash-context.v1";
+  saved_at: string;
+  reason: "vbt_session_screen_active";
+  session_id: string | null;
+  is_session_active: boolean;
+  is_paused: boolean;
+  pause_reason: string | null;
+  is_connected: boolean;
+  sensor_input_muted: boolean;
+  current_lift: string | null;
+  current_exercise_name: string | null;
+  current_load: number;
+  current_reps: number;
+  current_set_index: number;
+  completed_set_count: number;
+  current_rep_count: number;
+  current_heart_rate: number | null;
+  live_data: Partial<RepVeloData> | null;
+  latest_completed_set: Partial<SetData> | null;
+  settings_snapshot: {
+    lightweight_mode: boolean;
+    session_history: boolean;
+    velocity_chart: boolean;
+    recent_history: boolean;
+    same_load_history: boolean;
+    form_video: boolean;
+  };
+};
+
+export type SaveVBTScreenCrashContextInput = Omit<
+  VBTScreenCrashContext,
+  "schema" | "saved_at" | "reason"
+>;
+
+const safeNumber = (value: unknown): number | null =>
+  typeof value === "number" && Number.isFinite(value) ? value : null;
+
+const compactLiveData = (
+  liveData: RepVeloData | null | undefined,
+): Partial<RepVeloData> | null => {
+  if (!liveData) return null;
+  return {
+    mean_velocity: safeNumber(liveData.mean_velocity) ?? undefined,
+    peak_velocity: safeNumber(liveData.peak_velocity) ?? undefined,
+    rom_cm: safeNumber(liveData.rom_cm) ?? undefined,
+    mean_power_w: safeNumber(liveData.mean_power_w) ?? undefined,
+    peak_power_w: safeNumber(liveData.peak_power_w) ?? undefined,
+    rep_duration_ms: safeNumber(liveData.rep_duration_ms) ?? undefined,
+    timestamp: safeNumber(liveData.timestamp) ?? undefined,
+  };
+};
+
+const compactSet = (
+  setData: SetData | null | undefined,
+): Partial<SetData> | null => {
+  if (!setData) return null;
+  return {
+    session_id: setData.session_id,
+    lift: setData.lift,
+    set_index: setData.set_index,
+    load_kg: setData.load_kg,
+    reps: setData.reps,
+    avg_velocity: setData.avg_velocity,
+    velocity_loss: setData.velocity_loss,
+    velocity_loss_avg: setData.velocity_loss_avg,
+    velocity_loss_last: setData.velocity_loss_last,
+    velocity_loss_min: setData.velocity_loss_min,
+    avg_power_w: setData.avg_power_w,
+    start_timestamp: setData.start_timestamp,
+    end_timestamp: setData.end_timestamp,
+    timestamp: setData.timestamp,
+  };
+};
+
+function formatValue(value: unknown): string {
+  if (value == null) return "-";
+  if (typeof value === "number") return Number.isFinite(value) ? `${value}` : "invalid";
+  return `${value}`;
+}
+
+function buildFileName(date: Date): string {
+  const stamp = date
+    .toISOString()
+    .replace(/[-:]/g, "")
+    .replace(/\.\d{3}Z$/, "Z");
+  return `repvelocoach-vbt-crash-report-${stamp}.md`;
+}
+
+class CrashReportService {
+  async saveVBTScreenContext(
+    input: SaveVBTScreenCrashContextInput,
+  ): Promise<void> {
+    const payload: VBTScreenCrashContext = {
+      schema: "repvelocoach.vbt-screen-crash-context.v1",
+      saved_at: new Date().toISOString(),
+      reason: "vbt_session_screen_active",
+      ...input,
+      live_data: compactLiveData(input.live_data as RepVeloData | null),
+      latest_completed_set: compactSet(input.latest_completed_set as SetData | null),
+    };
+    await AsyncStorage.setItem(VBT_SCREEN_CONTEXT_KEY, JSON.stringify(payload));
+  }
+
+  async getLastVBTScreenContext(): Promise<VBTScreenCrashContext | null> {
+    const raw = await AsyncStorage.getItem(VBT_SCREEN_CONTEXT_KEY);
+    if (!raw) return null;
+
+    try {
+      const parsed = JSON.parse(raw) as VBTScreenCrashContext;
+      if (parsed.schema !== "repvelocoach.vbt-screen-crash-context.v1") {
+        return null;
+      }
+
+      const savedAt = new Date(parsed.saved_at).getTime();
+      if (!Number.isFinite(savedAt) || Date.now() - savedAt > VBT_CONTEXT_MAX_AGE_MS) {
+        await this.clearVBTScreenContext();
+        return null;
+      }
+
+      return parsed;
+    } catch {
+      return null;
+    }
+  }
+
+  async clearVBTScreenContext(): Promise<void> {
+    await AsyncStorage.removeItem(VBT_SCREEN_CONTEXT_KEY);
+  }
+
+  buildVBTCrashMarkdown(
+    snapshot: VBTScreenCrashContext,
+    currentDiagnosticMarkdown?: string,
+  ): string {
+    const liveData = snapshot.live_data;
+    const latestSet = snapshot.latest_completed_set;
+
+    return [
+      "# RepVeloCoach VBT接続クラッシュ状況報告",
+      "",
+      "このままCodexへ貼る、またはGmailで共有してください。VBT接続後にセッション画面でクラッシュした可能性がある再起動後レポートです。",
+      "",
+      "## 前回クラッシュ疑いスナップショット",
+      `- 保存時刻: ${snapshot.saved_at}`,
+      `- reason: ${snapshot.reason}`,
+      `- session_id: ${snapshot.session_id ?? "-"}`,
+      `- セッションActive: ${snapshot.is_session_active ? "yes" : "no"}`,
+      `- Pause状態: ${snapshot.is_paused ? `yes (${snapshot.pause_reason ?? "-"})` : "no"}`,
+      `- VBT接続: ${snapshot.is_connected ? "yes" : "no"}`,
+      `- センサー入力: ${snapshot.sensor_input_muted ? "OFF" : "ON"}`,
+      `- 現在種目: ${snapshot.current_lift ?? snapshot.current_exercise_name ?? "-"}`,
+      `- 現在重量: ${snapshot.current_load} kg`,
+      `- 予定reps: ${snapshot.current_reps}`,
+      `- 現在セット番号: ${snapshot.current_set_index}`,
+      `- 完了セット数: ${snapshot.completed_set_count}`,
+      `- 現在セットrep数: ${snapshot.current_rep_count}`,
+      `- 現在心拍: ${snapshot.current_heart_rate ?? "-"} bpm`,
+      "",
+      "## 直前Live VBTデータ",
+      `- mean_velocity: ${formatValue(liveData?.mean_velocity)}`,
+      `- peak_velocity: ${formatValue(liveData?.peak_velocity)}`,
+      `- ROM: ${formatValue(liveData?.rom_cm)} cm`,
+      `- mean_power: ${formatValue(liveData?.mean_power_w)} W`,
+      `- peak_power: ${formatValue(liveData?.peak_power_w)} W`,
+      `- rep_duration_ms: ${formatValue(liveData?.rep_duration_ms)}`,
+      `- timestamp: ${formatValue(liveData?.timestamp)}`,
+      "",
+      "## 直近完了セット",
+      `- session_id: ${latestSet?.session_id ?? "-"}`,
+      `- lift: ${latestSet?.lift ?? "-"}`,
+      `- set_index: ${formatValue(latestSet?.set_index)}`,
+      `- load_kg: ${formatValue(latestSet?.load_kg)}`,
+      `- reps: ${formatValue(latestSet?.reps)}`,
+      `- avg_velocity: ${formatValue(latestSet?.avg_velocity)}`,
+      `- VL avg/last/min: ${formatValue(latestSet?.velocity_loss_avg ?? latestSet?.velocity_loss)} / ${formatValue(latestSet?.velocity_loss_last ?? latestSet?.velocity_loss)} / ${formatValue(latestSet?.velocity_loss_min ?? latestSet?.velocity_loss)}%`,
+      `- avg_power_w: ${formatValue(latestSet?.avg_power_w)}`,
+      `- start: ${latestSet?.start_timestamp ?? "-"}`,
+      `- end: ${latestSet?.end_timestamp ?? latestSet?.timestamp ?? "-"}`,
+      "",
+      "## 表示/設定状態",
+      `- 軽量モード: ${snapshot.settings_snapshot.lightweight_mode ? "ON" : "OFF"}`,
+      `- セッション履歴: ${snapshot.settings_snapshot.session_history ? "ON" : "OFF"}`,
+      `- 速度チャート: ${snapshot.settings_snapshot.velocity_chart ? "ON" : "OFF"}`,
+      `- 直近履歴: ${snapshot.settings_snapshot.recent_history ? "ON" : "OFF"}`,
+      `- 同重量履歴: ${snapshot.settings_snapshot.same_load_history ? "ON" : "OFF"}`,
+      `- フォーム動画: ${snapshot.settings_snapshot.form_video ? "ON" : "OFF"}`,
+      "",
+      "## Codexに見てほしい観点",
+      "- VBT接続直後、Session画面へ入った時点でnative BLE側またはJS側の例外が出ていないか。",
+      "- live_dataにNaN/undefined/極端値が残っていないか。",
+      "- フォーム動画ON時にBLE/カメラ/音声の組み合わせで落ちていないか。",
+      "- セッション復旧スナップショット、DBセット数、storeセット数にズレがないか。",
+      currentDiagnosticMarkdown
+        ? ["", "## 再起動後の現在診断", currentDiagnosticMarkdown].join("\n")
+        : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+  }
+
+  async writeVBTCrashReportFile(markdown: string): Promise<{
+    fileName: string;
+    uri: string;
+    bytes: number;
+  }> {
+    if (!FileSystem.documentDirectory) {
+      throw new Error("File system document directory is not available.");
+    }
+
+    const fileName = buildFileName(new Date());
+    const uri = `${FileSystem.documentDirectory}${fileName}`;
+    await FileSystem.writeAsStringAsync(uri, markdown, {
+      encoding: FileSystem.EncodingType.UTF8,
+    });
+
+    return {
+      fileName,
+      uri,
+      bytes: markdown.length,
+    };
+  }
+}
+
+export default new CrashReportService();
