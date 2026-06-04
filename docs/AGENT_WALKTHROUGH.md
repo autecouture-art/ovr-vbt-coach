@@ -1805,3 +1805,28 @@ Remaining:
 - Wait for TestFlight processing in App Store Connect, usually 15-30 minutes.
 - Install build `94` on the iPhone and test tapping Session mode.
 - If pressing Session still crashes, relaunch the app and use the Home-screen `前回セッションモードでクラッシュ疑い` card -> `Gmail共有` to share the generated Markdown report.
+
+## 2026-06-04 (Codex crash report body sharing)
+
+Scope: Fix the follow-up diagnostics gap where the user successfully sent a crash report through Gmail, but Codex could not read the Markdown attachment content through the Gmail connector.
+
+Actions:
+
+- Confirmed Gmail received `repvelocoach-vbt-crash-report-20260604T031315Z`.
+- Confirmed the email body was empty and the report was only attached as `text/x-markdown`.
+- Gmail connector could not read that attachment MIME type, and Chrome extension access was unavailable in this environment.
+- Updated the Home crash report card:
+  - Renamed the existing file-based action to `添付共有`.
+  - Added `本文共有` using React Native `Share.share({ message })`.
+  - Stopped auto-clearing the crash context after sharing so failed/empty sends can be retried.
+- Updated the Session diagnostic bar with the same `添付共有` / `本文共有` split and no auto-clear after share.
+
+Results:
+
+- `pnpm -s check` passed.
+- `pnpm -s lint` passed.
+
+Remaining:
+
+- Build/upload a new TestFlight build before the `本文共有` path is available on the iPhone.
+- Current Gmail attachment content is still unreadable from Codex through the connector; ask the user to resend via `本文共有` after the new build, or paste the report text directly.

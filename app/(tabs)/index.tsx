@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Platform,
+  Share,
   ScrollView,
   StyleSheet,
   Text,
@@ -217,17 +218,25 @@ export default function HomeScreen() {
     router.navigate('/(tabs)/session');
   };
 
+  const getVBTScreenCrashReport = async (): Promise<string | null> => {
+    const snapshot =
+      previousVbtCrashContext ??
+      (await CrashReportService.getLastVBTScreenContext());
+    if (!snapshot) {
+      Alert.alert('クラッシュ記録なし', '共有できるクラッシュ疑い記録がありません。');
+      return null;
+    }
+
+    return CrashReportService.buildVBTCrashMarkdown(snapshot);
+  };
+
   const handleShareVBTScreenCrashReport = async () => {
     try {
-      const snapshot =
-        previousVbtCrashContext ??
-        (await CrashReportService.getLastVBTScreenContext());
-      if (!snapshot) {
-        Alert.alert('クラッシュ記録なし', '共有できるクラッシュ疑い記録がありません。');
+      const report = await getVBTScreenCrashReport();
+      if (!report) {
         return;
       }
 
-      const report = CrashReportService.buildVBTCrashMarkdown(snapshot);
       await Clipboard.setStringAsync(report);
 
       const file = await CrashReportService.writeVBTCrashReportFile(report);
@@ -243,14 +252,34 @@ export default function HomeScreen() {
       Alert.alert(
         canShare ? 'クラッシュ報告を共有しました' : 'クラッシュ報告をコピーしました',
         canShare
-          ? '共有先でGmailを選べます。本文もクリップボードにコピー済みです。'
+          ? '共有先でGmailを選べます。本文もクリップボードにコピー済みです。記録はクリアするまで残します。'
           : '共有シートが使えないため、本文をクリップボードにコピーしました。',
       );
-      setPreviousVbtCrashContext(null);
-      await CrashReportService.clearVBTScreenContext();
     } catch (error) {
       console.error('[HomeScreen] Failed to share VBT crash report:', error);
       Alert.alert('共有失敗', 'クラッシュ報告の作成に失敗しました。');
+    }
+  };
+
+  const handleShareVBTScreenCrashReportText = async () => {
+    try {
+      const report = await getVBTScreenCrashReport();
+      if (!report) {
+        return;
+      }
+
+      await Clipboard.setStringAsync(report);
+      await Share.share({
+        title: 'RepVeloCoach VBT crash report',
+        message: report,
+      });
+      Alert.alert(
+        '本文共有を開きました',
+        'Gmailを選ぶと本文として送れます。記録はクリアするまで残します。',
+      );
+    } catch (error) {
+      console.error('[HomeScreen] Failed to share VBT crash report text:', error);
+      Alert.alert('本文共有失敗', 'クラッシュ報告本文の共有に失敗しました。');
     }
   };
 
@@ -321,7 +350,13 @@ export default function HomeScreen() {
               style={[styles.crashReportButton, styles.crashReportButtonPrimary]}
               onPress={() => void handleShareVBTScreenCrashReport()}
             >
-              <Text style={styles.crashReportButtonTextPrimary}>Gmail共有</Text>
+              <Text style={styles.crashReportButtonTextPrimary}>添付共有</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.crashReportButton, styles.crashReportButtonPrimary]}
+              onPress={() => void handleShareVBTScreenCrashReportText()}
+            >
+              <Text style={styles.crashReportButtonTextPrimary}>本文共有</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.crashReportButton}
@@ -651,11 +686,13 @@ const styles = StyleSheet.create({
   },
   crashReportActions: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 10,
     marginTop: 14,
   },
   crashReportButton: {
     flex: 1,
+    minWidth: 86,
     minHeight: 42,
     borderRadius: 14,
     alignItems: 'center',

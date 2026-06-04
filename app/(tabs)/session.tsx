@@ -20,6 +20,7 @@ import {
   TextInput,
   Alert,
   AppState,
+  Share,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNavigation, useRouter } from "expo-router";
@@ -1949,20 +1950,28 @@ export default function SessionScreen() {
     }
   };
 
-  const handleShareVBTScreenCrashReport = async () => {
-    try {
-      const snapshot =
+  const getVBTScreenCrashReport = async (): Promise<string | null> => {
+    const snapshot =
         previousVbtCrashContext ??
         (await CrashReportService.getLastVBTScreenContext());
-      if (!snapshot) {
-        Alert.alert(
-          "クラッシュ記録なし",
-          "前回のVBT接続クラッシュ疑いスナップショットは見つかりませんでした。現在の診断コピーを使ってください。",
-        );
+    if (!snapshot) {
+      Alert.alert(
+        "クラッシュ記録なし",
+        "前回のVBT接続クラッシュ疑いスナップショットは見つかりませんでした。現在の診断コピーを使ってください。",
+      );
+      return null;
+    }
+
+    return CrashReportService.buildVBTCrashMarkdown(snapshot);
+  };
+
+  const handleShareVBTScreenCrashReport = async () => {
+    try {
+      const report = await getVBTScreenCrashReport();
+      if (!report) {
         return;
       }
 
-      const report = CrashReportService.buildVBTCrashMarkdown(snapshot);
       await Clipboard.setStringAsync(report);
 
       const file = await CrashReportService.writeVBTCrashReportFile(report);
@@ -1978,16 +1987,39 @@ export default function SessionScreen() {
       Alert.alert(
         canShare ? "クラッシュ報告を共有しました" : "クラッシュ報告をコピーしました",
         canShare
-          ? "共有先でGmailを選ぶと、Codexへ貼りやすいクラッシュ状況レポートを送れます。本文もクリップボードにコピー済みです。"
+          ? "共有先でGmailを選ぶと、Codexへ貼りやすいクラッシュ状況レポートを送れます。本文もクリップボードにコピー済みです。記録はクリアするまで残します。"
           : "共有シートが使えないため、本文をクリップボードにコピーしました。",
       );
-      setPreviousVbtCrashContext(null);
-      await CrashReportService.clearVBTScreenContext();
     } catch (error) {
       console.error("[SessionScreen] Failed to share VBT crash report:", error);
       Alert.alert(
         "共有失敗",
         "クラッシュ報告の作成に失敗しました。現在の診断コピーを試してください。",
+      );
+    }
+  };
+
+  const handleShareVBTScreenCrashReportText = async () => {
+    try {
+      const report = await getVBTScreenCrashReport();
+      if (!report) {
+        return;
+      }
+
+      await Clipboard.setStringAsync(report);
+      await Share.share({
+        title: "RepVeloCoach VBT crash report",
+        message: report,
+      });
+      Alert.alert(
+        "本文共有を開きました",
+        "Gmailを選ぶと本文として送れます。記録はクリアするまで残します。",
+      );
+    } catch (error) {
+      console.error("[SessionScreen] Failed to share VBT crash report text:", error);
+      Alert.alert(
+        "本文共有失敗",
+        "クラッシュ報告本文の共有に失敗しました。現在の診断コピーを試してください。",
       );
     }
   };
@@ -2378,7 +2410,15 @@ export default function SessionScreen() {
                 style={[styles.diagnosticButton, styles.diagnosticShareButton]}
                 onPress={() => void handleShareVBTScreenCrashReport()}
               >
-                <Text style={styles.diagnosticShareButtonText}>Gmail共有</Text>
+                <Text style={styles.diagnosticShareButtonText}>添付共有</Text>
+              </TouchableOpacity>
+            ) : null}
+            {previousVbtCrashContext ? (
+              <TouchableOpacity
+                style={[styles.diagnosticButton, styles.diagnosticShareButton]}
+                onPress={() => void handleShareVBTScreenCrashReportText()}
+              >
+                <Text style={styles.diagnosticShareButtonText}>本文共有</Text>
               </TouchableOpacity>
             ) : null}
             <TouchableOpacity
