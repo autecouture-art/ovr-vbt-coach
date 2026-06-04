@@ -2041,3 +2041,46 @@ Remaining:
 
 - This should reduce the likely mount-time BLE race, but the real fix still needs TestFlight/device validation because Simulator cannot validate real BLE sensor behavior.
 - If it still crashes, the next Gmail report should identify the last successful stage, narrowing the crash to import, render entry, BLE setup start, callback registration, or BLE status check.
+
+## 2026-06-04 (Codex TestFlight build 97)
+
+Scope: Ship the Gmail crash follow-up instrumentation and mount-time BLE delay to TestFlight.
+
+Actions:
+
+- Bumped iOS build number from `96` to `97` in:
+  - `app.config.ts`
+  - `ios/RepVeloCoach/Info.plist`
+  - `ios/RepVeloCoach.xcodeproj/project.pbxproj`
+- Committed the crash-stage marker and BLE mount-delay fix as:
+  - `3b35e0e fix: trace and delay session BLE mount`
+- Ran TestFlight upload with the internal Xcode / low-parallel archive settings:
+  - `REPVELO_XCODE_APP=/Users/hoshinohideyuki/Developer/Xcode-RepVelo.app`
+  - `REPVELO_CLEAN=false`
+  - `REPVELO_EXTRA_XCARGS='-jobs 1 COMPILER_INDEX_STORE_ENABLE=NO'`
+  - `bash ~/.codex/skills/testflight-upload/scripts/deploy.sh`
+
+Validation:
+
+- `pnpm check` passed.
+- `pnpm lint` passed.
+- `pnpm test` passed: 34 tests passed, 1 skipped.
+- `git diff --check` passed.
+- Archive succeeded.
+- IPA export succeeded.
+- App Store Connect upload succeeded at 2026-06-04 19:36:28 JST.
+
+Results:
+
+- Uploaded build: `2.3.5 (97)`.
+- IPA: `ios/fastlane_export/RepVeloCoach.ipa`.
+- dSYM: `ios/fastlane_export/RepVeloCoach.app.dSYM.zip`.
+
+Remaining:
+
+- Wait for TestFlight processing in App Store Connect, usually 15-30 minutes.
+- Install build `97` on the iPhone.
+- Test with VBT connected:
+  - Tap Session tab.
+  - Tap `セッション本体を開く`.
+  - If it still crashes, relaunch and send the new crash report by Gmail. The report should now include the last successful stage marker.
