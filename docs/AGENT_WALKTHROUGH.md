@@ -2130,3 +2130,52 @@ Remaining:
 - Install build `98` on the iPhone.
 - Test Session tab and `セッション本体を開く` before using the form video button.
 - If Session opens but form video crashes when tapped, isolate `expo-camera` separately from the Session screen path.
+
+## 2026-06-04 (Codex TestFlight build 99)
+
+Scope: Add a tomorrow-training fallback so workouts can still be recorded even if the full Session screen remains unstable on device.
+
+Actions:
+
+- Added `EmergencySessionLogScreen`, a lightweight fallback that avoids SQLite, BLE, camera, HealthKit, and the full `SessionScreen` import path.
+- The fallback stores sets in AsyncStorage under `repvelocoach.emergency_session_log.v1`.
+- Added fields for lift, load kg, reps, RPE, and note.
+- Added set count, total volume, delete latest, clear all, and copy/share Markdown output.
+- Added a `緊急記録モード` button under the guarded Session entry screen.
+- Lazy-loaded the emergency fallback from `app/(tabs)/session.tsx` so it does not increase normal startup risk.
+- Bumped iOS build number from `98` to `99`.
+- Committed the fallback as:
+  - `6d6148c feat: add emergency session logging fallback`
+
+Validation:
+
+- `pnpm check` passed.
+- `pnpm lint` passed.
+- `pnpm test` passed: 34 tests passed, 1 skipped.
+- `git diff --check` passed.
+- Archive succeeded.
+- IPA export succeeded.
+- The first App Store Connect upload printed a transient TLS retry but also printed `UPLOAD SUCCEEDED with no errors` at 2026-06-04 21:46:36 JST.
+- A second `upload_only` attempt was rejected with duplicate build `99`, confirming build `99` had already reached App Store Connect.
+
+Results:
+
+- Uploaded build: `2.3.5 (99)`.
+- IPA: `ios/fastlane_export/RepVeloCoach.ipa`.
+- dSYM: `ios/fastlane_export/RepVeloCoach.app.dSYM.zip`.
+
+Tomorrow training usage:
+
+- Install build `99` from TestFlight after processing completes.
+- First try the normal path:
+  - Session tab.
+  - `セッション本体を開く`.
+- If it crashes or feels risky, reopen the app and use:
+  - Session tab.
+  - `緊急記録モード`.
+- Emergency mode records lift, kg, reps, RPE, and note, then can copy/share a Markdown log after training.
+
+Remaining:
+
+- The emergency fallback is intentionally minimal and does not replace VBT analysis.
+- Continue diagnosing the full `SessionScreen` import/mount path using the Gmail crash report mechanism.
