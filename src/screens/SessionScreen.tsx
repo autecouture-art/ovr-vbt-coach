@@ -10,6 +10,7 @@ import React, {
   useCallback,
   useMemo,
   useRef,
+  Suspense,
 } from "react";
 import {
   View,
@@ -51,7 +52,6 @@ import { RepDetailModal } from "@/src/components/RepDetailModal";
 import { SetEditModal } from "@/src/components/SetEditModal";
 import { RepVelocityChart } from "@/src/components/RepVelocityChart";
 import { ManualRepModal } from "@/src/components/ManualRepModal";
-import { FormVideoOverlay } from "@/src/components/FormVideoOverlay";
 import { calculateWarmupSteps, isBig3 } from "@/src/utils/WarmupLogic";
 import {
   formatLoadKg,
@@ -170,6 +170,23 @@ const NEXT_SET_PURPOSE_OPTIONS: {
   { value: "lvp_building", label: "LVP作成優先", shortLabel: "LVP" },
   { value: "hypertrophy_volume", label: "筋肥大ボリューム優先", shortLabel: "量" },
 ];
+
+type LazyFormVideoOverlayProps = {
+  visible: boolean;
+  sessionId: string;
+  lift: string;
+  setIndex: number;
+  loadKg: number;
+  onClose: () => void;
+  onSaved?: (record: FormVideoRecord) => void;
+};
+
+const LazyFormVideoOverlay = React.lazy(
+  async (): Promise<{ default: React.ComponentType<LazyFormVideoOverlayProps> }> => {
+    const module = await import("@/src/components/FormVideoOverlay");
+    return { default: module.FormVideoOverlay };
+  },
+);
 
 let hasMarkedSessionScreenRenderEntry = false;
 
@@ -4073,15 +4090,19 @@ export default function SessionScreen() {
         currentLoad={currentLoad}
       />
 
-      <FormVideoOverlay
-        visible={formVideoOverlayVisible}
-        sessionId={currentSession?.session_id ?? ""}
-        lift={currentRecordingLift}
-        setIndex={currentSetIndex}
-        loadKg={currentLoad}
-        onClose={() => setFormVideoOverlayVisible(false)}
-        onSaved={handleFormVideoOverlaySaved}
-      />
+      {formVideoOverlayVisible ? (
+        <Suspense fallback={null}>
+          <LazyFormVideoOverlay
+            visible={formVideoOverlayVisible}
+            sessionId={currentSession?.session_id ?? ""}
+            lift={currentRecordingLift}
+            setIndex={currentSetIndex}
+            loadKg={currentLoad}
+            onClose={() => setFormVideoOverlayVisible(false)}
+            onSaved={handleFormVideoOverlaySaved}
+          />
+        </Suspense>
+      ) : null}
 
       {!isMeasuring && tooltipData && (
         <VelocityTooltip
