@@ -1830,3 +1830,35 @@ Remaining:
 
 - Build/upload a new TestFlight build before the `本文共有` path is available on the iPhone.
 - Current Gmail attachment content is still unreadable from Codex through the connector; ask the user to resend via `本文共有` after the new build, or paste the report text directly.
+
+## 2026-06-04 (Codex TestFlight build 95)
+
+Scope: Build and upload RepVeloCoach `2.3.5 (95)` to TestFlight so crash reports can be shared as email body text.
+
+Actions:
+
+- Bumped the iOS build number from `94` to `95` in:
+  - `app.config.ts`
+  - `ios/RepVeloCoach/Info.plist`
+  - `ios/RepVeloCoach.xcodeproj/project.pbxproj`
+- Ran `pnpm -s check`.
+- Built and uploaded with the internal Xcode workaround:
+  - `REPVELO_XCODE_APP=/Users/hoshinohideyuki/Developer/Xcode-RepVelo.app`
+  - `REPVELO_CLEAN=false`
+  - `REPVELO_EXTRA_XCARGS='-jobs 1 COMPILER_INDEX_STORE_ENABLE=NO'`
+
+Results:
+
+- `pnpm -s check` passed.
+- Archive succeeded.
+- IPA export succeeded.
+- App Store Connect upload succeeded at 2026-06-04 12:31:55 JST.
+- Uploaded build: `2.3.5 (95)`.
+- IPA: `ios/fastlane_export/RepVeloCoach.ipa`.
+- dSYM: `ios/fastlane_export/RepVeloCoach.app.dSYM.zip`.
+
+Remaining:
+
+- Wait for TestFlight processing in App Store Connect, usually 15-30 minutes.
+- Install build `95` on the iPhone.
+- If Session still crashes, relaunch and use the Home-screen crash card -> `本文共有` so the report arrives in the Gmail body rather than only as a Markdown attachment.

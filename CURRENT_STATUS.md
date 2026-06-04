@@ -3,7 +3,7 @@
 ## Canonical Workspace
 - Repo root: /Volumes/0RICON_APP/Developer/MyFiles/repvelocoach-git-sync-20260320/repo
 - Branch: main
-- HEAD at record time: current `chore: record TestFlight build 94` commit
+- HEAD at record time: current `chore: record TestFlight build 95` commit
 - Treat this repo as the only active source of truth.
 - Legacy folders such as `/Volumes/0RICON_APP/Developer/MyFiles/RepVeloCoach` and `/Volumes/0RICON_APP/Developer/MyFiles/ovr-vbt-coach-local` are reference/archive only unless explicitly proven newer.
 
@@ -11,16 +11,16 @@
 - App name: RepVelo VBT Coach
 - iOS bundle id: `com.autecouture.repvelocoach.hh`
 - Marketing version: `2.3.5`
-- Native iOS build number in `ios/RepVeloCoach/Info.plist`: `94`
-- Expo config build number in `app.config.ts`: `94`
-- Latest successful TestFlight upload: build `94` (uploaded 2026-06-04 11:44:12 JST)
+- Native iOS build number in `ios/RepVeloCoach/Info.plist`: `95`
+- Expo config build number in `app.config.ts`: `95`
+- Latest successful TestFlight upload: build `95` (uploaded 2026-06-04 12:31:55 JST)
 
 ## Build Number Status
-- `app.config.ts`, `ios/RepVeloCoach/Info.plist`, and `ios/RepVeloCoach.xcodeproj/project.pbxproj` are aligned at build `94`.
-- For the next release, bump to a value higher than `94` and keep all three sources synchronized.
+- `app.config.ts`, `ios/RepVeloCoach/Info.plist`, and `ios/RepVeloCoach.xcodeproj/project.pbxproj` are aligned at build `95`.
+- For the next release, bump to a value higher than `95` and keep all three sources synchronized.
 
 ## Current Working Tree
-- Working tree was clean immediately after recording the successful build `94` upload.
+- Working tree was clean immediately after recording the successful build `95` upload.
 
 ## What Was Implemented Recently
 - **Phase 1 & 2 Improvements** (build 78):
@@ -60,6 +60,9 @@
 - **Build 94 Release**:
   - Added a Session-entry crash marker before navigating to Session mode from both the bottom tab and Home card.
   - Added a Home-screen `前回セッションモードでクラッシュ疑い` card so crash context can be shared after relaunch even if Session mode itself crashes before rendering.
+- **Build 95 Release**:
+  - Split crash report sharing into `添付共有` and `本文共有`.
+  - Keeps the crash context after sharing until the user taps `クリア`, so empty/failed Gmail sends can be retried.
 - Previous implementations:
   - Direct GLM mode with local API key
   - AI Coach error reporting improvements
@@ -91,8 +94,8 @@
 
 ## Validation Status
 - TypeScript check passed: `pnpm -s tsc --noEmit`
-- TestFlight upload succeeded for version `2.3.5` build `94`.
-- Build numbers are aligned across all three sources (app.config.ts, Info.plist, project.pbxproj) at `94`.
+- TestFlight upload succeeded for version `2.3.5` build `95`.
+- Build numbers are aligned across all three sources (app.config.ts, Info.plist, project.pbxproj) at `95`.
 - Real-device verification is still required for:
   - AI Coach live send success
   - Session detail appearing immediately after set completion
@@ -145,6 +148,15 @@
 - Command: `source ~/.zshrc && REPVELO_XCODE_APP=/Users/hoshinohideyuki/Developer/Xcode-RepVelo.app REPVELO_CLEAN=false REPVELO_EXTRA_XCARGS='-jobs 1 COMPILER_INDEX_STORE_ENABLE=NO' FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT=20 FASTLANE_XCODEBUILD_SETTINGS_RETRIES=6 bash scripts/deploy.sh`
 - Notes: build number was bumped and aligned from 93 to 94 before upload. This build adds a pre-navigation Session-entry crash marker and Home-screen share card so the user can relaunch and send crash context without reopening Session mode. TestFlight processing may take 15-30 minutes.
 
+## Latest TestFlight Upload (2026-06-04)
+- Version: `2.3.5`
+- Build: `95`
+- Upload result: succeeded at 2026-06-04 12:31:55 JST
+- IPA: `ios/fastlane_export/RepVeloCoach.ipa`
+- dSYM: `ios/fastlane_export/RepVeloCoach.app.dSYM.zip`
+- Command: `source ~/.zshrc && REPVELO_XCODE_APP=/Users/hoshinohideyuki/Developer/Xcode-RepVelo.app REPVELO_CLEAN=false REPVELO_EXTRA_XCARGS='-jobs 1 COMPILER_INDEX_STORE_ENABLE=NO' FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT=20 FASTLANE_XCODEBUILD_SETTINGS_RETRIES=6 bash scripts/deploy.sh`
+- Notes: build number was bumped and aligned from 94 to 95 before upload. This build adds a text-body sharing path for crash reports after the first Gmail report arrived as an unreadable Markdown attachment. TestFlight processing may take 15-30 minutes.
+
 ## Build And Upload
 Use the repo-local canonical path above. The agent-neutral release workflow is documented in:
 - `TESTFLIGHT_DEPLOYMENT.md`
@@ -173,10 +185,10 @@ These are already enforced in `AGENTS.md`:
 - Record TestFlight build numbers and upload results.
 
 ## Recommended Next Steps
-1. Device-test build 94 focusing on:
+1. Device-test build 95 focusing on:
    - Long session behavior around 6+ sets and recovery after relaunch.
    - VBT connection -> Session mode no-crash verification.
-   - If Session mode still crashes on tap, relaunch and use the Home-screen `前回セッションモードでクラッシュ疑い` card -> `Gmail共有` to send the Markdown crash context.
+   - If Session mode still crashes on tap, relaunch and use the Home-screen `前回セッションモードでクラッシュ疑い` card -> `本文共有` to send the Markdown crash context in the email body.
    - English canonical exercise migration for existing Katakana lift history.
    - VBT decision card readability during rest.
    - GPT copy/open flow.
