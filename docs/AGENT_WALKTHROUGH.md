@@ -1904,3 +1904,41 @@ Remaining:
 - On device, test:
   - tapping Session tab shows the Safe Gate without crashing
   - tapping `セッション本体を開く` either opens Session or leaves a `session_screen_mount_attempt` report after relaunch
+
+## 2026-06-04 (Codex TestFlight build 96)
+
+Scope: Build and upload RepVeloCoach `2.3.5 (96)` to TestFlight with the Session Safe Gate.
+
+Actions:
+
+- Bumped the iOS build number from `95` to `96` in:
+  - `app.config.ts`
+  - `ios/RepVeloCoach/Info.plist`
+  - `ios/RepVeloCoach.xcodeproj/project.pbxproj`
+- Ran validation before upload:
+  - `pnpm -s check`
+  - `git diff --check`
+- Built and uploaded with the internal Xcode workaround:
+  - `REPVELO_XCODE_APP=/Users/hoshinohideyuki/Developer/Xcode-RepVelo.app`
+  - `REPVELO_CLEAN=false`
+  - `REPVELO_EXTRA_XCARGS='-jobs 1 COMPILER_INDEX_STORE_ENABLE=NO'`
+
+Results:
+
+- `pnpm -s check` passed.
+- `git diff --check` passed.
+- Archive succeeded.
+- IPA export succeeded.
+- App Store Connect upload succeeded at 2026-06-04 14:23:36 JST.
+- Uploaded build: `2.3.5 (96)`.
+- IPA: `ios/fastlane_export/RepVeloCoach.ipa`.
+- dSYM: `ios/fastlane_export/RepVeloCoach.app.dSYM.zip`.
+
+Remaining:
+
+- Wait for TestFlight processing in App Store Connect, usually 15-30 minutes.
+- Install build `96` on the iPhone.
+- Test flow:
+  - Tap Session tab. Expected: lightweight `SESSION SAFE GATE` appears without crashing.
+  - Tap `セッション本体を開く`. Expected: heavy Session screen opens, or a relaunch report now says `reason: session_screen_mount_attempt`.
+  - If it still crashes, relaunch and share the report with `本文共有`.
