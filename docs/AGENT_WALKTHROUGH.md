@@ -2084,3 +2084,49 @@ Remaining:
   - Tap Session tab.
   - Tap `セッション本体を開く`.
   - If it still crashes, relaunch and send the new crash report by Gmail. The report should now include the last successful stage marker.
+
+## 2026-06-04 (Codex TestFlight build 98)
+
+Scope: Hotfix the immediate build 97 crash where the report still stopped at `session_screen_mount_attempt`.
+
+Crash evidence:
+
+- User-provided report file: `/Users/hoshinohideyuki/Downloads/テキスト-17EE3FD6A2B2-1.txt`.
+- Report saved at `2026-06-04T12:19:35.687Z`.
+- Report reason was still `session_screen_mount_attempt`.
+- The newer build 97 marker `session_screen_import_loaded` was not present.
+- VBT connection in the report was `no`.
+- Interpretation: the crash happened while importing/evaluating `SessionScreen`, before BLE callback setup and before `SessionScreen` first render.
+
+Actions:
+
+- Removed static `FormVideoOverlay` import from `SessionScreen`.
+- Replaced it with `React.lazy` dynamic import.
+- Render `LazyFormVideoOverlay` only when `formVideoOverlayVisible` is true.
+- This prevents `expo-camera` from being loaded while simply opening Session mode.
+- Bumped iOS build number from `97` to `98`.
+- Committed the fix as:
+  - `539cc09 fix: lazy load form video overlay`
+
+Validation:
+
+- `pnpm check` passed.
+- `pnpm lint` passed.
+- `pnpm test` passed: 34 tests passed, 1 skipped.
+- `git diff --check` passed.
+- Archive succeeded.
+- IPA export succeeded.
+- App Store Connect upload succeeded at 2026-06-04 21:33:38 JST.
+
+Results:
+
+- Uploaded build: `2.3.5 (98)`.
+- IPA: `ios/fastlane_export/RepVeloCoach.ipa`.
+- dSYM: `ios/fastlane_export/RepVeloCoach.app.dSYM.zip`.
+
+Remaining:
+
+- Wait for TestFlight processing in App Store Connect, usually 15-30 minutes.
+- Install build `98` on the iPhone.
+- Test Session tab and `セッション本体を開く` before using the form video button.
+- If Session opens but form video crashes when tapped, isolate `expo-camera` separately from the Session screen path.
