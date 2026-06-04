@@ -12,6 +12,11 @@ export type VBTScreenCrashContext = {
   reason:
     | "session_tab_open_attempt"
     | "session_screen_mount_attempt"
+    | "session_screen_import_loaded"
+    | "session_screen_render_entered"
+    | "session_logic_setup_start"
+    | "session_logic_ble_callbacks_set"
+    | "session_logic_ble_status_checked"
     | "vbt_session_screen_active";
   entry_point?: "bottom_tab" | "home_card" | "unknown";
   session_id: string | null;
@@ -154,10 +159,17 @@ class CrashReportService {
   async saveVBTSessionMountAttempt(
     input: SaveVBTSessionOpenAttemptInput = {},
   ): Promise<void> {
+    await this.saveVBTSessionStageAttempt("session_screen_mount_attempt", input);
+  }
+
+  async saveVBTSessionStageAttempt(
+    reason: VBTScreenCrashContext["reason"],
+    input: SaveVBTSessionOpenAttemptInput = {},
+  ): Promise<void> {
     const payload: VBTScreenCrashContext = {
       schema: "repvelocoach.vbt-screen-crash-context.v1",
       saved_at: new Date().toISOString(),
-      reason: "session_screen_mount_attempt",
+      reason,
       entry_point: input.entry_point ?? "unknown",
       session_id: null,
       is_session_active: false,

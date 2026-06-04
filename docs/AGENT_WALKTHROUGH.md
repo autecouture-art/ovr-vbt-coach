@@ -1942,3 +1942,102 @@ Remaining:
   - Tap Session tab. Expected: lightweight `SESSION SAFE GATE` appears without crashing.
   - Tap `セッション本体を開く`. Expected: heavy Session screen opens, or a relaunch report now says `reason: session_screen_mount_attempt`.
   - If it still crashes, relaunch and share the report with `本文共有`.
+
+## 2026-06-04 (Codex Simulator smoke check)
+
+Scope: Check whether the current RepVeloCoach build can be built, installed, launched, and smoke-checked on the iPhone 17 Simulator.
+
+Environment:
+
+- Simulator: iPhone 17, iOS 26.3, device id `CA243582-A75F-4495-9113-E4DC69241054`
+- Xcode: `/Users/hoshinohideyuki/Developer/Xcode-RepVelo.app`
+- Bundle id: `com.autecouture.repvelocoach.hh`
+- Deep link scheme observed from app config: `repvelocoachrepvelocoach`
+
+Actions:
+
+- Built a Release simulator app with signing disabled:
+  - `DEVELOPER_DIR=/Users/hoshinohideyuki/Developer/Xcode-RepVelo.app/Contents/Developer`
+  - `xcodebuild -workspace ios/RepVeloCoach.xcworkspace -scheme RepVeloCoach -configuration Release -destination 'platform=iOS Simulator,name=iPhone 17' -derivedDataPath ios/build/simulator-derived CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO -jobs 1 build`
+- Installed and launched:
+  - `xcrun simctl install booted ios/build/simulator-derived/Build/Products/Release-iphonesimulator/RepVeloCoach.app`
+  - `xcrun simctl launch booted com.autecouture.repvelocoach.hh`
+- Captured screenshots with `xcrun simctl io booted screenshot`.
+- Checked app process logs with `xcrun simctl spawn booted log show`.
+- Ran JS/TS validation:
+  - `pnpm check`
+  - `pnpm lint`
+- Confirmed the main tab route files exist:
+  - Home, Session, Graph, Manual, History, Settings, Import
+  - Session start, session detail, manual entry, form video recorder, monitor, glossary, exercise history
+
+Results:
+
+- Release simulator build succeeded.
+- Install succeeded.
+- Launch returned a valid app pid.
+- Home screen rendered with no red screen or blank screen.
+- Terminate/relaunch also returned a valid app pid.
+- `pnpm check` passed.
+- `pnpm lint` passed.
+- App logs showed no RepVeloCoach crash during launch/relaunch.
+
+Observed limitations / blockers:
+
+- Simulator UI automation was blocked by macOS Apple Events permission prompts from the desktop environment, so tab-by-tab manual tapping could not be completed in this run.
+- A deep-link attempt left an iOS system confirmation dialog (`"RepVelo Coach" で開きますか?`) over the app, which prevented further screenshot-based tab inspection.
+- Real BLE/VBT sensor connection, camera capture, microphone, photo library save, and HealthKit heart-rate behavior cannot be fully validated in Simulator.
+- Simulator logs contain CoreBluetooth simulator warnings, including a missing BLE ATT XPC service. This is expected for Simulator and was not an app crash.
+
+Follow-up:
+
+- For a true all-mode manual pass, use the iPhone/TestFlight build or an unlocked Simulator GUI session where macOS Apple Events prompts can be cleared.
+- On device, prioritize:
+  - Session Safe Gate open
+  - `セッション本体を開く`
+  - VBT sensor connect
+  - video overlay/recording
+  - manual entry
+  - graph/history/settings/import tabs
+
+## 2026-06-04 (Codex Gmail crash report follow-up)
+
+Scope: Inspect the user-sent Gmail crash report after another TestFlight crash and add stronger crash-stage markers around Session screen import/mount.
+
+Gmail evidence:
+
+- Latest report mail timestamp: 2026-06-04 17:40 JST.
+- Report reason: `session_screen_mount_attempt`.
+- Entry point: `bottom_tab`.
+- VBT connected: `yes`.
+- Session active: `no`.
+- Completed set count: `0`.
+- Form video: `OFF`.
+- Interpretation: the Safe Gate was reached, but the app crashed after pressing `セッション本体を開く`, before `SessionScreen` wrote the active-screen marker.
+
+Actions:
+
+- Added more granular crash marker reasons:
+  - `session_screen_import_loaded`
+  - `session_screen_render_entered`
+  - `session_logic_setup_start`
+  - `session_logic_ble_callbacks_set`
+  - `session_logic_ble_status_checked`
+- Marked successful dynamic import immediately after `import("@/src/screens/SessionScreen")`.
+- Marked first `SessionScreen` render entry before `useSessionLogic` starts.
+- Delayed BLE callback registration in `useSessionLogic` by 350ms so connected sensor events do not collide with the first Session screen mount.
+- Added BLE setup/status markers around callback registration and `BLEService.isConnected()`.
+
+Results:
+
+- `pnpm check` passed.
+- `pnpm lint` passed.
+- `pnpm test` passed: 34 tests passed, 1 skipped.
+- Release simulator build succeeded with the internal Xcode:
+  - `DEVELOPER_DIR=/Users/hoshinohideyuki/Developer/Xcode-RepVelo.app/Contents/Developer`
+  - `xcodebuild -workspace ios/RepVeloCoach.xcworkspace -scheme RepVeloCoach -configuration Release -destination 'platform=iOS Simulator,name=iPhone 17' -derivedDataPath ios/build/simulator-derived CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO -jobs 1 build`
+
+Remaining:
+
+- This should reduce the likely mount-time BLE race, but the real fix still needs TestFlight/device validation because Simulator cannot validate real BLE sensor behavior.
+- If it still crashes, the next Gmail report should identify the last successful stage, narrowing the crash to import, render entry, BLE setup start, callback registration, or BLE status check.

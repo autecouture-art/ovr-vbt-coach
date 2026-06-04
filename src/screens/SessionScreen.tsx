@@ -171,6 +171,8 @@ const NEXT_SET_PURPOSE_OPTIONS: {
   { value: "hypertrophy_volume", label: "筋肥大ボリューム優先", shortLabel: "量" },
 ];
 
+let hasMarkedSessionScreenRenderEntry = false;
+
 const formatNumber = (
   value: number | null | undefined,
   digits: number = 2,
@@ -226,6 +228,19 @@ const getDecisionLabel = (status: string) => {
 };
 
 export default function SessionScreen() {
+  if (!hasMarkedSessionScreenRenderEntry) {
+    hasMarkedSessionScreenRenderEntry = true;
+    void CrashReportService.saveVBTSessionStageAttempt(
+      "session_screen_render_entered",
+      {
+        entry_point: "bottom_tab",
+        is_connected: Boolean(BLEService.getLastDeviceInfo().id),
+      },
+    ).catch((error) => {
+      console.warn("[SessionScreen] Failed to mark render entry:", error);
+    });
+  }
+
   const router = useRouter();
   const navigationState = useNavigation();
   const insets = useSafeAreaInsets();

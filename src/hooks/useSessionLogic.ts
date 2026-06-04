@@ -19,6 +19,7 @@ import LiveShareService from "../services/LiveShareService";
 import VBTGuideService from "../services/VBTGuideService";
 import HealthService from "../services/HealthService";
 import { loadAppSettings } from "../services/AppSettingsService";
+import CrashReportService from "../services/CrashReportService";
 import type {
   RepVeloData,
   RepData,
@@ -1072,31 +1073,71 @@ export const useSessionLogic = (
       }
     });
 
-    const bleCallbacks: Parameters<typeof BLEService.setCallbacks>[0] = {
-      onDataReceived: (data) => {
-        void dataReceivedRef.current(data);
+    void CrashReportService.saveVBTSessionStageAttempt(
+      "session_logic_setup_start",
+      {
+        entry_point: "bottom_tab",
+        is_connected: Boolean(BLEService.getLastDeviceInfo().id),
       },
-      onConnectionStatusChanged: (connected) => {
-        connectionChangedRef.current(connected);
-      },
-      onError: (error) => console.error("BLE Error:", error),
-    };
-
-    BLEService.setCallbacks(bleCallbacks);
-
-    BLEService.isConnected().then((result) => {
-      if (isMounted.current) setConnectionStatus(result);
+    ).catch((error) => {
+      console.warn("[useSessionLogic] Failed to mark setup start:", error);
     });
+
+    let bleCallbacks: Parameters<typeof BLEService.setCallbacks>[0] | null = null;
+    const setupTimer = setTimeout(() => {
+      if (!isMounted.current) {
+        return;
+      }
+
+      bleCallbacks = {
+        onDataReceived: (data) => {
+          void dataReceivedRef.current(data);
+        },
+        onConnectionStatusChanged: (connected) => {
+          connectionChangedRef.current(connected);
+        },
+        onError: (error) => console.error("BLE Error:", error),
+      };
+
+      BLEService.setCallbacks(bleCallbacks);
+      void CrashReportService.saveVBTSessionStageAttempt(
+        "session_logic_ble_callbacks_set",
+        {
+          entry_point: "bottom_tab",
+          is_connected: Boolean(BLEService.getLastDeviceInfo().id),
+        },
+      ).catch((error) => {
+        console.warn("[useSessionLogic] Failed to mark BLE callbacks:", error);
+      });
+
+      BLEService.isConnected()
+        .then((result) => {
+          if (isMounted.current) setConnectionStatus(result);
+          return CrashReportService.saveVBTSessionStageAttempt(
+            "session_logic_ble_status_checked",
+            {
+              entry_point: "bottom_tab",
+              is_connected: result,
+            },
+          );
+        })
+        .catch((error) => {
+          console.error("BLE status check failed:", error);
+        });
+    }, 350);
 
     return () => {
       isMounted.current = false;
+      clearTimeout(setupTimer);
       // 自動完了タイマーをクリア
       if (autoFinishTimer.current) {
         clearTimeout(autoFinishTimer.current);
         autoFinishTimer.current = null;
       }
       void BLEService.stopNotifications();
-      BLEService.clearCallbacks(bleCallbacks);
+      if (bleCallbacks) {
+        BLEService.clearCallbacks(bleCallbacks);
+      }
     };
   }, [setConnectionStatus, updateSettings]);
 

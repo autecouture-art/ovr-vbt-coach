@@ -133,6 +133,13 @@ export default function SessionGateScreen() {
         is_connected: Boolean(deviceInfo.id),
       });
       const module = await import("@/src/screens/SessionScreen");
+      await CrashReportService.saveVBTSessionStageAttempt(
+        "session_screen_import_loaded",
+        {
+          entry_point: "bottom_tab",
+          is_connected: Boolean(deviceInfo.id),
+        },
+      );
       setLoadedSessionScreen(() => module.default as LoadedSessionScreen);
     } catch (error) {
       console.error("[SessionGate] Failed to load Session screen:", error);
