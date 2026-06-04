@@ -12,8 +12,13 @@ import {
 import { useRouter } from 'expo-router';
 import { useIsFocused } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as Clipboard from 'expo-clipboard';
+import * as Sharing from 'expo-sharing';
 
 import BLEService from '@/src/services/BLEService';
+import CrashReportService, {
+  type VBTScreenCrashContext,
+} from '@/src/services/CrashReportService';
 import DatabaseService from '@/src/services/DatabaseService';
 import { GarageTheme } from '@/src/constants/garageTheme';
 import { formatErrorMessage } from '@/src/utils/errorMessages';
@@ -29,6 +34,8 @@ export default function HomeScreen() {
   const [recentSessions, setRecentSessions] = useState<SessionData[]>([]);
   const [foundDevice, setFoundDevice] = useState<Device | { name?: string | null; id?: string | null } | null>(null);
   const [discoveredDevices, setDiscoveredDevices] = useState<Device[]>([]);
+  const [previousVbtCrashContext, setPreviousVbtCrashContext] =
+    useState<VBTScreenCrashContext | null>(null);
   const [lastDeviceInfo, setLastDeviceInfo] = useState<{ id: string | null; name: string | null }>({
     id: null,
     name: null,
@@ -79,6 +86,12 @@ export default function HomeScreen() {
         if (cancelled) {
           return;
         }
+
+        const crashContext = await CrashReportService.getLastVBTScreenContext();
+        if (cancelled) {
+          return;
+        }
+        setPreviousVbtCrashContext(crashContext);
 
         const deviceInfo = BLEService.getLastDeviceInfo();
         setLastDeviceInfo(deviceInfo);
@@ -192,6 +205,60 @@ export default function HomeScreen() {
     }
   };
 
+  const handleOpenSession = async () => {
+    try {
+      await CrashReportService.saveVBTSessionOpenAttempt({
+        entry_point: 'home_card',
+        is_connected: isConnected,
+      });
+    } catch (error) {
+      console.warn('[HomeScreen] Failed to save session open crash marker:', error);
+    }
+    router.navigate('/(tabs)/session');
+  };
+
+  const handleShareVBTScreenCrashReport = async () => {
+    try {
+      const snapshot =
+        previousVbtCrashContext ??
+        (await CrashReportService.getLastVBTScreenContext());
+      if (!snapshot) {
+        Alert.alert('クラッシュ記録なし', '共有できるクラッシュ疑い記録がありません。');
+        return;
+      }
+
+      const report = CrashReportService.buildVBTCrashMarkdown(snapshot);
+      await Clipboard.setStringAsync(report);
+
+      const file = await CrashReportService.writeVBTCrashReportFile(report);
+      const canShare = await Sharing.isAvailableAsync();
+      if (canShare) {
+        await Sharing.shareAsync(file.uri, {
+          mimeType: 'text/markdown',
+          UTI: 'net.daringfireball.markdown',
+          dialogTitle: 'GmailでCodexへクラッシュ状況を共有',
+        });
+      }
+
+      Alert.alert(
+        canShare ? 'クラッシュ報告を共有しました' : 'クラッシュ報告をコピーしました',
+        canShare
+          ? '共有先でGmailを選べます。本文もクリップボードにコピー済みです。'
+          : '共有シートが使えないため、本文をクリップボードにコピーしました。',
+      );
+      setPreviousVbtCrashContext(null);
+      await CrashReportService.clearVBTScreenContext();
+    } catch (error) {
+      console.error('[HomeScreen] Failed to share VBT crash report:', error);
+      Alert.alert('共有失敗', 'クラッシュ報告の作成に失敗しました。');
+    }
+  };
+
+  const handleClearVBTScreenCrashReport = async () => {
+    await CrashReportService.clearVBTScreenContext();
+    setPreviousVbtCrashContext(null);
+  };
+
   const signalStrength = isConnected ? '100%' : isScanning ? '65%' : '0%';
   const dataRate = isConnected ? '120 Hz' : '--- Hz';
   const latency = isConnected ? '12 ms' : '--- ms';
@@ -234,6 +301,37 @@ export default function HomeScreen() {
           </View>
         </View>
       </View>
+
+      {previousVbtCrashContext && (
+        <View style={styles.crashReportCard}>
+          <View style={styles.crashReportHeader}>
+            <View style={styles.crashReportDot} />
+            <View style={styles.crashReportTextGroup}>
+              <Text style={styles.crashReportTitle}>前回セッションモードでクラッシュ疑い</Text>
+              <Text style={styles.crashReportSubtitle}>
+                セッション画面へ入らず、この画面からCodexへ状況を送れます
+              </Text>
+            </View>
+          </View>
+          <Text style={styles.crashReportMeta}>
+            saved {previousVbtCrashContext.saved_at} / {previousVbtCrashContext.reason}
+          </Text>
+          <View style={styles.crashReportActions}>
+            <TouchableOpacity
+              style={[styles.crashReportButton, styles.crashReportButtonPrimary]}
+              onPress={() => void handleShareVBTScreenCrashReport()}
+            >
+              <Text style={styles.crashReportButtonTextPrimary}>Gmail共有</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.crashReportButton}
+              onPress={() => void handleClearVBTScreenCrashReport()}
+            >
+              <Text style={styles.crashReportButtonText}>クリア</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
 
       {/* TELEMETRY PANEL - Premium Connection Status */}
       {!isWeb && (
@@ -303,7 +401,7 @@ export default function HomeScreen() {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>TRAINING MODULES</Text>
 
-        <TouchableOpacity style={[styles.premiumCard, styles.premiumCardPrimary]} onPress={() => router.navigate('/(tabs)/session')}>
+        <TouchableOpacity style={[styles.premiumCard, styles.premiumCardPrimary]} onPress={() => void handleOpenSession()}>
           <View style={styles.premiumCardHeader}>
             <View style={styles.premiumCardLeft}>
               <Text style={styles.premiumCardCode}>MODULE_01</Text>
@@ -507,6 +605,78 @@ const styles = StyleSheet.create({
     backgroundColor: GarageTheme.accent,
     borderRadius: 2,
     minWidth: 20,
+  },
+  crashReportCard: {
+    marginTop: 16,
+    marginHorizontal: 16,
+    borderRadius: 22,
+    padding: 16,
+    backgroundColor: 'rgba(245, 158, 11, 0.12)',
+    borderWidth: 1,
+    borderColor: GarageTheme.warning,
+  },
+  crashReportHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  crashReportDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 999,
+    marginTop: 5,
+    backgroundColor: GarageTheme.warning,
+  },
+  crashReportTextGroup: {
+    flex: 1,
+  },
+  crashReportTitle: {
+    color: GarageTheme.textStrong,
+    fontSize: 15,
+    fontWeight: '800',
+    lineHeight: 20,
+  },
+  crashReportSubtitle: {
+    color: GarageTheme.textMuted,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 4,
+  },
+  crashReportMeta: {
+    color: GarageTheme.warning,
+    fontSize: 10,
+    lineHeight: 14,
+    marginTop: 10,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  crashReportActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 14,
+  },
+  crashReportButton: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: GarageTheme.borderStrong,
+    backgroundColor: GarageTheme.panel,
+  },
+  crashReportButtonPrimary: {
+    borderColor: GarageTheme.accent,
+    backgroundColor: GarageTheme.accent + '22',
+  },
+  crashReportButtonText: {
+    color: GarageTheme.textMuted,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  crashReportButtonTextPrimary: {
+    color: GarageTheme.accent,
+    fontSize: 13,
+    fontWeight: '800',
   },
   telemetryPanel: {
     marginTop: 16,

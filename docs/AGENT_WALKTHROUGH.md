@@ -1743,3 +1743,33 @@ Remaining:
 - Wait for TestFlight processing in App Store Connect, usually 15-30 minutes.
 - Install build `93` on the iPhone and test VBT connection -> Session mode.
 - If VBT still crashes, relaunch the app and use `前回VBT接続クラッシュ疑い` -> `Gmail共有` to share the generated Markdown report.
+
+## 2026-06-04 (Codex Session-entry crash marker)
+
+Scope: Fix the diagnostics gap where pressing Session mode crashes before the Session screen can render, so the existing crash-sharing UI is unreachable.
+
+Actions:
+
+- Extended `CrashReportService`.
+  - Added `session_tab_open_attempt` as a crash-context reason.
+  - Added `saveVBTSessionOpenAttempt()` to save a lightweight marker before entering Session mode.
+  - Added `entry_point` to the generated Markdown report.
+- Updated `app/(tabs)/_layout.tsx`.
+  - Intercepts the Session bottom-tab press.
+  - Saves the open-attempt marker first, then navigates to Session mode.
+- Updated `app/(tabs)/index.tsx`.
+  - Saves the same open-attempt marker when starting Session mode from the home card.
+  - Loads any previous VBT crash/open-attempt context on Home focus.
+  - Shows a Home-screen crash report card with `Gmail共有` and `クリア`, so the user can share the report without opening Session mode again.
+
+Results:
+
+- `pnpm -s check` passed.
+- `pnpm -s lint` passed.
+- Targeted VBT tests passed: 7 tests.
+
+Remaining:
+
+- Build/upload a new TestFlight build.
+- Install the new build on iPhone.
+- If pressing Session still crashes, relaunch the app and use the Home-screen `前回セッションモードでクラッシュ疑い` card -> `Gmail共有`.

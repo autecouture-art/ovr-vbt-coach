@@ -110,6 +110,7 @@ Codex / Claude / GLM / Gemini を含む全エージェントは、改善作業�
 | 2026-06-01-02 | video | フォーム動画モードをセッション画面でON/OFFできるようにしたい | implemented | high | codex | app/(tabs)/session.tsx, docs/AGENT_WALKTHROUGH.md, docs/IMPROVEMENT_TRACKER.md | local_checked | 実機でセッション画面からONにして録画ボタン表示確認待ち | セッション画面にフォーム動画カードを追加。ON時は設定保存し、録画ボタンが隠れないよう操作ボタン表示も自動ONにする |
 | 2026-06-03-01 | crash/vbt | VBT接続後にセッションモードへ入るとクラッシュする | needs_revision | critical | codex | src/hooks/useSessionLogic.ts, src/services/BLEService.ts | bad | build 92でもVBT接続後にクラッシュ継続 | 接続直後の欠損/NaN/異常VBTパケット対策だけでは未解決。次は実機クラッシュ状況レポートとTestFlight/Apple crash logでnative BLE/camera/audio連携を特定する |
 | 2026-06-04-01 | crash/diagnostics | VBT接続クラッシュ時の状況報告をGmail経由でCodexへ共有したい | implemented | critical | codex | src/services/CrashReportService.ts, app/(tabs)/session.tsx | local_checked | 実機でクラッシュ後に再起動しGmail共有できるか確認待ち | セッション画面滞在中のVBT接続/LiveData/セット/設定スナップショットをAsyncStorageに保存し、再起動後に「前回VBT接続クラッシュ疑い」バーからMarkdownレポートをGmail共有/コピーできるようにした |
+| 2026-06-04-02 | crash/diagnostics | セッションモードを押しただけでクラッシュし、クラッシュデータ送信画面にも入れない | implemented | critical | codex | src/services/CrashReportService.ts, app/(tabs)/_layout.tsx, app/(tabs)/index.tsx | local_checked | build 94で実機確認待ち | セッションタブ/ホームカード押下前にクラッシュ疑いマーカーをAsyncStorageへ保存し、再起動後のホーム画面からGmail共有/コピー/クリアできるようにした |
 
 ## Active Focus
 

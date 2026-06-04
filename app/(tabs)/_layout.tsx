@@ -1,11 +1,19 @@
-import { Tabs } from "expo-router";
+import { Tabs, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { Platform } from "react-native";
 import { GarageTheme } from "@/src/constants/garageTheme";
+import CrashReportService from "@/src/services/CrashReportService";
+
+const markSessionOpenAttempt = async (entryPoint: "bottom_tab" | "home_card") => {
+  await CrashReportService.saveVBTSessionOpenAttempt({
+    entry_point: entryPoint,
+  });
+};
 
 export default function TabLayout() {
+  const router = useRouter();
   const insets = useSafeAreaInsets();
   const bottomPadding = Platform.OS === "web" ? 12 : Math.max(insets.bottom, 8);
   const tabBarHeight = 56 + bottomPadding;
@@ -43,6 +51,18 @@ export default function TabLayout() {
       />
       <Tabs.Screen
         name="session"
+        listeners={{
+          tabPress: (event) => {
+            event.preventDefault();
+            void markSessionOpenAttempt("bottom_tab")
+              .catch((error) => {
+                console.warn("[TabLayout] Failed to save session open crash marker:", error);
+              })
+              .finally(() => {
+                router.navigate("/(tabs)/session");
+              });
+          },
+        }}
         options={{
           title: "セッション",
           tabBarIcon: ({ color }) => <IconSymbol size={24} name="bolt.fill" color={color} />,

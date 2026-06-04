@@ -9,7 +9,8 @@ const VBT_CONTEXT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 export type VBTScreenCrashContext = {
   schema: "repvelocoach.vbt-screen-crash-context.v1";
   saved_at: string;
-  reason: "vbt_session_screen_active";
+  reason: "session_tab_open_attempt" | "vbt_session_screen_active";
+  entry_point?: "bottom_tab" | "home_card" | "unknown";
   session_id: string | null;
   is_session_active: boolean;
   is_paused: boolean;
@@ -40,6 +41,15 @@ export type SaveVBTScreenCrashContextInput = Omit<
   VBTScreenCrashContext,
   "schema" | "saved_at" | "reason"
 >;
+
+export type SaveVBTSessionOpenAttemptInput = {
+  entry_point?: VBTScreenCrashContext["entry_point"];
+  is_connected?: boolean | null;
+  current_lift?: string | null;
+  current_exercise_name?: string | null;
+  current_load?: number | null;
+  current_reps?: number | null;
+};
 
 const safeNumber = (value: unknown): number | null =>
   typeof value === "number" && Number.isFinite(value) ? value : null;
@@ -96,6 +106,48 @@ function buildFileName(date: Date): string {
 }
 
 class CrashReportService {
+  async saveVBTSessionOpenAttempt(
+    input: SaveVBTSessionOpenAttemptInput = {},
+  ): Promise<void> {
+    const payload: VBTScreenCrashContext = {
+      schema: "repvelocoach.vbt-screen-crash-context.v1",
+      saved_at: new Date().toISOString(),
+      reason: "session_tab_open_attempt",
+      entry_point: input.entry_point ?? "unknown",
+      session_id: null,
+      is_session_active: false,
+      is_paused: false,
+      pause_reason: null,
+      is_connected: Boolean(input.is_connected),
+      sensor_input_muted: false,
+      current_lift: input.current_lift ?? null,
+      current_exercise_name: input.current_exercise_name ?? null,
+      current_load:
+        typeof input.current_load === "number" && Number.isFinite(input.current_load)
+          ? input.current_load
+          : 0,
+      current_reps:
+        typeof input.current_reps === "number" && Number.isFinite(input.current_reps)
+          ? input.current_reps
+          : 0,
+      current_set_index: 0,
+      completed_set_count: 0,
+      current_rep_count: 0,
+      current_heart_rate: null,
+      live_data: null,
+      latest_completed_set: null,
+      settings_snapshot: {
+        lightweight_mode: false,
+        session_history: false,
+        velocity_chart: false,
+        recent_history: false,
+        same_load_history: false,
+        form_video: false,
+      },
+    };
+    await AsyncStorage.setItem(VBT_SCREEN_CONTEXT_KEY, JSON.stringify(payload));
+  }
+
   async saveVBTScreenContext(
     input: SaveVBTScreenCrashContextInput,
   ): Promise<void> {
@@ -103,6 +155,7 @@ class CrashReportService {
       schema: "repvelocoach.vbt-screen-crash-context.v1",
       saved_at: new Date().toISOString(),
       reason: "vbt_session_screen_active",
+      entry_point: input.entry_point,
       ...input,
       live_data: compactLiveData(input.live_data as RepVeloData | null),
       latest_completed_set: compactSet(input.latest_completed_set as SetData | null),
@@ -146,11 +199,12 @@ class CrashReportService {
     return [
       "# RepVeloCoach VBT接続クラッシュ状況報告",
       "",
-      "このままCodexへ貼る、またはGmailで共有してください。VBT接続後にセッション画面でクラッシュした可能性がある再起動後レポートです。",
+      "このままCodexへ貼る、またはGmailで共有してください。VBT接続後またはセッションモード入室時にクラッシュした可能性がある再起動後レポートです。",
       "",
       "## 前回クラッシュ疑いスナップショット",
       `- 保存時刻: ${snapshot.saved_at}`,
       `- reason: ${snapshot.reason}`,
+      `- entry_point: ${snapshot.entry_point ?? "-"}`,
       `- session_id: ${snapshot.session_id ?? "-"}`,
       `- セッションActive: ${snapshot.is_session_active ? "yes" : "no"}`,
       `- Pause状態: ${snapshot.is_paused ? `yes (${snapshot.pause_reason ?? "-"})` : "no"}`,
