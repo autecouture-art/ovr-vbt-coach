@@ -2179,3 +2179,59 @@ Remaining:
 
 - The emergency fallback is intentionally minimal and does not replace VBT analysis.
 - Continue diagnosing the full `SessionScreen` import/mount path using the Gmail crash report mechanism.
+
+## 2026-06-05 (Codex TestFlight build 100)
+
+Scope: Make the app usable for the next workout while addressing the latest Gmail crash report and adding requested training-day controls.
+
+Crash evidence:
+
+- Gmail report received for `vbt_session_screen_active` saved at `2026-06-04T22:02:00.476Z`.
+- The report showed Session active with VBT connected, sensor input ON, form video ON, and the current lift `tempo squat`.
+- This indicates the app had progressed past the earlier Session mount crash, but the BLE + form video combination still needed a safer path.
+
+Actions:
+
+- Unified Squat / Back Squat data by adding aliases for `Back Squat`, `back squat`, `backsquat`, `スクワット`, and `バックスクワット`.
+- Added automatic historical alias migration so existing Back Squat / Japanese squat records are renamed to the canonical `Squat`.
+- Extended lift rename migration to include `form_video_records`.
+- Added optional per-lift session plans after exercise selection:
+  - Planned sets.
+  - Planned reps.
+  - Planned RPE.
+- Included planned set / RPE information in the GPT consultation packet.
+- Added Settings exercise management so new exercises can be created in-app.
+- Added a form video BLE safe mode setting, enabled by default.
+- In safe mode, opening form video temporarily pauses/mutes VBT sensor input and restores the prior sensor mute state when the video overlay closes.
+- Bumped iOS build number from `99` to `100`.
+- Committed the implementation as:
+  - `83f6bf9 feat: improve training day session controls`
+
+Validation:
+
+- `pnpm check` passed.
+- `pnpm lint` passed.
+- `pnpm test` passed: 35 tests passed, 1 skipped.
+- `git diff --check` passed.
+- Archive succeeded.
+- IPA export succeeded.
+- App Store Connect upload succeeded at 2026-06-05 08:54:16 JST.
+
+Results:
+
+- Uploaded build: `2.3.5 (100)`.
+- IPA: `ios/fastlane_export/RepVeloCoach.ipa`.
+- dSYM: `ios/fastlane_export/RepVeloCoach.app.dSYM.zip`.
+
+Training usage:
+
+- Install build `100` from TestFlight after processing completes.
+- Keep `フォーム動画 安全モード` ON in Settings.
+- In Session mode, choose the exercise, then optionally enter planned sets / reps / RPE before the work set.
+- If using form video, expect VBT sensor input to pause while the camera overlay is open and restore when closed.
+- If the full Session path still feels risky, use `緊急記録モード` as the fallback for tomorrow's workout.
+
+Remaining:
+
+- Build `100` reduces the likely BLE + camera collision, but device validation with VBT connected and video opened is still required.
+- If another crash occurs, use the next launch Gmail crash report to compare whether it is now camera permission, sensor restoration, or another Session rendering issue.
