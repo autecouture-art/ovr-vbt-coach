@@ -1711,3 +1711,35 @@ Remaining:
 
 - Build/upload a new TestFlight build before this diagnostics path can be used on the iPhone.
 - After the next crash, reopen the app, tap `Gmail共有`, choose Gmail, and send/paste the Markdown report back to Codex.
+
+## 2026-06-04 (Codex TestFlight build 93)
+
+Scope: Build and upload RepVeloCoach `2.3.5 (93)` to TestFlight so the VBT crash-context sharing path can be tested on the iPhone.
+
+Actions:
+
+- Bumped the iOS build number from `92` to `93` in:
+  - `app.config.ts`
+  - `ios/RepVeloCoach/Info.plist`
+  - `ios/RepVeloCoach.xcodeproj/project.pbxproj`
+- Ran `pnpm -s check`.
+- Built and uploaded with the internal Xcode workaround:
+  - `REPVELO_XCODE_APP=/Users/hoshinohideyuki/Developer/Xcode-RepVelo.app`
+  - `REPVELO_CLEAN=false`
+  - `REPVELO_EXTRA_XCARGS='-jobs 1 COMPILER_INDEX_STORE_ENABLE=NO'`
+
+Results:
+
+- `pnpm -s check` passed.
+- Archive succeeded.
+- IPA export succeeded.
+- App Store Connect upload succeeded at 2026-06-04 10:02:00 JST.
+- Uploaded build: `2.3.5 (93)`.
+- IPA: `ios/fastlane_export/RepVeloCoach.ipa`.
+- dSYM: `ios/fastlane_export/RepVeloCoach.app.dSYM.zip`.
+
+Remaining:
+
+- Wait for TestFlight processing in App Store Connect, usually 15-30 minutes.
+- Install build `93` on the iPhone and test VBT connection -> Session mode.
+- If VBT still crashes, relaunch the app and use `前回VBT接続クラッシュ疑い` -> `Gmail共有` to share the generated Markdown report.
