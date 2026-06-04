@@ -7,6 +7,7 @@ import DatabaseService from "@/src/services/DatabaseService";
 import type { Exercise } from "@/src/types/index";
 import {
   DEFAULT_EXERCISES,
+  getCanonicalExerciseMigrationPairs,
   getCanonicalExerciseSeed,
   inferExercisePreset,
   mergeExerciseWithPreset,
@@ -258,6 +259,7 @@ class ExerciseService {
     }
 
     await this.mergeDuplicateAliasExercises();
+    await this.migrateHistoricalAliasLifts();
   }
 
   private async mergeDuplicateAliasExercises(): Promise<void> {
@@ -302,6 +304,12 @@ class ExerciseService {
     }
 
     await DatabaseService.renameLiftEverywhere(fromLift, toLift);
+  }
+
+  private async migrateHistoricalAliasLifts(): Promise<void> {
+    for (const pair of getCanonicalExerciseMigrationPairs()) {
+      await this.migrateLiftData(pair.from, pair.to);
+    }
   }
 
   private async applyRomInference(

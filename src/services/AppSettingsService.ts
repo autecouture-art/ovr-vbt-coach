@@ -9,6 +9,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   enable_audio_feedback: true,
   enable_voice_commands: false,
   enable_video_recording: false,
+  enable_form_video_ble_safe_mode: true,
   enable_live_share: false,
   live_share_url: "",
   live_share_token: "",

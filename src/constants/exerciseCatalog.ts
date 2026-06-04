@@ -74,7 +74,13 @@ const DEFAULT_EXERCISE_SEEDS: ExerciseSeed[] = [
     rom_range_max_cm: 60,
     description: "標準的なバックスクワット。ROM推定の基準種目。",
     mvt: 0.3,
-    aliases: ["スクワット", "バックスクワット", "back squat"],
+    aliases: [
+      "スクワット",
+      "バックスクワット",
+      "Back Squat",
+      "back squat",
+      "backsquat",
+    ],
   },
   {
     id: "low_bar_squat",
@@ -683,6 +689,22 @@ export function getCanonicalExerciseSeed(name: string): Exercise | null {
 
 export function getCanonicalExerciseName(name: string): string {
   return getCanonicalExerciseSeed(name)?.name ?? name;
+}
+
+export function getCanonicalExerciseMigrationPairs(): {
+  from: string;
+  to: string;
+}[] {
+  const pairs: { from: string; to: string }[] = [];
+
+  for (const seed of DEFAULT_EXERCISE_SEEDS) {
+    for (const alias of seed.aliases ?? []) {
+      if (normalizeKey(alias) === normalizeKey(seed.name)) continue;
+      pairs.push({ from: alias, to: seed.name });
+    }
+  }
+
+  return pairs;
 }
 
 export function isBig3Exercise(

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   getCanonicalExerciseName,
+  getCanonicalExerciseMigrationPairs,
   getExerciseSelectionGroup,
   getExerciseSelectionGroups,
   inferExercisePreset,
@@ -30,6 +31,16 @@ describe("exercise selection grouping", () => {
     );
     expect(getCanonicalExerciseName("ハイバースクワット")).toBe(
       "High Bar Squat",
+    );
+    expect(getCanonicalExerciseName("Back Squat")).toBe("Squat");
+  });
+
+  it("exposes canonical migration pairs for history data", () => {
+    expect(getCanonicalExerciseMigrationPairs()).toEqual(
+      expect.arrayContaining([{ from: "back squat", to: "Squat" }]),
+    );
+    expect(getCanonicalExerciseMigrationPairs()).toEqual(
+      expect.arrayContaining([{ from: "バックスクワット", to: "Squat" }]),
     );
   });
 

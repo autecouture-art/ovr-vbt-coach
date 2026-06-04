@@ -318,6 +318,8 @@ export default function SessionScreen() {
     currentExercise,
     currentLoad,
     currentReps,
+    plannedSetCount,
+    plannedRpe,
     setHistory,
     sensorInputMuted,
     currentSession,
@@ -325,6 +327,9 @@ export default function SessionScreen() {
     sessionStartTime,
     currentLift,
     updateLoad,
+    updateReps,
+    setPlannedSetCount,
+    setPlannedRpe,
     targetWeight,
     setTargetWeight,
     setConnectionStatus,
@@ -360,6 +365,8 @@ export default function SessionScreen() {
       currentExercise: state.currentExercise,
       currentLoad: state.currentLoad,
       currentReps: state.currentReps,
+      plannedSetCount: state.plannedSetCount,
+      plannedRpe: state.plannedRpe,
       setHistory: state.setHistory,
       sensorInputMuted: state.sensorInputMuted,
       currentSession: state.currentSession,
@@ -367,6 +374,9 @@ export default function SessionScreen() {
       sessionStartTime: state.sessionStartTime,
       currentLift: state.currentLift,
       updateLoad: state.updateLoad,
+      updateReps: state.updateReps,
+      setPlannedSetCount: state.setPlannedSetCount,
+      setPlannedRpe: state.setPlannedRpe,
       targetWeight: state.targetWeight,
       setTargetWeight: state.setTargetWeight,
       setConnectionStatus: state.setConnectionStatus,
@@ -817,6 +827,9 @@ export default function SessionScreen() {
   const nextSetPurposeLabel =
     NEXT_SET_PURPOSE_OPTIONS.find((option) => option.value === nextSetPurpose)
       ?.label ?? "フォーム固定優先";
+  const plannedSetText =
+    plannedSetCount == null ? `現在Set ${currentSetIndex}` : `${plannedSetCount}セット予定`;
+  const plannedRpeText = plannedRpe == null ? "任意" : `RPE ${plannedRpe}`;
   const sessionDecision = useMemo(
     () =>
       SessionDecisionService.analyze({
@@ -1033,7 +1046,13 @@ export default function SessionScreen() {
 
   const [inputTargetWeight, setInputTargetWeight] = useState("");
   const [inputLoad, setInputLoad] = useState(formatLoadKg(currentLoad));
+  const [inputPlannedSetCount, setInputPlannedSetCount] = useState("");
+  const [inputPlannedReps, setInputPlannedReps] = useState(
+    String(currentReps),
+  );
+  const [inputPlannedRpe, setInputPlannedRpe] = useState("");
   const [formVideoOverlayVisible, setFormVideoOverlayVisible] = useState(false);
+  const sensorInputMutedBeforeVideoRef = useRef<boolean | null>(null);
   const [formVideoCountsBySet, setFormVideoCountsBySet] = useState<
     Record<string, number>
   >({});
@@ -1150,6 +1169,20 @@ export default function SessionScreen() {
     setInputLoad(formatLoadKg(currentLoad));
   }, [currentLoad]);
 
+  useEffect(() => {
+    setInputPlannedReps(String(currentReps));
+  }, [currentReps]);
+
+  useEffect(() => {
+    setInputPlannedSetCount(
+      plannedSetCount == null ? "" : String(plannedSetCount),
+    );
+  }, [plannedSetCount]);
+
+  useEffect(() => {
+    setInputPlannedRpe(plannedRpe == null ? "" : String(plannedRpe));
+  }, [plannedRpe]);
+
   const handleTargetWeightChange = (text: string) => {
     setInputTargetWeight(text);
     const val = parseFloat(text);
@@ -1176,6 +1209,48 @@ export default function SessionScreen() {
     }
 
     updateLoad(roundToHalfKg(Math.max(0, val)));
+  };
+
+  const commitPlannedSetCountInput = (text: string) => {
+    const normalized = text.trim();
+    if (!normalized) {
+      setPlannedSetCount(null);
+      return;
+    }
+    const value = Number.parseInt(normalized, 10);
+    if (Number.isNaN(value)) {
+      setInputPlannedSetCount(plannedSetCount == null ? "" : String(plannedSetCount));
+      return;
+    }
+    setPlannedSetCount(value);
+  };
+
+  const commitPlannedRepsInput = (text: string) => {
+    const normalized = text.trim();
+    if (!normalized) {
+      setInputPlannedReps(String(currentReps));
+      return;
+    }
+    const value = Number.parseInt(normalized, 10);
+    if (Number.isNaN(value)) {
+      setInputPlannedReps(String(currentReps));
+      return;
+    }
+    updateReps(value);
+  };
+
+  const commitPlannedRpeInput = (text: string) => {
+    const normalized = text.trim().replace(",", ".");
+    if (!normalized) {
+      setPlannedRpe(null);
+      return;
+    }
+    const value = Number.parseFloat(normalized);
+    if (Number.isNaN(value)) {
+      setInputPlannedRpe(plannedRpe == null ? "" : String(plannedRpe));
+      return;
+    }
+    setPlannedRpe(value);
   };
 
   const openRepDetail = async (setItem: SetData) => {
@@ -1664,8 +1739,26 @@ export default function SessionScreen() {
       return;
     }
 
+    if (settings.enable_form_video_ble_safe_mode) {
+      sensorInputMutedBeforeVideoRef.current = sensorInputMuted;
+      setSensorInputMuted(true);
+      setPaused(true, "manual");
+    }
+
     setFormVideoOverlayVisible(true);
   };
+
+  const handleCloseFormVideoRecorder = useCallback(() => {
+    setFormVideoOverlayVisible(false);
+    if (settings.enable_form_video_ble_safe_mode) {
+      const previousMuted = sensorInputMutedBeforeVideoRef.current;
+      sensorInputMutedBeforeVideoRef.current = null;
+      setSensorInputMuted(previousMuted ?? false);
+    }
+  }, [
+    setSensorInputMuted,
+    settings.enable_form_video_ble_safe_mode,
+  ]);
 
   const handleFormVideoOverlaySaved = useCallback(
     (record: FormVideoRecord) => {
@@ -1810,7 +1903,8 @@ export default function SessionScreen() {
         `- 期分け: ${settings.target_training_phase}`,
         `- ブロック週: Week ${settings.powerlifting_block_week}`,
         `- 今日の狙い: ${blockWeekPlan.focus}`,
-        `- 予定重量/回数/セット: ${formatNumber(currentLoad, 1, " kg")} × ${currentReps} / 現在Set ${currentSetIndex}`,
+        `- 予定重量/回数/セット: ${formatNumber(currentLoad, 1, " kg")} × ${currentReps} / ${plannedSetText}`,
+        `- 予定RPE: ${plannedRpeText}`,
         `- 目標速度帯: ${targetVelocityRange ? `${targetVelocityRange[0]}〜${targetVelocityRange[1]} m/s` : topSingleTargetText}`,
         `- 許容VL: ${vbtProtocol.backoffVelocityLoss.min}〜${vbtProtocol.backoffVelocityLoss.max}%`,
         `- ROM重視度: ${nextSetPurpose === "form_consistency" || nextSetPurpose === "lvp_building" ? "高" : "中"}`,
@@ -2703,7 +2797,9 @@ export default function SessionScreen() {
             <Text style={styles.liveHintText}>
               {settings.enable_video_recording
                 ? formRecordingAvailable
-                  ? "下の操作ボタンに「フォーム録画」が出ています。"
+                  ? settings.enable_form_video_ble_safe_mode
+                    ? "下の操作ボタンに「フォーム録画」が出ています。録画中はVBT入力を一時停止します。"
+                    : "下の操作ボタンに「フォーム録画」が出ています。"
                   : "セッション開始と種目選択後に「フォーム録画」が出ます。"
                 : "ONにすると、下の操作ボタンに「フォーム録画」を表示します。"}
             </Text>
@@ -3468,6 +3564,64 @@ export default function SessionScreen() {
                   />
                   <Text style={styles.unitText}>kg</Text>
                 </View>
+                <View style={styles.plannedInputsGrid}>
+                  <View style={styles.plannedInputBlock}>
+                    <Text style={styles.plannedInputLabel}>予定セット</Text>
+                    <TextInput
+                      style={styles.plannedInput}
+                      value={inputPlannedSetCount}
+                      onChangeText={setInputPlannedSetCount}
+                      onEndEditing={(event) =>
+                        commitPlannedSetCountInput(event.nativeEvent.text)
+                      }
+                      onBlur={() =>
+                        commitPlannedSetCountInput(inputPlannedSetCount)
+                      }
+                      keyboardType="number-pad"
+                      placeholder="任意"
+                      placeholderTextColor={GarageTheme.textSubtle}
+                      returnKeyType="done"
+                      selectTextOnFocus
+                    />
+                  </View>
+                  <View style={styles.plannedInputBlock}>
+                    <Text style={styles.plannedInputLabel}>予定レップ</Text>
+                    <TextInput
+                      style={styles.plannedInput}
+                      value={inputPlannedReps}
+                      onChangeText={setInputPlannedReps}
+                      onEndEditing={(event) =>
+                        commitPlannedRepsInput(event.nativeEvent.text)
+                      }
+                      onBlur={() => commitPlannedRepsInput(inputPlannedReps)}
+                      keyboardType="number-pad"
+                      placeholder="5"
+                      placeholderTextColor={GarageTheme.textSubtle}
+                      returnKeyType="done"
+                      selectTextOnFocus
+                    />
+                  </View>
+                  <View style={styles.plannedInputBlock}>
+                    <Text style={styles.plannedInputLabel}>予定RPE</Text>
+                    <TextInput
+                      style={styles.plannedInput}
+                      value={inputPlannedRpe}
+                      onChangeText={setInputPlannedRpe}
+                      onEndEditing={(event) =>
+                        commitPlannedRpeInput(event.nativeEvent.text)
+                      }
+                      onBlur={() => commitPlannedRpeInput(inputPlannedRpe)}
+                      keyboardType="decimal-pad"
+                      placeholder="任意"
+                      placeholderTextColor={GarageTheme.textSubtle}
+                      returnKeyType="done"
+                      selectTextOnFocus
+                    />
+                  </View>
+                </View>
+                <Text style={styles.plannedInputHint}>
+                  種目選択後に、その種目の今日の予定だけを軽く残します。
+                </Text>
               </View>
             </View>
           )}
@@ -4098,7 +4252,7 @@ export default function SessionScreen() {
             lift={currentRecordingLift}
             setIndex={currentSetIndex}
             loadKg={currentLoad}
-            onClose={() => setFormVideoOverlayVisible(false)}
+            onClose={handleCloseFormVideoRecorder}
             onSaved={handleFormVideoOverlaySaved}
           />
         </Suspense>
@@ -4704,6 +4858,39 @@ const styles = StyleSheet.create({
     textAlign: "center",
     fontSize: 18,
     fontWeight: "700",
+  },
+  plannedInputsGrid: {
+    marginTop: 14,
+    flexDirection: "row",
+    gap: 8,
+  },
+  plannedInputBlock: {
+    flex: 1,
+    padding: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: GarageTheme.border,
+    backgroundColor: GarageTheme.background,
+  },
+  plannedInputLabel: {
+    color: GarageTheme.textMuted,
+    fontSize: 11,
+    fontWeight: "800",
+    marginBottom: 6,
+  },
+  plannedInput: {
+    minHeight: 38,
+    color: GarageTheme.textStrong,
+    fontSize: 17,
+    fontWeight: "800",
+    textAlign: "center",
+    paddingVertical: 4,
+  },
+  plannedInputHint: {
+    marginTop: 8,
+    color: GarageTheme.textSubtle,
+    fontSize: 12,
+    lineHeight: 17,
   },
   dataCard: {
     margin: 16,

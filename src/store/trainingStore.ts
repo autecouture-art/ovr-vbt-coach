@@ -38,6 +38,8 @@ interface TrainingState {
   currentLift: string | null;
   currentLoad: number;
   currentReps: number;
+  plannedSetCount: number | null;
+  plannedRpe: number | null;
   targetWeight: number | null; // 今日の目標（トップセット）重量
   setHistory: SetData[];
   setStartTimeStamp: string | null; // セット開始時の ISO
@@ -84,6 +86,9 @@ interface TrainingState {
   addRep: (rep: RepData) => void;
   completeSet: (setData: SetData) => void;
   updateLoad: (load: number) => void;
+  updateReps: (reps: number) => void;
+  setPlannedSetCount: (sets: number | null) => void;
+  setPlannedRpe: (rpe: number | null) => void;
   setTargetWeight: (weight: number | null) => void;
   setCurrentExercise: (exercise: Exercise) => void;
   resetSetData: () => void;
@@ -126,6 +131,8 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
   currentLift: null,
   currentLoad: 0,
   currentReps: 5,
+  plannedSetCount: null,
+  plannedRpe: null,
   targetWeight: null,
   setHistory: [],
   setStartTimeStamp: null,
@@ -171,6 +178,8 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
       sessionStartTimeStamp: startedAt,
       setHistory: [],
       currentSetIndex: 1,
+      plannedSetCount: null,
+      plannedRpe: null,
       repHistory: [],
       sensorInputMuted: false,
       targetWeight: null,
@@ -369,6 +378,18 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
 
   updateLoad: (load: number) => {
     set({ currentLoad: load });
+  },
+
+  updateReps: (reps: number) => {
+    set({ currentReps: Math.max(1, Math.round(reps)) });
+  },
+
+  setPlannedSetCount: (sets: number | null) => {
+    set({ plannedSetCount: sets == null ? null : Math.max(1, Math.round(sets)) });
+  },
+
+  setPlannedRpe: (rpe: number | null) => {
+    set({ plannedRpe: rpe == null ? null : Math.min(10, Math.max(1, rpe)) });
   },
 
   setTargetWeight: (weight: number | null) => {

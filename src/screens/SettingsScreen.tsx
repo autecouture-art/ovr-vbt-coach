@@ -12,13 +12,19 @@ import {
   TouchableOpacity,
   Switch,
   Alert,
+  TextInput,
 } from "react-native";
-import { AppSettings } from "../types/index";
+import { AppSettings, Exercise } from "../types/index";
+import {
+  getExerciseCategoryLabel,
+  inferExercisePreset,
+} from "../constants/exerciseCatalog";
 import {
   DEFAULT_APP_SETTINGS,
   loadAppSettings,
   saveAppSettings,
 } from "../services/AppSettingsService";
+import ExerciseService from "../services/ExerciseService";
 
 interface SettingsScreenProps {
   navigation: any;
@@ -28,9 +34,16 @@ const defaultSettings: AppSettings = DEFAULT_APP_SETTINGS;
 
 const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
+  const [exerciseCount, setExerciseCount] = useState(0);
+  const [newExerciseName, setNewExerciseName] = useState("");
+  const [newExerciseCategory, setNewExerciseCategory] =
+    useState<Exercise["category"]>("accessory");
+  const [newExerciseMvt, setNewExerciseMvt] = useState("");
+  const [newExerciseRomThreshold, setNewExerciseRomThreshold] = useState("");
 
   useEffect(() => {
     loadSettings();
+    loadExerciseCount();
   }, []);
 
   const loadSettings = async () => {
@@ -39,6 +52,15 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
       setSettings(stored);
     } catch (error) {
       console.error("Failed to load settings:", error);
+    }
+  };
+
+  const loadExerciseCount = async () => {
+    try {
+      const exercises = await ExerciseService.getAllExercises();
+      setExerciseCount(exercises.length);
+    } catch (error) {
+      console.error("Failed to load exercises:", error);
     }
   };
 
@@ -67,7 +89,83 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
     saveSettings(newSettings);
   };
 
+  const handleAddExercise = async () => {
+    const name = newExerciseName.trim();
+    if (!name) {
+      Alert.alert("種目名が必要です", "新規種目名を入力してください");
+      return;
+    }
+
+    const inferred = inferExercisePreset(name, newExerciseCategory);
+    const mvt = newExerciseMvt.trim()
+      ? Number.parseFloat(newExerciseMvt.trim())
+      : undefined;
+    const romThreshold = newExerciseRomThreshold.trim()
+      ? Number.parseFloat(newExerciseRomThreshold.trim())
+      : undefined;
+
+    if (mvt != null && (!Number.isFinite(mvt) || mvt <= 0)) {
+      Alert.alert("入力エラー", "MVTは0より大きい数値で入力してください");
+      return;
+    }
+    if (
+      romThreshold != null &&
+      (!Number.isFinite(romThreshold) || romThreshold <= 0)
+    ) {
+      Alert.alert("入力エラー", "ROM閾値は0より大きい数値で入力してください");
+      return;
+    }
+
+    try {
+      const exercise = await ExerciseService.addExercise({
+        name,
+        category: newExerciseCategory,
+        subcategory: inferred.subcategory,
+        has_lvp: inferred.has_lvp ?? true,
+        machine_weight_steps: inferred.machine_weight_steps,
+        min_rom_threshold:
+          romThreshold ?? inferred.min_rom_threshold ?? 10,
+        rep_detection_mode: inferred.rep_detection_mode ?? "standard",
+        target_pause_ms: inferred.target_pause_ms ?? 0,
+        rom_range_min_cm: inferred.rom_range_min_cm,
+        rom_range_max_cm: inferred.rom_range_max_cm,
+        rom_data_points: 0,
+        description: inferred.description,
+        mvt: mvt ?? inferred.mvt,
+        ignore_first_rep_as_setup:
+          inferred.ignore_first_rep_as_setup ?? false,
+        auto_start_rom_cm: inferred.auto_start_rom_cm,
+      });
+      setNewExerciseName("");
+      setNewExerciseMvt("");
+      setNewExerciseRomThreshold("");
+      await loadExerciseCount();
+      Alert.alert("追加しました", `${exercise.name} を種目に追加しました`);
+    } catch (error) {
+      console.error("Failed to add exercise:", error);
+      Alert.alert("エラー", "新規種目の追加に失敗しました");
+    }
+  };
+
   const thresholdOptions = [10, 15, 20, 25, 30];
+  const categoryOptions: Exercise["category"][] = [
+    "squat",
+    "bench",
+    "deadlift",
+    "press",
+    "pull",
+    "row",
+    "vertical_pull",
+    "single_leg",
+    "quad",
+    "hamstring",
+    "adductor",
+    "glute",
+    "triceps",
+    "biceps",
+    "core",
+    "accessory",
+  ];
   const phaseOptions: {
     value: AppSettings["target_training_phase"];
     label: string;
@@ -144,7 +242,7 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
           <View style={styles.settingInfo}>
             <Text style={styles.settingLabel}>ビデオ録画</Text>
             <Text style={styles.settingDescription}>
-              フォーム分析用の録画（未対応）
+              セッション画面にフォーム録画ボタンを表示
             </Text>
           </View>
           <Switch
@@ -152,8 +250,96 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
             onValueChange={() => handleToggle("enable_video_recording")}
             trackColor={{ false: "#444", true: "#2196F3" }}
             thumbColor={settings.enable_video_recording ? "#fff" : "#ccc"}
-            disabled
           />
+        </View>
+
+        <View style={styles.settingItem}>
+          <View style={styles.settingInfo}>
+            <Text style={styles.settingLabel}>フォーム動画 安全モード</Text>
+            <Text style={styles.settingDescription}>
+              録画中はVBT入力を一時停止してクラッシュを避ける
+            </Text>
+          </View>
+          <Switch
+            value={settings.enable_form_video_ble_safe_mode}
+            onValueChange={() =>
+              handleToggle("enable_form_video_ble_safe_mode")
+            }
+            trackColor={{ false: "#444", true: "#2196F3" }}
+            thumbColor={
+              settings.enable_form_video_ble_safe_mode ? "#fff" : "#ccc"
+            }
+          />
+        </View>
+      </View>
+
+      {/* Exercise Management */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>種目管理</Text>
+        <View style={styles.exerciseManagerCard}>
+          <Text style={styles.settingLabel}>新規種目を追加</Text>
+          <Text style={styles.settingDescription}>
+            現在の登録数: {exerciseCount}種目。名前は英語表記推奨です。
+          </Text>
+
+          <TextInput
+            style={styles.textInput}
+            value={newExerciseName}
+            onChangeText={setNewExerciseName}
+            placeholder="例: Pin Squat"
+            placeholderTextColor="#777"
+            returnKeyType="done"
+          />
+
+          <View style={styles.categoryGrid}>
+            {categoryOptions.map((category) => (
+              <TouchableOpacity
+                key={category}
+                style={[
+                  styles.categoryChip,
+                  newExerciseCategory === category &&
+                    styles.categoryChipActive,
+                ]}
+                onPress={() => setNewExerciseCategory(category)}
+              >
+                <Text
+                  style={[
+                    styles.categoryChipText,
+                    newExerciseCategory === category &&
+                      styles.categoryChipTextActive,
+                  ]}
+                >
+                  {getExerciseCategoryLabel(category)}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <View style={styles.compactInputRow}>
+            <TextInput
+              style={[styles.textInput, styles.compactInput]}
+              value={newExerciseMvt}
+              onChangeText={setNewExerciseMvt}
+              placeholder="MVT 任意"
+              placeholderTextColor="#777"
+              keyboardType="decimal-pad"
+            />
+            <TextInput
+              style={[styles.textInput, styles.compactInput]}
+              value={newExerciseRomThreshold}
+              onChangeText={setNewExerciseRomThreshold}
+              placeholder="ROM閾値 任意"
+              placeholderTextColor="#777"
+              keyboardType="decimal-pad"
+            />
+          </View>
+
+          <TouchableOpacity
+            style={styles.addExerciseButton}
+            onPress={handleAddExercise}
+          >
+            <Text style={styles.addExerciseButtonText}>種目を追加</Text>
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -293,6 +479,68 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 12,
     marginBottom: 8,
+  },
+  exerciseManagerCard: {
+    backgroundColor: "#2a2a2a",
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 8,
+  },
+  textInput: {
+    backgroundColor: "#1a1a1a",
+    borderWidth: 1,
+    borderColor: "#444",
+    borderRadius: 10,
+    color: "#fff",
+    fontSize: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginTop: 12,
+  },
+  categoryGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 12,
+  },
+  categoryChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#444",
+    backgroundColor: "#1a1a1a",
+  },
+  categoryChipActive: {
+    backgroundColor: "#2196F3",
+    borderColor: "#2196F3",
+  },
+  categoryChipText: {
+    color: "#aaa",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  categoryChipTextActive: {
+    color: "#fff",
+  },
+  compactInputRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  compactInput: {
+    flex: 1,
+  },
+  addExerciseButton: {
+    marginTop: 14,
+    backgroundColor: "#4CAF50",
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  addExerciseButtonText: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "800",
   },
   optionsContainer: {
     flexDirection: "row",

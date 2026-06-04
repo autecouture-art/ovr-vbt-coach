@@ -1592,7 +1592,8 @@ class DatabaseService {
 
   /**
    * 種目名の表記揺れを履歴データ全体で英語 canonical 名へ寄せる。
-   * sets/reps/pr_records/lvp_profiles を同時に揃え、履歴・PR・LVPが分断されないようにする。
+   * sets/reps/pr_records/lvp_profiles/form_video_records を同時に揃え、
+   * 履歴・PR・LVP・動画が分断されないようにする。
    */
   async renameLiftEverywhere(fromLift: string, toLift: string): Promise<void> {
     if (!(await this.ensureReady())) return;
@@ -1612,6 +1613,10 @@ class DatabaseService {
       toLift,
       fromLift,
     ]);
+    await this.db.runAsync(
+      "UPDATE form_video_records SET lift = ? WHERE lift = ?",
+      [toLift, fromLift],
+    );
     await this.db.runAsync(
       `UPDATE lvp_profiles
        SET lift = ?
