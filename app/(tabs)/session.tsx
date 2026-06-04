@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { Suspense, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -22,6 +22,16 @@ import CrashReportService, {
 } from "@/src/services/CrashReportService";
 
 type LoadedSessionScreen = React.ComponentType<Record<string, never>>;
+type LoadedEmergencySessionLogScreen = React.ComponentType<{
+  onClose: () => void;
+}>;
+
+const LazyEmergencySessionLogScreen = React.lazy(
+  async (): Promise<{ default: LoadedEmergencySessionLogScreen }> => {
+    const module = await import("@/src/screens/EmergencySessionLogScreen");
+    return { default: module.default };
+  },
+);
 
 export default function SessionGateScreen() {
   const insets = useSafeAreaInsets();
@@ -31,6 +41,7 @@ export default function SessionGateScreen() {
   const [LoadedSessionScreen, setLoadedSessionScreen] =
     useState<LoadedSessionScreen | null>(null);
   const [isLoadingSession, setIsLoadingSession] = useState(false);
+  const [showEmergencyLog, setShowEmergencyLog] = useState(false);
 
   useEffect(() => {
     if (!isFocused || LoadedSessionScreen) {
@@ -158,6 +169,16 @@ export default function SessionGateScreen() {
     return <LoadedSessionScreen />;
   }
 
+  if (showEmergencyLog) {
+    return (
+      <Suspense fallback={<View style={styles.loadingFallback} />}>
+        <LazyEmergencySessionLogScreen
+          onClose={() => setShowEmergencyLog(false)}
+        />
+      </Suspense>
+    );
+  }
+
   return (
     <ScrollView
       style={styles.container}
@@ -184,6 +205,12 @@ export default function SessionGateScreen() {
           ) : (
             <Text style={styles.primaryButtonText}>セッション本体を開く</Text>
           )}
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.secondaryButton}
+          onPress={() => setShowEmergencyLog(true)}
+        >
+          <Text style={styles.secondaryButtonText}>緊急記録モード</Text>
         </TouchableOpacity>
       </View>
 
@@ -241,6 +268,10 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: GarageTheme.background,
   },
+  loadingFallback: {
+    flex: 1,
+    backgroundColor: GarageTheme.background,
+  },
   content: {
     paddingHorizontal: 16,
     paddingBottom: 32,
@@ -289,6 +320,21 @@ const styles = StyleSheet.create({
   primaryButtonText: {
     color: GarageTheme.background,
     fontSize: 15,
+    fontWeight: "900",
+  },
+  secondaryButton: {
+    minHeight: 48,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: GarageTheme.panel,
+    borderWidth: 1,
+    borderColor: GarageTheme.borderStrong,
+    marginTop: 12,
+  },
+  secondaryButtonText: {
+    color: GarageTheme.textStrong,
+    fontSize: 14,
     fontWeight: "900",
   },
   crashReportCard: {
