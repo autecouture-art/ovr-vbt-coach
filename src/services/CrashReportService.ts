@@ -9,7 +9,10 @@ const VBT_CONTEXT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 export type VBTScreenCrashContext = {
   schema: "repvelocoach.vbt-screen-crash-context.v1";
   saved_at: string;
-  reason: "session_tab_open_attempt" | "vbt_session_screen_active";
+  reason:
+    | "session_tab_open_attempt"
+    | "session_screen_mount_attempt"
+    | "vbt_session_screen_active";
   entry_point?: "bottom_tab" | "home_card" | "unknown";
   session_id: string | null;
   is_session_active: boolean;
@@ -113,6 +116,48 @@ class CrashReportService {
       schema: "repvelocoach.vbt-screen-crash-context.v1",
       saved_at: new Date().toISOString(),
       reason: "session_tab_open_attempt",
+      entry_point: input.entry_point ?? "unknown",
+      session_id: null,
+      is_session_active: false,
+      is_paused: false,
+      pause_reason: null,
+      is_connected: Boolean(input.is_connected),
+      sensor_input_muted: false,
+      current_lift: input.current_lift ?? null,
+      current_exercise_name: input.current_exercise_name ?? null,
+      current_load:
+        typeof input.current_load === "number" && Number.isFinite(input.current_load)
+          ? input.current_load
+          : 0,
+      current_reps:
+        typeof input.current_reps === "number" && Number.isFinite(input.current_reps)
+          ? input.current_reps
+          : 0,
+      current_set_index: 0,
+      completed_set_count: 0,
+      current_rep_count: 0,
+      current_heart_rate: null,
+      live_data: null,
+      latest_completed_set: null,
+      settings_snapshot: {
+        lightweight_mode: false,
+        session_history: false,
+        velocity_chart: false,
+        recent_history: false,
+        same_load_history: false,
+        form_video: false,
+      },
+    };
+    await AsyncStorage.setItem(VBT_SCREEN_CONTEXT_KEY, JSON.stringify(payload));
+  }
+
+  async saveVBTSessionMountAttempt(
+    input: SaveVBTSessionOpenAttemptInput = {},
+  ): Promise<void> {
+    const payload: VBTScreenCrashContext = {
+      schema: "repvelocoach.vbt-screen-crash-context.v1",
+      saved_at: new Date().toISOString(),
+      reason: "session_screen_mount_attempt",
       entry_point: input.entry_point ?? "unknown",
       session_id: null,
       is_session_active: false,

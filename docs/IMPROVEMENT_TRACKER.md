@@ -112,6 +112,7 @@ Codex / Claude / GLM / Gemini を含む全エージェントは、改善作業�
 | 2026-06-04-01 | crash/diagnostics | VBT接続クラッシュ時の状況報告をGmail経由でCodexへ共有したい | implemented | critical | codex | src/services/CrashReportService.ts, app/(tabs)/session.tsx | local_checked | 実機でクラッシュ後に再起動しGmail共有できるか確認待ち | セッション画面滞在中のVBT接続/LiveData/セット/設定スナップショットをAsyncStorageに保存し、再起動後に「前回VBT接続クラッシュ疑い」バーからMarkdownレポートをGmail共有/コピーできるようにした |
 | 2026-06-04-02 | crash/diagnostics | セッションモードを押しただけでクラッシュし、クラッシュデータ送信画面にも入れない | implemented | critical | codex | src/services/CrashReportService.ts, app/(tabs)/_layout.tsx, app/(tabs)/index.tsx | local_checked | build 94で実機確認待ち | セッションタブ/ホームカード押下前にクラッシュ疑いマーカーをAsyncStorageへ保存し、再起動後のホーム画面からGmail共有/コピー/クリアできるようにした |
 | 2026-06-04-03 | crash/diagnostics | Gmailで送ったクラッシュ報告がMarkdown添付のみでCodex側から読めない | implemented | high | codex | app/(tabs)/index.tsx, app/(tabs)/session.tsx | local_checked | 次回実機で本文共有確認待ち | Gmailコネクタでtext/x-markdown添付が読めなかったため、クラッシュ報告カードに「添付共有」と「本文共有」を分離追加。共有後も記録を自動削除せず、ユーザーがクリアするまで再共有可能にした |
+| 2026-06-04-04 | crash/session | build 95の本文レポートで、クラッシュがSession画面描画前のbottom_tab open attemptだと判明 | implemented | critical | codex | app/(tabs)/session.tsx, src/screens/SessionScreen.tsx, src/services/CrashReportService.ts | local_checked | 次回実機で安全ゲート表示と本体読込確認待ち | 既存の巨大Session本体をsrc/screens/SessionScreen.tsxへ移動し、タブルートは軽量なSession Safe Gateに変更。本体は「セッション本体を開く」押下後に動的importし、mount直前にもsession_screen_mount_attemptを保存する |
 
 ## Active Focus
 

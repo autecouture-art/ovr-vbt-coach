@@ -1862,3 +1862,45 @@ Remaining:
 - Wait for TestFlight processing in App Store Connect, usually 15-30 minutes.
 - Install build `95` on the iPhone.
 - If Session still crashes, relaunch and use the Home-screen crash card -> `本文共有` so the report arrives in the Gmail body rather than only as a Markdown attachment.
+
+## 2026-06-04 (Codex Session Safe Gate)
+
+Scope: Use the user-supplied text crash report to separate "pressing the Session tab" from "mounting the heavy Session screen".
+
+Input:
+
+- File: `/Users/hoshinohideyuki/Downloads/テキスト-36CC8ACEE552-1.txt`
+- Key report fields:
+  - `reason: session_tab_open_attempt`
+  - `entry_point: bottom_tab`
+  - `session_id: -`
+  - `VBT接続: no`
+  - no live VBT data and no completed set data
+
+Interpretation:
+
+- The app crashed before the Session screen could save an active-screen snapshot.
+- The suspected zone is route entry, module import, or initial mount of the heavy Session component rather than set persistence or live rep processing.
+
+Actions:
+
+- Moved the existing heavy Session screen from `app/(tabs)/session.tsx` to `src/screens/SessionScreen.tsx`.
+- Recreated `app/(tabs)/session.tsx` as a lightweight Session Safe Gate.
+  - The tab now opens a small safe screen first.
+  - The heavy Session screen is dynamically imported only after tapping `セッション本体を開く`.
+  - Existing crash report `添付共有` / `本文共有` / `クリア` actions are available without loading the heavy Session screen.
+- Added `session_screen_mount_attempt` to `CrashReportService`.
+  - The app now records a second marker immediately before importing/mounting the heavy Session screen.
+
+Results:
+
+- `pnpm -s check` passed.
+- `pnpm -s lint` passed.
+- Targeted VBT tests passed: 7 tests.
+
+Remaining:
+
+- Build/upload a new TestFlight build before this gate is available on the iPhone.
+- On device, test:
+  - tapping Session tab shows the Safe Gate without crashing
+  - tapping `セッション本体を開く` either opens Session or leaves a `session_screen_mount_attempt` report after relaunch
