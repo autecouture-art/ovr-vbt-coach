@@ -1773,3 +1773,35 @@ Remaining:
 - Build/upload a new TestFlight build.
 - Install the new build on iPhone.
 - If pressing Session still crashes, relaunch the app and use the Home-screen `前回セッションモードでクラッシュ疑い` card -> `Gmail共有`.
+
+## 2026-06-04 (Codex TestFlight build 94)
+
+Scope: Build and upload RepVeloCoach `2.3.5 (94)` to TestFlight so the Session-entry crash marker can be tested on the iPhone.
+
+Actions:
+
+- Bumped the iOS build number from `93` to `94` in:
+  - `app.config.ts`
+  - `ios/RepVeloCoach/Info.plist`
+  - `ios/RepVeloCoach.xcodeproj/project.pbxproj`
+- Ran `pnpm -s check`.
+- Built and uploaded with the internal Xcode workaround:
+  - `REPVELO_XCODE_APP=/Users/hoshinohideyuki/Developer/Xcode-RepVelo.app`
+  - `REPVELO_CLEAN=false`
+  - `REPVELO_EXTRA_XCARGS='-jobs 1 COMPILER_INDEX_STORE_ENABLE=NO'`
+
+Results:
+
+- `pnpm -s check` passed.
+- Archive succeeded.
+- IPA export succeeded.
+- App Store Connect upload succeeded at 2026-06-04 11:44:12 JST.
+- Uploaded build: `2.3.5 (94)`.
+- IPA: `ios/fastlane_export/RepVeloCoach.ipa`.
+- dSYM: `ios/fastlane_export/RepVeloCoach.app.dSYM.zip`.
+
+Remaining:
+
+- Wait for TestFlight processing in App Store Connect, usually 15-30 minutes.
+- Install build `94` on the iPhone and test tapping Session mode.
+- If pressing Session still crashes, relaunch the app and use the Home-screen `前回セッションモードでクラッシュ疑い` card -> `Gmail共有` to share the generated Markdown report.
