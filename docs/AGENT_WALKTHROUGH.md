@@ -2275,3 +2275,42 @@ Remaining:
 
 - Deploy the Apps Script Web App and paste its `/exec` URL into Settings.
 - Verify on iPhone that a crash context creates both `.md` and `.json` files in Drive.
+
+## 2026-06-05 (Codex TestFlight build 101)
+
+Scope: Ship the Google Drive crash diagnostics handoff and Settings new-exercise add flow to TestFlight.
+
+Actions:
+
+- Bumped iOS build number from `100` to `101`.
+- Used the repo-local TestFlight deploy script with Xcode at `/Users/hoshinohideyuki/Developer/Xcode-RepVelo.app`.
+- Included the previously committed Google Drive crash diagnostics implementation:
+  - Drive upload queue and retry path.
+  - Manual Drive send buttons on Home, Session Safe Gate, and Full Session diagnostic bar.
+  - Optional automatic Drive upload after relaunch.
+  - Settings fields for Apps Script URL, optional token, enable flag, and queue flush.
+  - Real Settings new-exercise form.
+
+Validation:
+
+- Previous implementation validation passed before upload:
+  - `pnpm check`
+  - `pnpm lint`
+  - `pnpm test`: 35 tests passed, 1 skipped.
+  - `git diff --check`
+- Archive succeeded.
+- IPA export succeeded.
+- App Store Connect upload succeeded at 2026-06-05 15:30:30 JST.
+
+Results:
+
+- Uploaded build: `2.3.5 (101)`.
+- IPA: `ios/fastlane_export/RepVeloCoach.ipa`.
+- dSYM: `ios/fastlane_export/RepVeloCoach.app.dSYM.zip`.
+- TestFlight processing in App Store Connect usually takes 15-30 minutes.
+
+Remaining:
+
+- Install build `101` from TestFlight after processing completes.
+- Configure the Google Apps Script Web App URL in Settings before using Drive crash report upload.
+- Verify on iPhone that a crash context creates both Markdown and JSON files in Google Drive.
