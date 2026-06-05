@@ -1,10 +1,16 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as FileSystem from "expo-file-system/legacy";
 
-import type { RepVeloData, SetData } from "@/src/types/index";
+import type { AppSettings, RepVeloData, SetData } from "@/src/types/index";
 
 const VBT_SCREEN_CONTEXT_KEY = "@repvelocoach_vbt_screen_crash_context_v1";
+const DRIVE_UPLOAD_QUEUE_KEY =
+  "@repvelocoach_drive_crash_report_upload_queue_v1";
+const DRIVE_UPLOADED_IDS_KEY =
+  "@repvelocoach_drive_crash_report_uploaded_ids_v1";
 const VBT_CONTEXT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const DRIVE_QUEUE_LIMIT = 8;
+const DRIVE_UPLOADED_ID_LIMIT = 50;
 
 export type VBTScreenCrashContext = {
   schema: "repvelocoach.vbt-screen-crash-context.v1";
@@ -59,6 +65,30 @@ export type SaveVBTSessionOpenAttemptInput = {
   current_reps?: number | null;
 };
 
+export type DriveCrashReportUploadEntry = {
+  id: string;
+  queued_at: string;
+  attempts: number;
+  last_error?: string;
+  markdown: string;
+  snapshot: VBTScreenCrashContext;
+};
+
+export type DriveCrashReportUploadResult = {
+  status:
+    | "disabled"
+    | "missing_url"
+    | "already_uploaded"
+    | "queued"
+    | "uploaded"
+    | "partial";
+  attempted: number;
+  uploaded: number;
+  failed: number;
+  queued: number;
+  last_error?: string;
+};
+
 const safeNumber = (value: unknown): number | null =>
   typeof value === "number" && Number.isFinite(value) ? value : null;
 
@@ -111,6 +141,51 @@ function buildFileName(date: Date): string {
     .replace(/[-:]/g, "")
     .replace(/\.\d{3}Z$/, "Z");
   return `repvelocoach-vbt-crash-report-${stamp}.md`;
+}
+
+function buildDriveReportId(snapshot: VBTScreenCrashContext): string {
+  return [
+    snapshot.saved_at,
+    snapshot.reason,
+    snapshot.session_id ?? "no-session",
+  ]
+    .join("_")
+    .replace(/[^a-zA-Z0-9_-]+/g, "_");
+}
+
+function settingsAllowDriveUpload(settings: AppSettings): boolean {
+  return Boolean(settings.enable_google_drive_crash_report_upload);
+}
+
+function getDriveEndpoint(settings: AppSettings): string {
+  return settings.google_drive_crash_report_url.trim();
+}
+
+function getDriveToken(settings: AppSettings): string {
+  return settings.google_drive_crash_report_token.trim();
+}
+
+async function readJsonArray<T>(key: string): Promise<T[]> {
+  const raw = await AsyncStorage.getItem(key);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as T[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function writeUploadedIds(ids: string[]): Promise<void> {
+  await AsyncStorage.setItem(
+    DRIVE_UPLOADED_IDS_KEY,
+    JSON.stringify(ids.slice(0, DRIVE_UPLOADED_ID_LIMIT)),
+  );
+}
+
+function toErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return String(error);
 }
 
 class CrashReportService {
@@ -337,6 +412,206 @@ class CrashReportService {
       uri,
       bytes: markdown.length,
     };
+  }
+
+  async getDriveCrashReportQueue(): Promise<DriveCrashReportUploadEntry[]> {
+    return readJsonArray<DriveCrashReportUploadEntry>(DRIVE_UPLOAD_QUEUE_KEY);
+  }
+
+  async clearDriveCrashReportQueue(): Promise<void> {
+    await AsyncStorage.removeItem(DRIVE_UPLOAD_QUEUE_KEY);
+  }
+
+  async submitLastVBTScreenContextToGoogleDrive(
+    settings: AppSettings,
+    currentDiagnosticMarkdown?: string,
+    options: { force?: boolean } = {},
+  ): Promise<DriveCrashReportUploadResult> {
+    if (!settingsAllowDriveUpload(settings)) {
+      return {
+        status: "disabled",
+        attempted: 0,
+        uploaded: 0,
+        failed: 0,
+        queued: (await this.getDriveCrashReportQueue()).length,
+      };
+    }
+
+    if (!getDriveEndpoint(settings)) {
+      return {
+        status: "missing_url",
+        attempted: 0,
+        uploaded: 0,
+        failed: 0,
+        queued: (await this.getDriveCrashReportQueue()).length,
+      };
+    }
+
+    const snapshot = await this.getLastVBTScreenContext();
+    if (snapshot) {
+      const markdown = this.buildVBTCrashMarkdown(
+        snapshot,
+        currentDiagnosticMarkdown,
+      );
+      await this.enqueueDriveCrashReport(snapshot, markdown, options);
+    }
+
+    return this.flushGoogleDriveCrashReportQueue(settings);
+  }
+
+  async flushGoogleDriveCrashReportQueue(
+    settings: AppSettings,
+  ): Promise<DriveCrashReportUploadResult> {
+    if (!settingsAllowDriveUpload(settings)) {
+      return {
+        status: "disabled",
+        attempted: 0,
+        uploaded: 0,
+        failed: 0,
+        queued: (await this.getDriveCrashReportQueue()).length,
+      };
+    }
+
+    const endpoint = getDriveEndpoint(settings);
+    if (!endpoint) {
+      return {
+        status: "missing_url",
+        attempted: 0,
+        uploaded: 0,
+        failed: 0,
+        queued: (await this.getDriveCrashReportQueue()).length,
+      };
+    }
+
+    const queue = await this.getDriveCrashReportQueue();
+    const uploadedIds = await readJsonArray<string>(DRIVE_UPLOADED_IDS_KEY);
+    const uploadedIdSet = new Set(uploadedIds);
+    const remaining: DriveCrashReportUploadEntry[] = [];
+    let uploaded = 0;
+    let failed = 0;
+    let lastError: string | undefined;
+
+    for (const entry of queue) {
+      if (uploadedIdSet.has(entry.id)) {
+        continue;
+      }
+
+      try {
+        await this.uploadDriveCrashReportEntry(endpoint, getDriveToken(settings), entry);
+        uploaded += 1;
+        uploadedIdSet.add(entry.id);
+      } catch (error) {
+        failed += 1;
+        lastError = toErrorMessage(error);
+        remaining.push({
+          ...entry,
+          attempts: entry.attempts + 1,
+          last_error: lastError,
+        });
+      }
+    }
+
+    await AsyncStorage.setItem(
+      DRIVE_UPLOAD_QUEUE_KEY,
+      JSON.stringify(remaining.slice(-DRIVE_QUEUE_LIMIT)),
+    );
+    await writeUploadedIds(Array.from(uploadedIdSet).reverse());
+
+    const status =
+      failed > 0 && uploaded > 0
+        ? "partial"
+        : failed > 0
+          ? "queued"
+          : uploaded > 0
+            ? "uploaded"
+            : "already_uploaded";
+
+    return {
+      status,
+      attempted: queue.length,
+      uploaded,
+      failed,
+      queued: remaining.length,
+      last_error: lastError,
+    };
+  }
+
+  private async enqueueDriveCrashReport(
+    snapshot: VBTScreenCrashContext,
+    markdown: string,
+    options: { force?: boolean },
+  ): Promise<void> {
+    const id = buildDriveReportId(snapshot);
+    const uploadedIds = await readJsonArray<string>(DRIVE_UPLOADED_IDS_KEY);
+    if (!options.force && uploadedIds.includes(id)) {
+      return;
+    }
+
+    const queue = await this.getDriveCrashReportQueue();
+    const nextEntry: DriveCrashReportUploadEntry = {
+      id,
+      queued_at: new Date().toISOString(),
+      attempts: 0,
+      markdown,
+      snapshot,
+    };
+    const withoutDuplicate = queue.filter((entry) => entry.id !== id);
+    await AsyncStorage.setItem(
+      DRIVE_UPLOAD_QUEUE_KEY,
+      JSON.stringify([...withoutDuplicate, nextEntry].slice(-DRIVE_QUEUE_LIMIT)),
+    );
+  }
+
+  private async uploadDriveCrashReportEntry(
+    endpoint: string,
+    token: string,
+    entry: DriveCrashReportUploadEntry,
+  ): Promise<void> {
+    const fileBaseName = buildFileName(new Date(entry.snapshot.saved_at)).replace(
+      /\.md$/,
+      "",
+    );
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({
+        schema: "repvelocoach.google-drive-crash-report.v1",
+        token: token || undefined,
+        report_id: entry.id,
+        queued_at: entry.queued_at,
+        uploaded_at: new Date().toISOString(),
+        file_base_name: fileBaseName,
+        markdown: entry.markdown,
+        snapshot: entry.snapshot,
+      }),
+    });
+
+    const responseText = await response.text();
+    if (!response.ok) {
+      throw new Error(
+        `Google Drive upload failed: HTTP ${response.status} ${responseText.slice(
+          0,
+          160,
+        )}`,
+      );
+    }
+
+    if (responseText) {
+      try {
+        const parsed = JSON.parse(responseText) as { ok?: boolean; error?: string };
+        if (parsed.ok === false) {
+          throw new Error(parsed.error ?? "Google Drive upload rejected.");
+        }
+      } catch (error) {
+        if (error instanceof SyntaxError) {
+          return;
+        }
+        throw error;
+      }
+    }
   }
 }
 

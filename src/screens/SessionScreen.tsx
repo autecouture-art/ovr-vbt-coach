@@ -2150,6 +2150,45 @@ export default function SessionScreen() {
     }
   };
 
+  const handleUploadVBTScreenCrashReportToDrive = async () => {
+    try {
+      const result =
+        await CrashReportService.submitLastVBTScreenContextToGoogleDrive(
+          settings,
+          undefined,
+          { force: true },
+        );
+
+      if (result.status === "disabled") {
+        Alert.alert(
+          "Drive診断OFF",
+          "設定 > 共有 でDrive診断送信をONにしてください。",
+        );
+        return;
+      }
+      if (result.status === "missing_url") {
+        Alert.alert(
+          "URL未設定",
+          "設定 > 共有 にGoogle Apps Script URLを入力してください。",
+        );
+        return;
+      }
+
+      Alert.alert(
+        result.failed > 0 ? "Drive送信をキュー保存しました" : "Drive送信完了",
+        `送信: ${result.uploaded} / 失敗: ${result.failed} / キュー: ${result.queued}${
+          result.last_error ? `\n${result.last_error}` : ""
+        }`,
+      );
+    } catch (error) {
+      console.error("[SessionScreen] Failed to upload VBT crash report:", error);
+      Alert.alert(
+        "Drive送信失敗",
+        "クラッシュ報告をDriveへ送信できませんでした。",
+      );
+    }
+  };
+
   const isMeasuring = isSessionActive && !isPaused;
 
   // セッション終了 & DBへの集計保存
@@ -2527,10 +2566,18 @@ export default function SessionScreen() {
               </Text>
               {previousVbtCrashContext ? (
                 <Text style={styles.diagnosticBarSubText}>
-                  Gmail共有でCodexへ状況を送れます
+                  Drive送信またはGmail共有でCodexへ状況を送れます
                 </Text>
               ) : null}
             </View>
+            {previousVbtCrashContext ? (
+              <TouchableOpacity
+                style={[styles.diagnosticButton, styles.diagnosticShareButton]}
+                onPress={() => void handleUploadVBTScreenCrashReportToDrive()}
+              >
+                <Text style={styles.diagnosticShareButtonText}>Drive送信</Text>
+              </TouchableOpacity>
+            ) : null}
             {previousVbtCrashContext ? (
               <TouchableOpacity
                 style={[styles.diagnosticButton, styles.diagnosticShareButton]}

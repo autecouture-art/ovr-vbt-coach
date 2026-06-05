@@ -341,6 +341,10 @@ export interface AppSettings {
   enable_voice_commands: boolean;
   enable_video_recording: boolean;
   enable_form_video_ble_safe_mode: boolean;
+  enable_google_drive_crash_report_upload: boolean;
+  enable_google_drive_crash_report_auto_upload: boolean;
+  google_drive_crash_report_url: string;
+  google_drive_crash_report_token: string;
   enable_live_share: boolean;
   live_share_url: string;
   live_share_token: string;

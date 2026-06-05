@@ -21,6 +21,7 @@ import CrashReportService, {
   type VBTScreenCrashContext,
 } from '@/src/services/CrashReportService';
 import DatabaseService from '@/src/services/DatabaseService';
+import { loadAppSettings } from '@/src/services/AppSettingsService';
 import { GarageTheme } from '@/src/constants/garageTheme';
 import { formatErrorMessage } from '@/src/utils/errorMessages';
 import type { SessionData } from '@/src/types/index';
@@ -93,6 +94,23 @@ export default function HomeScreen() {
           return;
         }
         setPreviousVbtCrashContext(crashContext);
+        if (crashContext) {
+          const settings = await loadAppSettings();
+          if (
+            settings.enable_google_drive_crash_report_upload &&
+            settings.enable_google_drive_crash_report_auto_upload &&
+            settings.google_drive_crash_report_url.trim()
+          ) {
+            void CrashReportService.submitLastVBTScreenContextToGoogleDrive(
+              settings,
+            ).catch((error) => {
+              console.warn(
+                '[HomeScreen] Failed to auto-upload VBT crash report:',
+                error,
+              );
+            });
+          }
+        }
 
         const deviceInfo = BLEService.getLastDeviceInfo();
         setLastDeviceInfo(deviceInfo);
@@ -283,6 +301,37 @@ export default function HomeScreen() {
     }
   };
 
+  const handleUploadVBTScreenCrashReportToDrive = async () => {
+    try {
+      const settings = await loadAppSettings();
+      const result =
+        await CrashReportService.submitLastVBTScreenContextToGoogleDrive(
+          settings,
+          undefined,
+          { force: true },
+        );
+
+      if (result.status === 'disabled') {
+        Alert.alert('Drive診断OFF', '設定 > 共有 でDrive診断送信をONにしてください。');
+        return;
+      }
+      if (result.status === 'missing_url') {
+        Alert.alert('URL未設定', '設定 > 共有 にGoogle Apps Script URLを入力してください。');
+        return;
+      }
+
+      Alert.alert(
+        result.failed > 0 ? 'Drive送信をキュー保存しました' : 'Drive送信完了',
+        `送信: ${result.uploaded} / 失敗: ${result.failed} / キュー: ${result.queued}${
+          result.last_error ? `\n${result.last_error}` : ''
+        }`,
+      );
+    } catch (error) {
+      console.error('[HomeScreen] Failed to upload VBT crash report:', error);
+      Alert.alert('Drive送信失敗', 'クラッシュ報告をDriveへ送信できませんでした。');
+    }
+  };
+
   const handleClearVBTScreenCrashReport = async () => {
     await CrashReportService.clearVBTScreenContext();
     setPreviousVbtCrashContext(null);
@@ -346,6 +395,12 @@ export default function HomeScreen() {
             saved {previousVbtCrashContext.saved_at} / {previousVbtCrashContext.reason}
           </Text>
           <View style={styles.crashReportActions}>
+            <TouchableOpacity
+              style={[styles.crashReportButton, styles.crashReportButtonPrimary]}
+              onPress={() => void handleUploadVBTScreenCrashReportToDrive()}
+            >
+              <Text style={styles.crashReportButtonTextPrimary}>Drive送信</Text>
+            </TouchableOpacity>
             <TouchableOpacity
               style={[styles.crashReportButton, styles.crashReportButtonPrimary]}
               onPress={() => void handleShareVBTScreenCrashReport()}

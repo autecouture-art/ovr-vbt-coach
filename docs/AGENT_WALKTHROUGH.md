@@ -2235,3 +2235,43 @@ Remaining:
 
 - Build `100` reduces the likely BLE + camera collision, but device validation with VBT connected and video opened is still required.
 - If another crash occurs, use the next launch Gmail crash report to compare whether it is now camera permission, sensor restoration, or another Session rendering issue.
+
+## 2026-06-05 (Codex Google Drive crash diagnostics)
+
+Scope: Replace the Gmail-heavy crash handoff with a lower-friction Google Drive path and finish the Settings new-exercise add flow.
+
+Actions:
+
+- Added Google Drive crash-report upload fields to `AppSettings`.
+- Extended `CrashReportService` with:
+  - on-device Drive upload queue
+  - uploaded report id tracking to avoid duplicate auto-sends
+  - manual submit for the latest VBT/session crash context
+  - queue flush/retry logic
+- Added Drive upload buttons to:
+  - Home crash report card
+  - Session Safe Gate crash report card
+  - Full Session diagnostic bar
+- Added optional automatic Drive upload on Home/Safe Gate focus when a saved crash context exists and Settings enables auto-upload.
+- Added Settings > Share controls for:
+  - Drive diagnostics enable
+  - auto upload after relaunch
+  - Google Apps Script Web App URL
+  - optional shared token
+  - queue count/flush
+- Added `scripts/google_drive_crash_report_webapp.gs` as the Google Apps Script receiver template.
+- Added `docs/GOOGLE_DRIVE_CRASH_REPORTS.md` with setup/operation instructions.
+- Replaced the placeholder `+ 新規追加` exercise action with a real new-exercise form using catalog preset inference.
+- Updated `docs/IMPROVEMENT_TRACKER.md` with `2026-06-05-06`.
+
+Validation:
+
+- `pnpm check` passed.
+- `pnpm lint` passed.
+- `pnpm test` passed: 35 tests passed, 1 skipped.
+- `git diff --check` passed.
+
+Remaining:
+
+- Deploy the Apps Script Web App and paste its `/exec` URL into Settings.
+- Verify on iPhone that a crash context creates both `.md` and `.json` files in Drive.

@@ -28,6 +28,7 @@ import {
   loadAppSettings,
   saveAppSettings,
 } from "@/src/services/AppSettingsService";
+import CrashReportService from "@/src/services/CrashReportService";
 import { useTrainingStore } from "@/src/store/trainingStore";
 import { HelpButton } from "@/src/components/HelpButton";
 import {
@@ -314,6 +315,11 @@ export default function SettingsTab() {
     useState<number | null>(null);
   const [editingTrainingCue, setEditingTrainingCue] = useState("");
   const [editingFocusNote, setEditingFocusNote] = useState("");
+  const [newExerciseName, setNewExerciseName] = useState("");
+  const [newExerciseCategory, setNewExerciseCategory] =
+    useState<Exercise["category"]>("accessory");
+  const [newExerciseDescription, setNewExerciseDescription] = useState("");
+  const [driveCrashQueueCount, setDriveCrashQueueCount] = useState(0);
   const blockWeekPlan = useMemo(
     () => getBlockWeekPlan(settings.powerlifting_block_week, "squat"),
     [settings.powerlifting_block_week],
@@ -331,6 +337,7 @@ export default function SettingsTab() {
       const loaded = await loadAppSettings();
       setSettings(loaded);
       updateGlobalSettings(loaded);
+      await refreshDriveCrashQueueCount();
     } catch (error) {
       console.error("Failed to load settings:", error);
     }
@@ -343,6 +350,91 @@ export default function SettingsTab() {
       updateGlobalSettings(saved);
     } catch (error) {
       console.error("Failed to save settings:", error);
+    }
+  };
+
+  const refreshDriveCrashQueueCount = async () => {
+    const queue = await CrashReportService.getDriveCrashReportQueue();
+    setDriveCrashQueueCount(queue.length);
+  };
+
+  const handleFlushDriveCrashReports = async () => {
+    try {
+      const result =
+        await CrashReportService.submitLastVBTScreenContextToGoogleDrive(
+          settings,
+          undefined,
+          { force: true },
+        );
+      await refreshDriveCrashQueueCount();
+
+      if (result.status === "disabled") {
+        Alert.alert("Drive診断OFF", "Google Drive診断送信をONにしてください。");
+        return;
+      }
+      if (result.status === "missing_url") {
+        Alert.alert(
+          "URL未設定",
+          "Google Apps Script Web App URLを入力してください。",
+        );
+        return;
+      }
+
+      Alert.alert(
+        result.failed > 0 ? "Drive送信をキュー保存しました" : "Drive送信完了",
+        `送信: ${result.uploaded} / 失敗: ${result.failed} / キュー: ${result.queued}${
+          result.last_error ? `\n${result.last_error}` : ""
+        }`,
+      );
+    } catch (error) {
+      console.error("Failed to flush drive crash reports:", error);
+      Alert.alert("Drive送信失敗", "診断レポート送信に失敗しました。");
+    }
+  };
+
+  const handleAddExercise = async () => {
+    const name = newExerciseName.trim();
+    if (!name) {
+      Alert.alert("種目名が必要です", "追加する種目名を入力してください。");
+      return;
+    }
+
+    const exists = exerciseMaster.some(
+      (exercise) => exercise.name.toLowerCase() === name.toLowerCase(),
+    );
+    if (exists) {
+      Alert.alert("重複しています", `${name} はすでに登録されています。`);
+      return;
+    }
+
+    try {
+      const preset = inferExercisePreset(name, newExerciseCategory);
+      await ExerciseService.addExercise({
+        name,
+        category:
+          (preset.category as Exercise["category"] | undefined) ??
+          newExerciseCategory,
+        subcategory: preset.subcategory,
+        has_lvp: preset.has_lvp ?? false,
+        machine_weight_steps: preset.machine_weight_steps,
+        min_rom_threshold: preset.min_rom_threshold,
+        rep_detection_mode: preset.rep_detection_mode,
+        target_pause_ms: preset.target_pause_ms,
+        rom_range_min_cm: preset.rom_range_min_cm,
+        rom_range_max_cm: preset.rom_range_max_cm,
+        description:
+          newExerciseDescription.trim() || preset.description || undefined,
+        mvt: preset.mvt,
+        ignore_first_rep_as_setup: preset.ignore_first_rep_as_setup ?? false,
+        auto_start_rom_cm: preset.auto_start_rom_cm,
+      });
+      setNewExerciseName("");
+      setNewExerciseDescription("");
+      await loadExerciseMaster();
+      Alert.alert("追加完了", `${name} を種目マスタに追加しました。`);
+    } catch (error) {
+      console.error("Failed to add exercise:", error);
+      Alert.alert("追加失敗", "種目の追加に失敗しました。");
     }
   };
 
@@ -960,6 +1052,78 @@ export default function SettingsTab() {
         </View>
       )}
 
+      {activeSection === "share" && (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Google Drive 診断送信</Text>
+          <Text style={styles.cardBody}>
+            クラッシュ疑いレポートをGoogle Apps Script経由でDriveへ保存します。Gmail操作の代わりに、再起動後の自動送信やボタン送信で共有できます。
+          </Text>
+
+          {renderSettingSwitch(
+            "enable_google_drive_crash_report_upload",
+            "Drive診断送信を有効化",
+            "URL未設定時は送信せず、端末内の診断記録だけ残します",
+          )}
+
+          {renderSettingSwitch(
+            "enable_google_drive_crash_report_auto_upload",
+            "クラッシュ後に自動送信",
+            "アプリ再起動時、未送信診断があればDriveへ送ります",
+          )}
+
+          <Text style={styles.statusLabel}>Google Apps Script Web App URL</Text>
+          <TextInput
+            style={styles.input}
+            value={settings.google_drive_crash_report_url}
+            onChangeText={(value) =>
+              void saveSettings({
+                ...settings,
+                google_drive_crash_report_url: value,
+              })
+            }
+            placeholder="https://script.google.com/macros/s/.../exec"
+            placeholderTextColor={GarageTheme.textSubtle}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="url"
+          />
+
+          <Text style={styles.statusLabel}>TOKEN 任意</Text>
+          <TextInput
+            style={styles.input}
+            value={settings.google_drive_crash_report_token}
+            onChangeText={(value) =>
+              void saveSettings({
+                ...settings,
+                google_drive_crash_report_token: value,
+              })
+            }
+            placeholder="Apps Script側で照合する共有トークン"
+            placeholderTextColor={GarageTheme.textSubtle}
+            autoCapitalize="none"
+            autoCorrect={false}
+            secureTextEntry
+          />
+          <Text style={styles.cardBody}>
+            未送信キュー: {driveCrashQueueCount}件。送信失敗時はキューに残して、次回または手動送信で再試行します。
+          </Text>
+          <View style={styles.buttonRow}>
+            <TouchableOpacity
+              style={[styles.actionButton, styles.actionSyncButton]}
+              onPress={() => void handleFlushDriveCrashReports()}
+            >
+              <Text style={styles.actionButtonText}>Driveへ診断送信</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={() => void refreshDriveCrashQueueCount()}
+            >
+              <Text style={styles.actionButtonText}>キュー確認</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
       {activeSection === "display" && (
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>セッション表示項目</Text>
@@ -1046,15 +1210,59 @@ export default function SettingsTab() {
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.actionButton, styles.addButton]}
-              onPress={() =>
-                Alert.alert(
-                  "準備中",
-                  "種目の新規追加は次の更新で専用フォームに移します。既存種目の編集はこの画面から行えます。",
-                )
-              }
+              onPress={() => void handleAddExercise()}
             >
               <Text style={styles.actionButtonText}>+ 新規追加</Text>
             </TouchableOpacity>
+          </View>
+
+          <View style={styles.addExerciseBox}>
+            <Text style={styles.statusLabel}>新規種目</Text>
+            <TextInput
+              style={styles.input}
+              value={newExerciseName}
+              onChangeText={setNewExerciseName}
+              placeholder="例: Tempo Squat / Cable Row"
+              placeholderTextColor={GarageTheme.textSubtle}
+              autoCapitalize="words"
+            />
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.categorySelectorScroll}
+            >
+              {Object.keys(EXERCISE_CATEGORY_LABELS).map((cat) => {
+                const category = cat as Exercise["category"];
+                const selected = newExerciseCategory === category;
+                return (
+                  <TouchableOpacity
+                    key={category}
+                    style={[
+                      styles.categoryChip,
+                      selected && styles.categoryChipActive,
+                    ]}
+                    onPress={() => setNewExerciseCategory(category)}
+                  >
+                    <Text
+                      style={[
+                        styles.categoryChipText,
+                        selected && styles.categoryChipTextActive,
+                      ]}
+                    >
+                      {EXERCISE_CATEGORY_LABELS[category]}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+            <TextInput
+              style={[styles.input, styles.stackInput]}
+              value={newExerciseDescription}
+              onChangeText={setNewExerciseDescription}
+              placeholder="メモ任意。空ならカテゴリから自動推定します"
+              placeholderTextColor={GarageTheme.textSubtle}
+              multiline
+            />
           </View>
 
           <ScrollView
@@ -1940,6 +2148,15 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 10,
     marginTop: 12,
+  },
+  addExerciseBox: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: GarageTheme.border,
+    backgroundColor: "rgba(255,255,255,0.03)",
+    padding: 14,
+    marginTop: 14,
+    gap: 10,
   },
   actionButton: {
     flex: 1,

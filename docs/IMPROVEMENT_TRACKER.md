@@ -113,6 +113,12 @@ Codex / Claude / GLM / Gemini を含む全エージェントは、改善作業�
 | 2026-06-04-02 | crash/diagnostics | セッションモードを押しただけでクラッシュし、クラッシュデータ送信画面にも入れない | implemented | critical | codex | src/services/CrashReportService.ts, app/(tabs)/_layout.tsx, app/(tabs)/index.tsx | local_checked | build 94で実機確認待ち | セッションタブ/ホームカード押下前にクラッシュ疑いマーカーをAsyncStorageへ保存し、再起動後のホーム画面からGmail共有/コピー/クリアできるようにした |
 | 2026-06-04-03 | crash/diagnostics | Gmailで送ったクラッシュ報告がMarkdown添付のみでCodex側から読めない | implemented | high | codex | app/(tabs)/index.tsx, app/(tabs)/session.tsx | local_checked | 次回実機で本文共有確認待ち | Gmailコネクタでtext/x-markdown添付が読めなかったため、クラッシュ報告カードに「添付共有」と「本文共有」を分離追加。共有後も記録を自動削除せず、ユーザーがクリアするまで再共有可能にした |
 | 2026-06-04-04 | crash/session | build 95の本文レポートで、クラッシュがSession画面描画前のbottom_tab open attemptだと判明 | implemented | critical | codex | app/(tabs)/session.tsx, src/screens/SessionScreen.tsx, src/services/CrashReportService.ts | local_checked | 次回実機で安全ゲート表示と本体読込確認待ち | 既存の巨大Session本体をsrc/screens/SessionScreen.tsxへ移動し、タブルートは軽量なSession Safe Gateに変更。本体は「セッション本体を開く」押下後に動的importし、mount直前にもsession_screen_mount_attemptを保存する |
+| 2026-06-05-01 | ai-coach | セット終了ごとに監督AIへ送る短いSupervisor Packetをコピー/ChatGPT起動できるようにする | todo | critical | | | untested | | 詳細: docs/TRAINING_SUPERVISOR_FEEDBACK_2026-06-05.md。planned vs actual、velocity、VL avg/last、RPE、readiness/painを含める |
+| 2026-06-05-02 | readiness | BP75/SQ110/DL130固定アップ速度から疲労警告と当日負荷調整を出す | todo | high | | | untested | | 3%低下で疲労疑い、5%低下でメイン減量/スピード量半減を提案。5%向上時は慎重に上振れ候補を出す |
+| 2026-06-05-03 | vbt-coach | スピード練習でVL10%超過時の停止アラートを出す | todo | high | | | untested | | speed workはvelocity_loss_lastを主判定、avgも併記。ユーザーの疲労日には即時停止しやすくする |
+| 2026-06-05-04 | data-export | Codex exportでsession totalsが0/古い場合にsetsから再集計し、readiness fieldsも含める | todo | critical | | | untested | | 2026-06-04 exportで23 setsなのにsession total_volume/total_setsが0だった。監督レポートの信頼性に直結する |
+| 2026-06-05-05 | session | セッション開始時に減量中/睡眠/痛み部位/痛みスコア/Week-Dayを入力し保存する | todo | high | | | untested | | supervisor packetとend-of-session reportに流し、内転筋痛やダイエット中の出力低下を判断材料にする |
+| 2026-06-05-06 | crash/diagnostics | GmailではなくGoogle Driveへクラッシュ診断を自動保存したい | implemented | critical | codex | src/services/CrashReportService.ts, app/(tabs)/index.tsx, app/(tabs)/session.tsx, src/screens/SessionScreen.tsx, app/(tabs)/settings.tsx, scripts/google_drive_crash_report_webapp.gs, docs/GOOGLE_DRIVE_CRASH_REPORTS.md | local_checked | 実機でApps Script URL設定後のDrive保存確認待ち | Google Apps Script Web App URLへMarkdown/JSONをPOSTし、失敗時はAsyncStorageキューへ残す。Home/Safe Gateで自動送信、Home/Session/Safe GateでDrive送信ボタンを追加 |
 
 ## Active Focus
 
