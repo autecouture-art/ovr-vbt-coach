@@ -27,6 +27,27 @@ Remaining:
 - UI badges for accessory PRs and always-visible ROM measurement warnings are still packet-first/partial.
 - Full Excel/JSON program import and fixed-observation ladder template UI remain next-phase work.
 
+## 2026-06-08 (Codex / GPT-5)
+
+Scope: TestFlight build 102.
+Actions:
+
+- Bumped RepVeloCoach build number from 101 to 102 in `app.config.ts`, `ios/RepVeloCoach/Info.plist`, and `ios/RepVeloCoach.xcodeproj/project.pbxproj`.
+- First upload attempt using `/Users/hoshinohideyuki/Developer/Xcode-RepVelo.app` failed during archive because clang could not be spawned from that toolchain path.
+- Retried with `/Applications/Xcode.app`, `FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT=20`, `FASTLANE_XCODEBUILD_SETTINGS_RETRIES=6`, and `REPVELO_EXTRA_XCARGS='-jobs 1 COMPILER_INDEX_STORE_ENABLE=NO'`.
+
+Results:
+
+- Archive succeeded.
+- IPA exported to `ios/fastlane_export/RepVeloCoach.ipa`.
+- dSYM exported to `ios/fastlane_export/RepVeloCoach.app.dSYM.zip`.
+- App Store Connect upload succeeded for build 102 at 2026-06-08 21:09 JST.
+- TestFlight processing was left to App Store Connect.
+
+Remaining:
+
+- Wait for App Store Connect/TestFlight processing before installing on device.
+
 ## 2026-05-12 (Codex / GPT-5)
 
 Scope: Manual-entry support for deterministic VBT coach metrics.
