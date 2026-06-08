@@ -1,5 +1,32 @@
 # Agent Walkthrough Log
 
+## 2026-06-08 (Codex / GPT-5)
+
+Scope: Training supervisor handoff, readiness metadata, latest-set packet consistency, and safer form-video crash diagnostics.
+Actions:
+
+- Added a session-screen supervisor readiness card for Week-Day, main lift, dieting, sleep quality, pain area, and pain score.
+- Persisted readiness metadata into existing session `notes` using `#SESSION_READINESS_JSON:` so no SQLite schema migration is required.
+- Added readiness parsing to Codex export and recalculated exported session totals from saved sets.
+- Hardened AI consultation packet generation so manual/sensor sets are merged, latest completed set is appended, and current/latest-set consistency warnings are included.
+- Added Speed Bench Press aliases to the Bench Press canonical exercise.
+- Added one-set supervisor packet output with readiness, fixed observation ladder snapshot, accessory PR candidates, and ROM measurement-position warnings.
+- Added speed-work VL10 stop alert logic using `velocity_loss_last`.
+- Saved a `form_video_overlay_open_attempt` crash context immediately before opening the session overlay recorder and added clearer Google Drive setup guidance in Settings.
+- Updated `docs/IMPROVEMENT_TRACKER.md` and added `docs/TRAINING_SUPERVISOR_FEEDBACK_2026-06-05.md` as the supervisor backlog source.
+
+Results:
+
+- `pnpm check` passed.
+- `pnpm lint` passed.
+- `pnpm test -- exerciseCatalog SessionDecisionService` passed: 11 tests.
+- `git diff --check` passed.
+
+Remaining:
+
+- UI badges for accessory PRs and always-visible ROM measurement warnings are still packet-first/partial.
+- Full Excel/JSON program import and fixed-observation ladder template UI remain next-phase work.
+
 ## 2026-05-12 (Codex / GPT-5)
 
 Scope: Manual-entry support for deterministic VBT coach metrics.

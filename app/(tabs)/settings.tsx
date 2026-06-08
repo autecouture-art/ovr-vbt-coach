@@ -1058,6 +1058,12 @@ export default function SettingsTab() {
           <Text style={styles.cardBody}>
             クラッシュ疑いレポートをGoogle Apps Script経由でDriveへ保存します。Gmail操作の代わりに、再起動後の自動送信やボタン送信で共有できます。
           </Text>
+          <Text style={styles.cardBody}>
+            最短手順: 1. Macで `scripts/google_drive_crash_report_webapp.gs`
+            をApps Scriptへ貼る  2. Webアプリとしてデプロイ  3. `/exec`
+            で終わるURLを下へ貼る。分からない時は、再起動後のクラッシュカードで
+            「本文共有」を押してGmail送信すればCodexが読めます。
+          </Text>
 
           {renderSettingSwitch(
             "enable_google_drive_crash_report_upload",

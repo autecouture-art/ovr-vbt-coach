@@ -83,6 +83,18 @@ export interface SessionData {
   end_timestamp?: string; // セッション終了時間
   avg_hr?: number; // 平均心拍数
   notes?: string;
+  readiness?: SessionReadinessData | null;
+}
+
+export interface SessionReadinessData {
+  dieting: boolean | null;
+  sleep_quality: "good" | "ok" | "bad" | null;
+  pain_area: string | null;
+  pain_score: number | null;
+  week_day: string | null;
+  main_lift: "SQ" | "BP" | "DL" | null;
+  day_role: string | null;
+  captured_at?: string;
 }
 
 export interface FormVideoRecord {

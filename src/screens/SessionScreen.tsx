@@ -45,6 +45,7 @@ import CrashReportService, {
 import { saveAppSettings } from "@/src/services/AppSettingsService";
 import SessionDecisionService, {
   type NextSetPurpose,
+  type SetTrendRow,
 } from "@/src/services/SessionDecisionService";
 import VBTGuideService from "@/src/services/VBTGuideService";
 import { VBTLogic } from "@/src/services/VBTLogic";
@@ -56,6 +57,7 @@ import { calculateWarmupSteps, isBig3 } from "@/src/utils/WarmupLogic";
 import {
   formatLoadKg,
   getExerciseCategoryLabel,
+  getCanonicalExerciseName,
   roundToHalfKg,
 } from "@/src/constants/exerciseCatalog";
 import { GarageTheme } from "@/src/constants/garageTheme";
@@ -89,6 +91,7 @@ import type {
   PRRecord,
   RepData,
   SetData,
+  SessionReadinessData,
 } from "@/src/types/index";
 
 const getDisplayPower = (
@@ -160,6 +163,7 @@ const SESSION_LIGHTWEIGHT_SET_LIMIT = 5;
 const SESSION_RECOVERY_MAX_AGE_MS = 18 * 60 * 60 * 1000;
 const CHATGPT_APP_URL = "chatgpt://";
 const CHATGPT_WEB_URL = "https://chatgpt.com/";
+const SESSION_READINESS_NOTE_PREFIX = "#SESSION_READINESS_JSON:";
 const NEXT_SET_PURPOSE_OPTIONS: {
   value: NextSetPurpose;
   label: string;
@@ -170,6 +174,115 @@ const NEXT_SET_PURPOSE_OPTIONS: {
   { value: "lvp_building", label: "LVP作成優先", shortLabel: "LVP" },
   { value: "hypertrophy_volume", label: "筋肥大ボリューム優先", shortLabel: "量" },
 ];
+
+const MAIN_LIFT_OPTIONS: {
+  value: NonNullable<SessionReadinessData["main_lift"]>;
+  label: string;
+  canonicalLift: string;
+}[] = [
+  { value: "SQ", label: "SQ", canonicalLift: "Squat" },
+  { value: "BP", label: "BP", canonicalLift: "Bench Press" },
+  { value: "DL", label: "DL", canonicalLift: "Deadlift" },
+];
+
+const SLEEP_QUALITY_OPTIONS: {
+  value: NonNullable<SessionReadinessData["sleep_quality"]>;
+  label: string;
+}[] = [
+  { value: "good", label: "良い" },
+  { value: "ok", label: "普通" },
+  { value: "bad", label: "悪い" },
+];
+
+function removeSessionReadinessMarker(notes: string) {
+  return notes
+    .split("\n")
+    .filter((line) => !line.trim().startsWith(SESSION_READINESS_NOTE_PREFIX))
+    .join("\n")
+    .trim();
+}
+
+function buildSessionNotesWithReadiness(
+  notes: string,
+  readiness: SessionReadinessData,
+) {
+  const baseNotes = removeSessionReadinessMarker(notes);
+  const marker = `${SESSION_READINESS_NOTE_PREFIX}${JSON.stringify(readiness)}`;
+  return baseNotes ? `${baseNotes}\n${marker}` : marker;
+}
+
+function parseSessionReadinessMarker(
+  notes?: string | null,
+): SessionReadinessData | null {
+  if (!notes) return null;
+  const markerLine = notes
+    .split("\n")
+    .find((line) => line.trim().startsWith(SESSION_READINESS_NOTE_PREFIX));
+  if (!markerLine) return null;
+
+  try {
+    const parsed = JSON.parse(
+      markerLine.trim().slice(SESSION_READINESS_NOTE_PREFIX.length),
+    ) as SessionReadinessData;
+    return {
+      dieting:
+        typeof parsed.dieting === "boolean" ? parsed.dieting : null,
+      sleep_quality:
+        parsed.sleep_quality === "good" ||
+        parsed.sleep_quality === "ok" ||
+        parsed.sleep_quality === "bad"
+          ? parsed.sleep_quality
+          : null,
+      pain_area:
+        typeof parsed.pain_area === "string" && parsed.pain_area.trim()
+          ? parsed.pain_area
+          : null,
+      pain_score:
+        typeof parsed.pain_score === "number" &&
+        Number.isFinite(parsed.pain_score)
+          ? parsed.pain_score
+          : null,
+      week_day:
+        typeof parsed.week_day === "string" && parsed.week_day.trim()
+          ? parsed.week_day
+          : null,
+      main_lift:
+        parsed.main_lift === "SQ" ||
+        parsed.main_lift === "BP" ||
+        parsed.main_lift === "DL"
+          ? parsed.main_lift
+          : null,
+      day_role:
+        typeof parsed.day_role === "string" && parsed.day_role.trim()
+          ? parsed.day_role
+          : null,
+      captured_at:
+        typeof parsed.captured_at === "string" ? parsed.captured_at : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function getMainLiftCanonicalName(
+  mainLift: SessionReadinessData["main_lift"],
+) {
+  return (
+    MAIN_LIFT_OPTIONS.find((option) => option.value === mainLift)
+      ?.canonicalLift ?? null
+  );
+}
+
+function getCurrentLiftDayRole(
+  currentLift: string | null | undefined,
+  mainLift: SessionReadinessData["main_lift"],
+) {
+  const mainCanonical = getMainLiftCanonicalName(mainLift);
+  if (!mainCanonical || !currentLift) return "unclassified";
+  return getCanonicalExerciseName(currentLift) === mainCanonical
+    ? "required_main"
+    : "optional_accessory";
+}
 
 type LazyFormVideoOverlayProps = {
   visible: boolean;
@@ -269,6 +382,44 @@ export default function SessionScreen() {
   // 手動レップ追加モーダル状態
   const [showManualRepModal, setShowManualRepModal] = useState(false);
 
+  const [readinessDieting, setReadinessDieting] = useState<boolean | null>(
+    null,
+  );
+  const [readinessSleepQuality, setReadinessSleepQuality] =
+    useState<NonNullable<SessionReadinessData["sleep_quality"]>>("ok");
+  const [readinessPainArea, setReadinessPainArea] = useState("");
+  const [readinessPainScore, setReadinessPainScore] = useState("0");
+  const [readinessWeekDay, setReadinessWeekDay] = useState("Week1-Day1");
+  const [readinessMainLift, setReadinessMainLift] =
+    useState<SessionReadinessData["main_lift"]>(null);
+  const buildSessionReadinessPayload = useCallback(
+    (): SessionReadinessData => {
+      const painScore = Number.parseInt(readinessPainScore, 10);
+      return {
+        dieting: readinessDieting,
+        sleep_quality: readinessSleepQuality,
+        pain_area: readinessPainArea.trim() || null,
+        pain_score: Number.isFinite(painScore)
+          ? Math.max(0, Math.min(10, painScore))
+          : null,
+        week_day: readinessWeekDay.trim() || null,
+        main_lift: readinessMainLift,
+        day_role: readinessMainLift
+          ? `${readinessMainLift.toLowerCase()}_main_day`
+          : null,
+        captured_at: new Date().toISOString(),
+      };
+    },
+    [
+      readinessDieting,
+      readinessMainLift,
+      readinessPainArea,
+      readinessPainScore,
+      readinessSleepQuality,
+      readinessWeekDay,
+    ],
+  );
+
   // Custom Hook for Logic（PR検知コールバックを渡す）
   const {
     finishSet,
@@ -303,6 +454,10 @@ export default function SessionScreen() {
           total_sets: 0,
           lifts: [],
           start_timestamp: startedAt,
+          notes: buildSessionNotesWithReadiness(
+            "",
+            buildSessionReadinessPayload(),
+          ),
         });
       } catch (e) {
         console.error("セッション作成失敗:", e);
@@ -423,6 +578,13 @@ export default function SessionScreen() {
     () => getTopSingleTargetText(currentExercise?.mvt, vbtProtocol),
     [currentExercise?.mvt, vbtProtocol],
   );
+  useEffect(() => {
+    setReadinessWeekDay((current) =>
+      current === "Week1-Day1"
+        ? `Week${settings.powerlifting_block_week}-Day1`
+        : current,
+    );
+  }, [settings.powerlifting_block_week]);
   // レップ詳細モーダルの状態
   const [repDetailVisible, setRepDetailVisible] = useState(false);
   const [selectedSetIndex, setSelectedSetIndex] = useState<number>(1);
@@ -741,6 +903,20 @@ export default function SessionScreen() {
 
     return `LVP作成中: ${samples || "少数"}点 / R² ${lvpProfile.r_squared.toFixed(2)}。80%以上の重い単発を足すと精度が上がります。`;
   }, [lvpProfile]);
+  const currentDayRole = useMemo(
+    () =>
+      getCurrentLiftDayRole(
+        currentLift || currentExercise?.name,
+        readinessMainLift,
+      ),
+    [currentExercise?.name, currentLift, readinessMainLift],
+  );
+  const currentDayRoleLabel =
+    currentDayRole === "required_main"
+      ? "主種目"
+      : currentDayRole === "optional_accessory"
+        ? "補助/任意"
+        : "未分類";
   const romConsistencyMessage = useMemo(() => {
     if (!liveData?.rom_cm || !currentExercise) return null;
     const minRom =
@@ -855,7 +1031,22 @@ export default function SessionScreen() {
 
   // Initialize session note from current session
   useEffect(() => {
-    setSessionNote(currentSession?.notes ?? "");
+    const notes = currentSession?.notes ?? "";
+    setSessionNote(removeSessionReadinessMarker(notes));
+    const parsedReadiness = parseSessionReadinessMarker(notes);
+    if (!parsedReadiness) return;
+    setReadinessDieting(parsedReadiness.dieting);
+    if (parsedReadiness.sleep_quality) {
+      setReadinessSleepQuality(parsedReadiness.sleep_quality);
+    }
+    setReadinessPainArea(parsedReadiness.pain_area ?? "");
+    setReadinessPainScore(
+      parsedReadiness.pain_score != null
+        ? String(parsedReadiness.pain_score)
+        : "0",
+    );
+    setReadinessWeekDay((current) => parsedReadiness.week_day ?? current);
+    setReadinessMainLift(parsedReadiness.main_lift);
   }, [currentSession?.notes]);
 
   const recoveryInitializedRef = useRef(false);
@@ -1648,6 +1839,10 @@ export default function SessionScreen() {
         total_sets: 0,
         lifts: [],
         start_timestamp: startedAt,
+        notes: buildSessionNotesWithReadiness(
+          "",
+          buildSessionReadinessPayload(),
+        ),
       });
     } catch (e) {
       console.error("セッション作成失敗:", e);
@@ -1730,13 +1925,49 @@ export default function SessionScreen() {
     }
   };
 
-  const handleOpenFormVideoRecorder = () => {
+  const handleOpenFormVideoRecorder = async () => {
     if (!currentSession?.session_id || !currentRecordingLift) {
       Alert.alert(
         "録画できません",
         "セッションを開始し、種目を選択してからフォーム動画を撮影してください。",
       );
       return;
+    }
+
+    try {
+      await CrashReportService.saveVBTScreenContext({
+        reason: "form_video_overlay_open_attempt",
+        session_id: currentSession?.session_id ?? null,
+        is_session_active: isSessionActive,
+        is_paused: isPaused,
+        pause_reason: pauseReason ?? null,
+        is_connected: isConnected,
+        sensor_input_muted: sensorInputMuted,
+        current_lift: currentLift,
+        current_exercise_name: currentExercise?.name ?? null,
+        current_load: currentLoad,
+        current_reps: currentReps,
+        current_set_index: currentSetIndex,
+        completed_set_count: setHistory.length,
+        current_rep_count: repHistory.length,
+        current_heart_rate: currentHeartRate,
+        live_data: liveData,
+        latest_completed_set:
+          setHistory.length > 0 ? setHistory[setHistory.length - 1] : null,
+        settings_snapshot: {
+          lightweight_mode: Boolean(settings.enable_session_lightweight_mode),
+          session_history: Boolean(settings.session_display_session_history),
+          velocity_chart: Boolean(settings.session_display_velocity_chart),
+          recent_history: Boolean(settings.session_display_recent_history),
+          same_load_history: Boolean(settings.session_display_same_load_history),
+          form_video: Boolean(settings.enable_video_recording),
+        },
+      });
+    } catch (error) {
+      console.warn(
+        "[SessionScreen] Failed to save form video crash context:",
+        error,
+      );
     }
 
     if (settings.enable_form_video_ble_safe_mode) {
@@ -1779,10 +2010,15 @@ export default function SessionScreen() {
   const handleSaveSessionNote = async () => {
     if (!currentSession?.session_id) return;
     try {
+      const notesWithReadiness = buildSessionNotesWithReadiness(
+        sessionNote,
+        buildSessionReadinessPayload(),
+      );
       await DatabaseService.updateSessionNotes(
         currentSession.session_id,
-        sessionNote,
+        notesWithReadiness,
       );
+      setSessionNote(removeSessionReadinessMarker(notesWithReadiness));
       setEditingSessionNote(false);
       Alert.alert("保存完了", "セッションノートを保存しました");
     } catch (error) {
@@ -1794,17 +2030,81 @@ export default function SessionScreen() {
   const handleCopyTrainingContext = async () => {
     try {
       const now = new Date();
-      const latestWorkingSet =
+      const activeLift = currentLift || currentExercise?.name || "Unknown";
+      const readiness = buildSessionReadinessPayload();
+      const packetDayRole = getCurrentLiftDayRole(activeLift, readiness.main_lift);
+      const dbSessionSets = currentSession?.session_id
+        ? await DatabaseService.getSetsForSession(currentSession.session_id)
+        : [];
+      const packetSets = buildAIPacketSetList({
+        storeSets: setHistory,
+        dbSets: dbSessionSets,
+        activeLift,
+      });
+      const latestCompletedSet = getLatestAIPacketSet(packetSets);
+      const fixedObservation = buildFixedObservationSnapshot(
+        latestCompletedSet,
+        recentExerciseHistory,
+      );
+      const accessoryAndRom = buildAccessoryAndRomSnapshot(
+        latestCompletedSet,
+        recentExerciseHistory,
+        currentExercise,
+      );
+      const decisionWorkingSetsLast =
         sessionDecision.workingSets[sessionDecision.workingSets.length - 1] ??
         null;
+      const latestSetWasAlreadyInDecisionWorkingSets =
+        latestCompletedSet != null &&
+        decisionWorkingSetsLast != null &&
+        isSameSetTrendRow(decisionWorkingSetsLast, latestCompletedSet);
+      const packetWorkingSets = ensureLatestSetInTrendRows(
+        sessionDecision.workingSets,
+        latestCompletedSet,
+        sessionDecision.bestWorkingAV,
+        sessionDecision.baselineROM,
+      );
+      const workingSetsLast =
+        packetWorkingSets[packetWorkingSets.length - 1] ?? null;
+      const latestSetIncludedInWorkingSets =
+        latestCompletedSet != null &&
+        workingSetsLast != null &&
+        isSameSetTrendRow(workingSetsLast, latestCompletedSet);
       const latestSetReps =
-        currentSession?.session_id && latestWorkingSet
-          ? await DatabaseService.getRepsForSet(
+        currentSession?.session_id && latestCompletedSet
+          ? await getAIPacketRepsForSet(
               currentSession.session_id,
-              currentLift || currentExercise?.name || "Unknown",
-              latestWorkingSet.set,
+              latestCompletedSet,
             )
           : [];
+      const currentSetRepsSource =
+        repHistory.length > 0
+          ? "current_unsaved_rep_history"
+          : latestSetReps.length > 0
+            ? "db_latest_completed_set"
+            : latestCompletedSet
+              ? "db_pending_or_no_rep_rows"
+              : "none";
+      const currentLoadMatchesLatest =
+        latestCompletedSet == null ||
+        Math.abs((latestCompletedSet.load_kg ?? 0) - currentLoad) < 0.26;
+      const packetConsistencyWarnings = [
+        latestCompletedSet == null
+          ? "latest_completed_set_not_found"
+          : null,
+        latestCompletedSet != null && !latestSetIncludedInWorkingSets
+          ? "latest_set_missing_from_working_sets"
+          : null,
+        latestCompletedSet != null && !latestSetWasAlreadyInDecisionWorkingSets
+          ? "decision_working_sets_were_stale_before_packet_merge"
+          : null,
+        !currentLoadMatchesLatest ? "current_load_differs_from_latest_set" : null,
+        latestCompletedSet != null &&
+        repHistory.length === 0 &&
+        latestSetReps.length === 0
+          ? "latest_rep_details_not_loaded_yet"
+          : null,
+      ].filter((warning): warning is string => warning != null);
       const sessionDurationSeconds = sessionStartTime
         ? (Date.now() - sessionStartTime) / 1000
         : null;
@@ -1814,7 +2114,7 @@ export default function SessionScreen() {
             `| ${rep.rep_index} | ${formatNumber(rep.mean_velocity)} | ${formatNumber(rep.peak_velocity)} | ${formatNumber(rep.rom_cm, 1, " cm")} | ${rep.hr_bpm ?? "-"} | ${rep.is_excluded ? "除外" : rep.is_failed ? "失敗" : rep.is_valid_rep ? "有効" : "無効"} |`,
         )
         .join("\n");
-      const workingRows = sessionDecision.workingSets
+      const workingRows = packetWorkingSets
         .map(
           (set) =>
             `| ${set.set} | ${formatNumber(set.load, 1)} | ${set.reps} | ${formatNumber(set.av)} | ${formatNumber(set.avChangePct, 1, "%")} | ${formatVLTrendTriplet(set)} | ${formatNumber(set.rom, 1, " cm")} | ${formatNumber(set.romDiff, 1, " cm")} | ${formatNumber(set.e1rm, 1)} | ${formatNumber(set.avgHR, 0)} | ${formatNumber(set.peakHR, 0)} | ${formatNullableSeconds(set.hrTo120)} | ${formatNullableSeconds(set.rest)} |`,
@@ -1832,10 +2132,36 @@ export default function SessionScreen() {
           lift: currentLift || currentExercise?.name || null,
           phase: settings.target_training_phase,
           week: settings.powerlifting_block_week,
+          weekDay: readiness.week_day,
+          mainLift: readiness.main_lift,
+          dayRole: readiness.day_role,
+          requiredOptional: packetDayRole,
           goal: nextSetPurpose,
           currentHR: currentHeartRate,
           currentLoad,
           currentSet: currentSetIndex,
+        },
+        readiness: {
+          ...readiness,
+          required_optional: packetDayRole,
+        },
+        packetConsistency: {
+          latestSetId: latestCompletedSet
+            ? getAIPacketSetId(latestCompletedSet)
+            : null,
+          latestSetLift: latestCompletedSet?.lift ?? null,
+          latestSetLoad: latestCompletedSet?.load_kg ?? null,
+          latestSetIndex: latestCompletedSet?.set_index ?? null,
+          workingSetsLastSetId:
+            workingSetsLast && latestCompletedSet
+              ? `${getCanonicalExerciseName(latestCompletedSet.lift)}#${workingSetsLast.set}@${workingSetsLast.load}`
+              : null,
+          workingSetsLastLoad: workingSetsLast?.load ?? null,
+          latestRepSource: currentSetRepsSource,
+          latestSetWasAlreadyInDecisionWorkingSets,
+          latestSetIncludedInWorkingSets,
+          currentLoadMatchesLatest,
+          warnings: packetConsistencyWarnings,
         },
         targets: {
           topSingleVelocityRange: targetVelocityRange,
@@ -1866,6 +2192,8 @@ export default function SessionScreen() {
           description:
             "vl/vlAvgは最速repから平均速度、vlLastは最速repから最終rep、vlMinは最速repから最遅repの低下率",
         },
+        fixedObservation,
+        accessoryAndRom,
         summary: {
           allSetAvgAV: sessionDecision.allSetAvgAV,
           workingSetAvgAV: sessionDecision.workingSetAvgAV,
@@ -1879,7 +2207,22 @@ export default function SessionScreen() {
           avgHrTo120Working: sessionDecision.avgHrTo120Working,
           hrDataReliability: sessionDecision.hrDataReliability,
         },
-        workingSets: sessionDecision.workingSets,
+        workingSets: packetWorkingSets,
+        latestCompletedSet: latestCompletedSet
+          ? {
+              id: getAIPacketSetId(latestCompletedSet),
+              lift: latestCompletedSet.lift,
+              canonicalLift: getCanonicalExerciseName(latestCompletedSet.lift),
+              set: latestCompletedSet.set_index,
+              load: latestCompletedSet.load_kg,
+              reps: latestCompletedSet.reps,
+              av: latestCompletedSet.avg_velocity ?? null,
+              vlAvg: latestCompletedSet.velocity_loss_avg ?? latestCompletedSet.velocity_loss ?? null,
+              vlLast: latestCompletedSet.velocity_loss_last ?? null,
+              vlMin: latestCompletedSet.velocity_loss_min ?? null,
+              timestamp: latestCompletedSet.end_timestamp ?? latestCompletedSet.timestamp,
+            }
+          : null,
         trendFlags: sessionDecision.trendFlags,
       };
 
@@ -1891,6 +2234,12 @@ export default function SessionScreen() {
         "## 1. 今すぐ判断してほしいこと",
         `- 現在種目: ${currentLift || currentExercise?.name || "未選択"}`,
         `- 現在重量: ${formatNumber(currentLoad, 1, " kg")}`,
+        `- 最新完了セット: ${latestCompletedSet ? `${latestCompletedSet.lift} Set ${latestCompletedSet.set_index} / ${formatNumber(latestCompletedSet.load_kg, 1, " kg")} × ${latestCompletedSet.reps}` : "-"}`,
+        `- AI反映チェック: ${latestSetIncludedInWorkingSets ? "最新セットはworkingSetsに含まれています" : "警告: 最新セットがworkingSets末尾と一致していません"}`,
+        `- 最新rep参照元: ${currentSetRepsSource}`,
+        packetConsistencyWarnings.length > 0
+          ? `- 整合性警告: ${packetConsistencyWarnings.join(" / ")}`
+          : "- 整合性警告: なし",
         `- 次セット候補: ${sessionDecision.recommendedNextLoad != null ? `${formatLoadKg(sessionDecision.recommendedNextLoad)}kg × ${currentReps}` : "-"}`,
         `- 今日の目的: ${nextSetPurposeLabel}`,
         "- 迷っていること:",
@@ -1902,6 +2251,11 @@ export default function SessionScreen() {
         "## 2. 今日の目的・メニュー",
         `- 期分け: ${settings.target_training_phase}`,
         `- ブロック週: Week ${settings.powerlifting_block_week}`,
+        `- Week-Day: ${readiness.week_day ?? "-"}`,
+        `- 主種目: ${readiness.main_lift ?? "-"} / 現在種目の扱い: ${currentDayRoleLabel}`,
+        `- 減量中: ${readiness.dieting == null ? "-" : readiness.dieting ? "yes" : "no"}`,
+        `- 睡眠: ${readiness.sleep_quality ?? "-"}`,
+        `- 痛み: ${readiness.pain_area ?? "-"} / ${readiness.pain_score ?? "-"} /10`,
         `- 今日の狙い: ${blockWeekPlan.focus}`,
         `- 予定重量/回数/セット: ${formatNumber(currentLoad, 1, " kg")} × ${currentReps} / ${plannedSetText}`,
         `- 予定RPE: ${plannedRpeText}`,
@@ -1944,6 +2298,15 @@ export default function SessionScreen() {
         `- e1RM推移: ${sessionDecision.e1rmTrendText}`,
         `- 現在HR: ${currentHeartRate ?? "-"} bpm`,
         `- データ欠損/注意点: HR信頼度 ${sessionDecision.hrDataReliability}`,
+        fixedObservation
+          ? `- 固定観測ラダー: ${fixedObservation.stepLoad}kg / ${fixedObservation.recommendation} / baseline ${formatNumber(fixedObservation.sameLoadBaselineAV)} m/s / 差 ${formatNumber(fixedObservation.velocityDropPct, 1, "%")}`
+          : "- 固定観測ラダー: 対象外またはbaseline収集中",
+        accessoryAndRom?.romMeasurementWarning
+          ? `- ROM警告: ${accessoryAndRom.romMeasurementWarning} / 基準 ${formatNumber(accessoryAndRom.romBaseline, 1, " cm")} / 差 ${formatNumber(accessoryAndRom.romChangePct, 1, "%")}`
+          : "- ROM警告: なし",
+        accessoryAndRom?.isAccessory
+          ? `- 補助種目PR候補: e1RM ${accessoryAndRom.e1rmPR ? "yes" : "no"} / 同重量rep ${accessoryAndRom.sameLoadRepPR ? "yes" : "no"} / 同重量volume ${accessoryAndRom.sameLoadVolumePR ? "yes" : "no"}`
+          : "- 補助種目PR候補: 対象外",
         "",
         "## 7. PR判定用情報",
         `- 同種目履歴: ${recentExerciseHistory.length}件`,
@@ -1982,6 +2345,125 @@ export default function SessionScreen() {
         "コピー失敗",
         "トレーニング状況のコピーに失敗しました。セッションは保存されたままです。",
       );
+    }
+  };
+
+  const handleCopyLatestSetSupervisorPacket = async () => {
+    try {
+      const activeLift = currentLift || currentExercise?.name || "Unknown";
+      const readiness = buildSessionReadinessPayload();
+      const packetDayRole = getCurrentLiftDayRole(activeLift, readiness.main_lift);
+      const dbSessionSets = currentSession?.session_id
+        ? await DatabaseService.getSetsForSession(currentSession.session_id)
+        : [];
+      const packetSets = buildAIPacketSetList({
+        storeSets: setHistory,
+        dbSets: dbSessionSets,
+        activeLift,
+      });
+      const latestSet = getLatestAIPacketSet(packetSets);
+      if (!latestSet) {
+        Alert.alert("監督パケットなし", "完了セットがまだありません。");
+        return;
+      }
+      const fixedObservation = buildFixedObservationSnapshot(
+        latestSet,
+        recentExerciseHistory,
+      );
+      const accessoryAndRom = buildAccessoryAndRomSnapshot(
+        latestSet,
+        recentExerciseHistory,
+        currentExercise,
+      );
+
+      const reps = currentSession?.session_id
+        ? await getAIPacketRepsForSet(currentSession.session_id, latestSet)
+        : [];
+      const validReps = reps.filter(
+        (rep) => !rep.is_excluded && !rep.is_failed && rep.is_valid_rep,
+      );
+      const firstRep = validReps[0] ?? null;
+      const lastRep = validReps[validReps.length - 1] ?? null;
+      const supervisorJson = {
+        date: new Date().toISOString().split("T")[0],
+        session_id: currentSession?.session_id ?? latestSet.session_id,
+        week_day: readiness.week_day ?? `Week${settings.powerlifting_block_week}`,
+        main_lift: readiness.main_lift,
+        day_role: readiness.day_role,
+        required_optional: packetDayRole,
+        lift: latestSet.lift,
+        canonical_lift: getCanonicalExerciseName(latestSet.lift),
+        planned: {
+          load_kg: currentLoad,
+          reps: currentReps,
+          sets: plannedSetCount,
+          rpe: plannedRpe,
+        },
+        actual: {
+          load_kg: latestSet.load_kg,
+          reps: latestSet.reps,
+          set_index: latestSet.set_index,
+          completed_at: latestSet.end_timestamp ?? latestSet.timestamp,
+        },
+        velocity: {
+          first_rep_mps: firstRep?.mean_velocity ?? null,
+          last_rep_mps: lastRep?.mean_velocity ?? null,
+          avg_mps: latestSet.avg_velocity ?? null,
+          vl_avg_pct: latestSet.velocity_loss_avg ?? latestSet.velocity_loss ?? null,
+          vl_last_pct: latestSet.velocity_loss_last ?? null,
+          vl_min_pct: latestSet.velocity_loss_min ?? null,
+        },
+        rpe: latestSet.rpe ?? plannedRpe ?? null,
+        readiness: {
+          ...readiness,
+          required_optional: packetDayRole,
+        },
+        fixedObservation,
+        accessoryAndRom,
+        notes: latestSet.notes ?? null,
+      };
+      const packet = [
+        "# One-Set Supervisor Packet",
+        `出力日時: ${formatDateTimeWithSeconds(new Date())}`,
+        `Week-Day: ${readiness.week_day ?? `Week${settings.powerlifting_block_week}`}`,
+        `主種目: ${readiness.main_lift ?? "-"} / 現在種目の扱い: ${currentDayRoleLabel}`,
+        `種目: ${latestSet.lift}`,
+        `予定: ${formatNumber(currentLoad, 1, "kg")} x ${currentReps} / ${plannedSetText} / ${plannedRpeText}`,
+        `実施: ${formatNumber(latestSet.load_kg, 1, "kg")} x ${latestSet.reps} / Set ${latestSet.set_index}`,
+        `初速: ${formatNumber(firstRep?.mean_velocity)} m/s`,
+        `終速: ${formatNumber(lastRep?.mean_velocity)} m/s`,
+        `VL_avg: ${formatNumber(latestSet.velocity_loss_avg ?? latestSet.velocity_loss, 1, "%")}`,
+        `VL_last: ${formatNumber(latestSet.velocity_loss_last, 1, "%")}`,
+        `RPE: ${latestSet.rpe ?? plannedRpe ?? "-"}`,
+        `痛み: ${readiness.pain_area ?? "-"} / ${readiness.pain_score ?? "-"} /10`,
+        `減量/睡眠: ${readiness.dieting == null ? "-" : readiness.dieting ? "減量中" : "通常"} / ${readiness.sleep_quality ?? "-"}`,
+        fixedObservation
+          ? `固定観測: ${fixedObservation.stepLoad}kg / ${fixedObservation.recommendation} / 差 ${formatNumber(fixedObservation.velocityDropPct, 1, "%")}`
+          : "固定観測: 対象外",
+        accessoryAndRom?.romMeasurementWarning
+          ? `ROM警告: ${accessoryAndRom.romMeasurementWarning} / 差 ${formatNumber(accessoryAndRom.romChangePct, 1, "%")}`
+          : "ROM警告: なし",
+        accessoryAndRom?.isAccessory
+          ? `補助PR候補: e1RM ${accessoryAndRom.e1rmPR ? "yes" : "no"} / rep ${accessoryAndRom.sameLoadRepPR ? "yes" : "no"} / volume ${accessoryAndRom.sameLoadVolumePR ? "yes" : "no"}`
+          : "補助PR候補: 対象外",
+        `メモ: ${latestSet.notes ?? "-"}`,
+        "",
+        "```json",
+        JSON.stringify(supervisorJson, null, 2),
+        "```",
+      ].join("\n");
+
+      await Clipboard.setStringAsync(packet);
+      const openResult = await openChatGPT();
+      Alert.alert(
+        openResult === "none" ? "コピーしました" : "監督パケットをコピーしました",
+        openResult === "none"
+          ? "最新1セット分の監督パケットをコピーしました。"
+          : "ChatGPTへ貼り付けて監督に相談してください。",
+      );
+    } catch (error) {
+      console.error("[SessionScreen] Failed to copy supervisor packet:", error);
+      Alert.alert("コピー失敗", "監督パケットのコピーに失敗しました。");
     }
   };
 
@@ -2722,6 +3204,132 @@ export default function SessionScreen() {
               )}
             </View>
           )}
+
+          <View style={styles.readinessCard}>
+            <View style={styles.readinessHeader}>
+              <View>
+                <Text style={styles.readinessKicker}>SUPERVISOR CONTEXT</Text>
+                <Text style={styles.readinessTitle}>監督チェック</Text>
+              </View>
+              <Text style={styles.readinessRoleBadge}>{currentDayRoleLabel}</Text>
+            </View>
+            <View style={styles.readinessGrid}>
+              <View style={styles.readinessField}>
+                <Text style={styles.readinessLabel}>Week-Day</Text>
+                <TextInput
+                  style={styles.readinessInput}
+                  value={readinessWeekDay}
+                  onChangeText={setReadinessWeekDay}
+                  placeholder="Week1-Day1"
+                  placeholderTextColor={GarageTheme.textSubtle}
+                />
+              </View>
+              <View style={styles.readinessField}>
+                <Text style={styles.readinessLabel}>痛み 0-10</Text>
+                <TextInput
+                  style={styles.readinessInput}
+                  value={readinessPainScore}
+                  onChangeText={setReadinessPainScore}
+                  keyboardType="number-pad"
+                  placeholder="0"
+                  placeholderTextColor={GarageTheme.textSubtle}
+                />
+              </View>
+            </View>
+            <View style={styles.readinessField}>
+              <Text style={styles.readinessLabel}>痛みの場所</Text>
+              <TextInput
+                style={styles.readinessInput}
+                value={readinessPainArea}
+                onChangeText={setReadinessPainArea}
+                placeholder="例: 左肩 / 腰 / なし"
+                placeholderTextColor={GarageTheme.textSubtle}
+              />
+            </View>
+            <Text style={styles.readinessLabel}>主種目</Text>
+            <View style={styles.readinessChipRow}>
+              {MAIN_LIFT_OPTIONS.map((option) => (
+                <TouchableOpacity
+                  key={option.value}
+                  style={[
+                    styles.readinessChip,
+                    readinessMainLift === option.value &&
+                      styles.readinessChipActive,
+                  ]}
+                  onPress={() =>
+                    setReadinessMainLift(
+                      readinessMainLift === option.value ? null : option.value,
+                    )
+                  }
+                >
+                  <Text
+                    style={[
+                      styles.readinessChipText,
+                      readinessMainLift === option.value &&
+                        styles.readinessChipTextActive,
+                    ]}
+                  >
+                    {option.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Text style={styles.readinessLabel}>睡眠</Text>
+            <View style={styles.readinessChipRow}>
+              {SLEEP_QUALITY_OPTIONS.map((option) => (
+                <TouchableOpacity
+                  key={option.value}
+                  style={[
+                    styles.readinessChip,
+                    readinessSleepQuality === option.value &&
+                      styles.readinessChipActive,
+                  ]}
+                  onPress={() => setReadinessSleepQuality(option.value)}
+                >
+                  <Text
+                    style={[
+                      styles.readinessChipText,
+                      readinessSleepQuality === option.value &&
+                        styles.readinessChipTextActive,
+                    ]}
+                  >
+                    {option.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Text style={styles.readinessLabel}>減量中</Text>
+            <View style={styles.readinessChipRow}>
+              {[
+                { label: "未入力", value: null },
+                { label: "通常", value: false },
+                { label: "減量中", value: true },
+              ].map((option) => (
+                <TouchableOpacity
+                  key={option.label}
+                  style={[
+                    styles.readinessChip,
+                    readinessDieting === option.value &&
+                      styles.readinessChipActive,
+                  ]}
+                  onPress={() => setReadinessDieting(option.value)}
+                >
+                  <Text
+                    style={[
+                      styles.readinessChipText,
+                      readinessDieting === option.value &&
+                        styles.readinessChipTextActive,
+                    ]}
+                  >
+                    {option.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Text style={styles.readinessHint}>
+              セッション開始時に保存し、AI相談・Codex Exportへ渡します。
+            </Text>
+          </View>
 
           {/* VL Threshold Quick Setting */}
           {settings.session_display_vl_settings && currentExercise && (
@@ -3831,7 +4439,7 @@ export default function SessionScreen() {
               {formRecordingAvailable && (
                 <TouchableOpacity
                   style={[styles.button, styles.formVideoButton]}
-                  onPress={handleOpenFormVideoRecorder}
+                  onPress={() => void handleOpenFormVideoRecorder()}
                 >
                   <Text style={styles.buttonText}>フォーム録画</Text>
                 </TouchableOpacity>
@@ -3857,6 +4465,14 @@ export default function SessionScreen() {
               >
                 <Text style={styles.buttonText}>SET COMPLETE</Text>
               </TouchableOpacity>
+              {setHistory.length > 0 && (
+                <TouchableOpacity
+                  style={[styles.button, styles.supervisorButton]}
+                  onPress={() => void handleCopyLatestSetSupervisorPacket()}
+                >
+                  <Text style={styles.buttonText}>監督へ1セット相談</Text>
+                </TouchableOpacity>
+              )}
             </View>
           )}
 
@@ -4355,6 +4971,237 @@ function SetVelocityMiniChart({ reps }: { reps: RepData[] }) {
 
 const getTrendSetKey = (set: SetData) =>
   `${set.lift}_${set.set_index}_${set.timestamp ?? set.end_timestamp ?? ""}`;
+
+const getSetTimeMs = (set: SetData) =>
+  new Date(set.end_timestamp ?? set.timestamp ?? 0).getTime();
+
+const getAIPacketSetId = (set: SetData) =>
+  `${getCanonicalExerciseName(set.lift)}#${set.set_index}@${formatLoadKg(
+    set.load_kg,
+  )}/${set.end_timestamp ?? set.timestamp ?? "no-time"}`;
+
+function buildAIPacketSetList({
+  storeSets,
+  dbSets,
+  activeLift,
+}: {
+  storeSets: SetData[];
+  dbSets: SetData[];
+  activeLift: string;
+}) {
+  const activeCanonical = getCanonicalExerciseName(activeLift);
+  const merged = new Map<string, SetData>();
+
+  for (const set of [...dbSets, ...storeSets]) {
+    if (set.reps <= 0) continue;
+    if (getCanonicalExerciseName(set.lift) !== activeCanonical) continue;
+    merged.set(getAIPacketSetId(set), set);
+  }
+
+  return [...merged.values()].sort((a, b) => getSetTimeMs(a) - getSetTimeMs(b));
+}
+
+function getLatestAIPacketSet(sets: SetData[]) {
+  return sets.length > 0 ? sets[sets.length - 1] : null;
+}
+
+async function getAIPacketRepsForSet(sessionId: string, set: SetData) {
+  const directReps = await DatabaseService.getRepsForSet(
+    sessionId,
+    set.lift,
+    set.set_index,
+  );
+  if (directReps.length > 0) return directReps;
+
+  const canonicalLift = getCanonicalExerciseName(set.lift);
+  if (canonicalLift === set.lift) return directReps;
+
+  return DatabaseService.getRepsForSet(sessionId, canonicalLift, set.set_index);
+}
+
+function isSameSetTrendRow(row: SetTrendRow, set: SetData) {
+  return (
+    row.set === set.set_index &&
+    Math.abs(row.load - set.load_kg) < 0.26 &&
+    row.reps === set.reps
+  );
+}
+
+function setToTrendRow(
+  set: SetData,
+  bestWorkingAV: number | null,
+  baselineROM: number | null,
+): SetTrendRow {
+  const avChangePct =
+    set.avg_velocity != null && bestWorkingAV != null && bestWorkingAV > 0
+      ? ((set.avg_velocity - bestWorkingAV) / bestWorkingAV) * 100
+      : null;
+  const romDiff =
+    set.avg_rom_cm != null && baselineROM != null
+      ? set.avg_rom_cm - baselineROM
+      : null;
+
+  return {
+    set: set.set_index,
+    load: set.load_kg,
+    reps: set.reps,
+    av: set.avg_velocity ?? null,
+    avChangePct,
+    vl: set.velocity_loss_avg ?? set.velocity_loss ?? null,
+    vlAvg: set.velocity_loss_avg ?? set.velocity_loss ?? null,
+    vlLast: set.velocity_loss_last ?? null,
+    vlMin: set.velocity_loss_min ?? null,
+    vlJudgementMetric: "vlLast",
+    rom: set.avg_rom_cm ?? null,
+    romDiff,
+    e1rm: set.e1rm ?? null,
+    avgHR: set.avg_hr ?? null,
+    peakHR: set.peak_hr ?? null,
+    hrTo120:
+      set.hr_recovery_to_120_s != null && set.hr_recovery_to_120_s > 0
+        ? set.hr_recovery_to_120_s
+        : null,
+    rest: set.rest_duration_s ?? null,
+  };
+}
+
+function ensureLatestSetInTrendRows(
+  rows: SetTrendRow[],
+  latestSet: SetData | null,
+  bestWorkingAV: number | null,
+  baselineROM: number | null,
+) {
+  if (!latestSet) return rows;
+  const withoutLatest = rows.filter((row) => !isSameSetTrendRow(row, latestSet));
+  return [...withoutLatest, setToTrendRow(latestSet, bestWorkingAV, baselineROM)];
+}
+
+function getFixedObservationLoads(lift: string) {
+  const canonical = getCanonicalExerciseName(lift).toLowerCase();
+  if (canonical.includes("squat")) return [20, 70, 100, 120];
+  if (canonical.includes("bench")) return [20, 60, 80, 90];
+  if (canonical.includes("deadlift")) return [70, 120, 140, 150];
+  return [];
+}
+
+function average(values: number[]) {
+  if (values.length === 0) return null;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function median(values: number[]) {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const midpoint = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0
+    ? (sorted[midpoint - 1] + sorted[midpoint]) / 2
+    : sorted[midpoint];
+}
+
+function buildFixedObservationSnapshot(
+  latestSet: SetData | null,
+  recentHistory: SetData[],
+) {
+  if (!latestSet?.avg_velocity) return null;
+
+  const ladder = getFixedObservationLoads(latestSet.lift);
+  const stepLoad = ladder.find((load) => Math.abs(load - latestSet.load_kg) < 0.26);
+  if (stepLoad == null) return null;
+
+  const canonical = getCanonicalExerciseName(latestSet.lift);
+  const sameLoadBaseline = average(
+    recentHistory
+      .filter(
+        (set) =>
+          getCanonicalExerciseName(set.lift) === canonical &&
+          Math.abs(set.load_kg - latestSet.load_kg) < 0.26 &&
+          set.avg_velocity != null &&
+          set.avg_velocity > 0,
+      )
+      .map((set) => set.avg_velocity as number),
+  );
+  const velocityDropPct =
+    sameLoadBaseline != null && sameLoadBaseline > 0
+      ? ((latestSet.avg_velocity - sameLoadBaseline) / sameLoadBaseline) * 100
+      : null;
+  const recommendation =
+    velocityDropPct == null
+      ? "baseline_collect_only"
+      : velocityDropPct <= -5
+        ? "skip_upper_step_and_reduce_main_load"
+        : velocityDropPct <= -3
+          ? "fatigue_suspected"
+          : "acceptable";
+
+  return {
+    ladder,
+    stepLoad,
+    latestAV: latestSet.avg_velocity,
+    sameLoadBaselineAV: sameLoadBaseline,
+    velocityDropPct,
+    recommendation,
+  };
+}
+
+function buildAccessoryAndRomSnapshot(
+  latestSet: SetData | null,
+  recentHistory: SetData[],
+  currentExercise?: Exercise | null,
+) {
+  if (!latestSet) return null;
+  const canonical = getCanonicalExerciseName(latestSet.lift);
+  const isAccessory = currentExercise ? !isBig3(currentExercise.category) : true;
+  const sameLiftHistory = recentHistory.filter(
+    (set) => getCanonicalExerciseName(set.lift) === canonical,
+  );
+  const sameLoadHistory = sameLiftHistory.filter(
+    (set) => Math.abs(set.load_kg - latestSet.load_kg) < 0.26,
+  );
+  const previousBestE1RM = Math.max(
+    ...sameLiftHistory
+      .map((set) => set.e1rm ?? null)
+      .filter((value): value is number => value != null && value > 0),
+    0,
+  );
+  const previousBestSameLoadReps = Math.max(
+    ...sameLoadHistory.map((set) => set.reps ?? 0),
+    0,
+  );
+  const previousBestSameLoadVolume = Math.max(
+    ...sameLoadHistory.map((set) => (set.load_kg || 0) * (set.reps || 0)),
+    0,
+  );
+  const romBaseline = median(
+    sameLiftHistory
+      .map((set) => set.avg_rom_cm ?? null)
+      .filter((value): value is number => value != null && value > 0),
+  );
+  const romChangePct =
+    latestSet.avg_rom_cm != null && romBaseline != null && romBaseline > 0
+      ? ((latestSet.avg_rom_cm - romBaseline) / romBaseline) * 100
+      : null;
+  return {
+    isAccessory,
+    e1rmPR:
+      latestSet.e1rm != null &&
+      previousBestE1RM > 0 &&
+      latestSet.e1rm > previousBestE1RM,
+    sameLoadRepPR:
+      previousBestSameLoadReps > 0 && latestSet.reps > previousBestSameLoadReps,
+    sameLoadVolumePR:
+      previousBestSameLoadVolume > 0 &&
+      latestSet.load_kg * latestSet.reps > previousBestSameLoadVolume,
+    previousBestE1RM: previousBestE1RM || null,
+    previousBestSameLoadReps: previousBestSameLoadReps || null,
+    previousBestSameLoadVolume: previousBestSameLoadVolume || null,
+    romBaseline,
+    romChangePct,
+    romMeasurementWarning:
+      romChangePct != null && Math.abs(romChangePct) >= 15
+        ? "measurement_position_may_have_changed"
+        : null,
+  };
+}
 
 function getSetTrendWindow(allSets: SetData[], currentSet: SetData) {
   const sameLiftSets = allSets
@@ -4939,6 +5786,101 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 17,
   },
+  readinessCard: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+    padding: 16,
+    backgroundColor: GarageTheme.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: GarageTheme.border,
+  },
+  readinessHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 14,
+    gap: 12,
+  },
+  readinessKicker: {
+    color: GarageTheme.textSubtle,
+    fontSize: 10,
+    fontWeight: "900",
+    letterSpacing: 1.4,
+    marginBottom: 4,
+  },
+  readinessTitle: {
+    color: GarageTheme.textStrong,
+    fontSize: 18,
+    fontWeight: "900",
+  },
+  readinessRoleBadge: {
+    color: GarageTheme.info,
+    fontSize: 12,
+    fontWeight: "900",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: GarageTheme.info + "18",
+    overflow: "hidden",
+  },
+  readinessGrid: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  readinessField: {
+    flex: 1,
+    marginBottom: 12,
+  },
+  readinessLabel: {
+    color: GarageTheme.textMuted,
+    fontSize: 11,
+    fontWeight: "800",
+    marginBottom: 7,
+  },
+  readinessInput: {
+    minHeight: 42,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: GarageTheme.border,
+    backgroundColor: GarageTheme.background,
+    color: GarageTheme.textStrong,
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  readinessChipRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 12,
+  },
+  readinessChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: GarageTheme.borderStrong,
+    backgroundColor: GarageTheme.surfaceAlt,
+  },
+  readinessChipActive: {
+    borderColor: GarageTheme.info,
+    backgroundColor: GarageTheme.info + "25",
+  },
+  readinessChipText: {
+    color: GarageTheme.textMuted,
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  readinessChipTextActive: {
+    color: GarageTheme.textStrong,
+  },
+  readinessHint: {
+    color: GarageTheme.textSubtle,
+    fontSize: 12,
+    lineHeight: 17,
+  },
   dataCard: {
     margin: 16,
     padding: 18,
@@ -5025,6 +5967,11 @@ const styles = StyleSheet.create({
     backgroundColor: GarageTheme.danger,
     borderWidth: 2,
     borderColor: GarageTheme.danger + "60",
+  },
+  supervisorButton: {
+    backgroundColor: GarageTheme.info,
+    borderWidth: 2,
+    borderColor: GarageTheme.info + "60",
   },
   finishButton: {
     backgroundColor: GarageTheme.warning,

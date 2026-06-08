@@ -76,10 +76,11 @@ export interface SessionDecision {
     romDrop: boolean;
     hrHigh: boolean;
     hrRecoveryDelayed: boolean;
-    vlHigh: boolean;
-    vlMinHigh: boolean;
-    e1RMDrop: boolean;
-    possibleTechniqueFatigue: boolean;
+      vlHigh: boolean;
+      vlMinHigh: boolean;
+      speedWorkVl10Stop: boolean;
+      e1RMDrop: boolean;
+      possibleTechniqueFatigue: boolean;
   };
   workingSets: SetTrendRow[];
   sameLoadTrendText: string;
@@ -119,6 +120,20 @@ const isWorkingSet = (set: SetData, maxLoad: number) => {
   if (set.reps <= 0 || set.load_kg <= 0) return false;
   if (set.set_type === "top_single" || set.set_type === "backoff") return true;
   return maxLoad > 0 ? set.load_kg >= maxLoad * 0.8 : true;
+};
+
+const isSpeedWorkSet = (set: SetData) => {
+  const lift = set.lift.toLowerCase();
+  if (lift.includes("bench")) {
+    return set.reps <= 3 && set.load_kg >= 60 && set.load_kg <= 65;
+  }
+  if (lift.includes("squat")) {
+    return set.reps <= 2 && set.load_kg >= 90 && set.load_kg <= 100;
+  }
+  if (lift.includes("deadlift")) {
+    return set.reps <= 2 && set.load_kg >= 110 && set.load_kg <= 120;
+  }
+  return false;
 };
 
 const trendText = (
@@ -212,6 +227,10 @@ export class SessionDecisionService {
       const vlMin = getVelocityLossSafety(set);
       return vlMin != null && vlMin >= 25;
     });
+    const speedWorkVl10Stop = workingSets.some((set) => {
+      const vlLast = getVelocityLossForJudgement(set);
+      return isSpeedWorkSet(set) && vlLast != null && vlLast > 10;
+    });
     const bestE1RM =
       workingSets
         .map((set) => set.e1rm)
@@ -251,6 +270,9 @@ export class SessionDecisionService {
     }
     if (vlMinHigh) {
       reasonBullets.push("VL_min 25%以上: セット内に大きな失速repあり");
+    }
+    if (speedWorkVl10Stop) {
+      reasonBullets.push("スピード練習でVL_last 10%超: 目的達成、停止または減量推奨");
     }
 
     const qualityPriority =
@@ -315,6 +337,7 @@ export class SessionDecisionService {
     const stopCriteria = [
       baselineROM != null ? `ROM ${formatNumber(baselineROM - 1.5, 1, "cm")}以下なら終了/種目変更` : "ROMが明確に浅くなったら終了/種目変更",
       "HR 145以上なら休憩延長",
+      "スピード練習でVL_last 10%超なら、そのスピード種目は停止または減量",
       "VL_last 20%超、またはVL_min 30%超なら重量を下げる/種目終了候補",
       "同重量AVがさらに5%以上落ちたら重量を下げる",
     ];
@@ -352,6 +375,7 @@ export class SessionDecisionService {
         hrRecoveryDelayed,
         vlHigh,
         vlMinHigh,
+        speedWorkVl10Stop,
         e1RMDrop,
         possibleTechniqueFatigue,
       },

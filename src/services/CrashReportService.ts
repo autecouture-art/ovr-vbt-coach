@@ -23,7 +23,8 @@ export type VBTScreenCrashContext = {
     | "session_logic_setup_start"
     | "session_logic_ble_callbacks_set"
     | "session_logic_ble_status_checked"
-    | "vbt_session_screen_active";
+    | "vbt_session_screen_active"
+    | "form_video_overlay_open_attempt";
   entry_point?: "bottom_tab" | "home_card" | "unknown";
   session_id: string | null;
   is_session_active: boolean;
@@ -54,7 +55,9 @@ export type VBTScreenCrashContext = {
 export type SaveVBTScreenCrashContextInput = Omit<
   VBTScreenCrashContext,
   "schema" | "saved_at" | "reason"
->;
+> & {
+  reason?: VBTScreenCrashContext["reason"];
+};
 
 export type SaveVBTSessionOpenAttemptInput = {
   entry_point?: VBTScreenCrashContext["entry_point"];
@@ -286,9 +289,9 @@ class CrashReportService {
     const payload: VBTScreenCrashContext = {
       schema: "repvelocoach.vbt-screen-crash-context.v1",
       saved_at: new Date().toISOString(),
-      reason: "vbt_session_screen_active",
       entry_point: input.entry_point,
       ...input,
+      reason: input.reason ?? "vbt_session_screen_active",
       live_data: compactLiveData(input.live_data as RepVeloData | null),
       latest_completed_set: compactSet(input.latest_completed_set as SetData | null),
     };

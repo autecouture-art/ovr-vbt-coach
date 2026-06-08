@@ -33,6 +33,8 @@ describe("exercise selection grouping", () => {
       "High Bar Squat",
     );
     expect(getCanonicalExerciseName("Back Squat")).toBe("Squat");
+    expect(getCanonicalExerciseName("Speed Bench Press")).toBe("Bench Press");
+    expect(getCanonicalExerciseName("スピードベンチ")).toBe("Bench Press");
   });
 
   it("exposes canonical migration pairs for history data", () => {

@@ -8,6 +8,7 @@ import type {
   LVPData,
   RepData,
   SessionData,
+  SessionReadinessData,
   SetData,
 } from "../types/index";
 
@@ -47,6 +48,8 @@ export type CodexTrainingExportShareResult = CodexTrainingExportFile & {
   shared: boolean;
 };
 
+const SESSION_READINESS_NOTE_PREFIX = "#SESSION_READINESS_JSON:";
+
 function buildExportFileName(exportedAt: Date): string {
   const stamp = exportedAt
     .toISOString()
@@ -55,11 +58,70 @@ function buildExportFileName(exportedAt: Date): string {
   return `repvelocoach-codex-export-${stamp}.json`;
 }
 
+function parseSessionReadinessFromNotes(
+  notes?: string | null,
+): SessionReadinessData | null {
+  if (!notes) return null;
+
+  const markerLine = notes
+    .split("\n")
+    .find((line) => line.trim().startsWith(SESSION_READINESS_NOTE_PREFIX));
+  if (!markerLine) return null;
+
+  const json = markerLine
+    .trim()
+    .slice(SESSION_READINESS_NOTE_PREFIX.length)
+    .trim();
+  if (!json) return null;
+
+  try {
+    const parsed = JSON.parse(json) as SessionReadinessData;
+    return {
+      dieting:
+        typeof parsed.dieting === "boolean" ? parsed.dieting : null,
+      sleep_quality:
+        parsed.sleep_quality === "good" ||
+        parsed.sleep_quality === "ok" ||
+        parsed.sleep_quality === "bad"
+          ? parsed.sleep_quality
+          : null,
+      pain_area:
+        typeof parsed.pain_area === "string" && parsed.pain_area.trim()
+          ? parsed.pain_area
+          : null,
+      pain_score:
+        typeof parsed.pain_score === "number" &&
+        Number.isFinite(parsed.pain_score)
+          ? parsed.pain_score
+          : null,
+      week_day:
+        typeof parsed.week_day === "string" && parsed.week_day.trim()
+          ? parsed.week_day
+          : null,
+      main_lift:
+        parsed.main_lift === "SQ" ||
+        parsed.main_lift === "BP" ||
+        parsed.main_lift === "DL"
+          ? parsed.main_lift
+          : null,
+      day_role:
+        typeof parsed.day_role === "string" && parsed.day_role.trim()
+          ? parsed.day_role
+          : null,
+      captured_at:
+        typeof parsed.captured_at === "string" ? parsed.captured_at : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
 class CodexDataExportService {
   async buildTrainingExport(): Promise<CodexTrainingExport> {
     await DatabaseService.initialize();
 
     const sessions = await DatabaseService.getSessions();
+    const correctedSessions: SessionData[] = [];
     const sets: SetData[] = [];
     const reps: RepData[] = [];
 
@@ -68,6 +130,15 @@ class CodexDataExportService {
       const sessionReps = await DatabaseService.getRepsForSession(session.session_id);
       sets.push(...sessionSets);
       reps.push(...sessionReps);
+      correctedSessions.push({
+        ...session,
+        total_sets: sessionSets.length,
+        total_volume: sessionSets.reduce(
+          (sum, set) => sum + (set.load_kg || 0) * (set.reps || 0),
+          0,
+        ),
+        readiness: parseSessionReadinessFromNotes(session.notes),
+      });
     }
 
     const exercises = await DatabaseService.getExercises();
@@ -89,14 +160,14 @@ class CodexDataExportService {
         export_version: 1,
       },
       counts: {
-        sessions: sessions.length,
+        sessions: correctedSessions.length,
         sets: sets.length,
         reps: reps.length,
         exercises: exercises.length,
         lvp_profiles: lvpProfiles.length,
         form_videos: formVideos.length,
       },
-      sessions,
+      sessions: correctedSessions,
       sets,
       reps,
       exercises,

@@ -93,4 +93,29 @@ describe("SessionDecisionService", () => {
     });
     expect(decision.reasonBullets.join(" ")).toContain("VL_last");
   });
+
+  it("flags VL10 stop guidance for speed bench work", () => {
+    const decision = SessionDecisionService.analyze({
+      currentLoad: 60,
+      currentHeartRate: 125,
+      purpose: "lvp_building",
+      sets: [
+        makeSet({
+          lift: "Bench Press",
+          set_index: 9,
+          load_kg: 60,
+          reps: 3,
+          avg_velocity: 0.48,
+          velocity_loss: 5,
+          velocity_loss_avg: 5,
+          velocity_loss_last: 12,
+          velocity_loss_min: 12,
+        }),
+      ],
+    });
+
+    expect(decision.trendFlags.speedWorkVl10Stop).toBe(true);
+    expect(decision.reasonBullets.join(" ")).toContain("スピード練習");
+    expect(decision.stopCriteria.join(" ")).toContain("VL_last 10%超");
+  });
 });

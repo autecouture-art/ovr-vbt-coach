@@ -176,6 +176,11 @@ const DEFAULT_EXERCISE_SEEDS: ExerciseSeed[] = [
       "ノーマルベンチ",
       "コンペベンチ",
       "bench",
+      "Speed Bench Press",
+      "speed bench",
+      "speed bench press",
+      "スピードベンチ",
+      "スピードベンチプレス",
     ],
   },
   {
