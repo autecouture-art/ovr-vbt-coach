@@ -131,6 +131,9 @@ Codex / Claude / GLM / Gemini を含む全エージェントは、改善作業�
 | 2026-06-08-09 | program-import | Excel/JSONから週間プログラムをインポートし、今日の予定をセッション画面へ表示する | todo | high | | | untested | | 三土手式_日別メニュー相当のweek/day/main_lift/block/priority/load/reps/sets/RPE/VLを読み込み、実施済みチェックと未実施の任意カットをしやすくする |
 | 2026-06-08-12 | readiness | 固定観察ラダーをセッション画面にテンプレ表示し、各段のAV/ROM/RPEを保存する | todo | critical | | | untested | | 監督指定: SQ 20/70/100/120、BP 20/60/80/90、DL 70/120/140/150。BP90/DL150など上限段は条件付きで、前段が悪ければ省略できるUIにする |
 | 2026-06-08-13 | ai-coach | 相談パケットに固定観察ラダーの前段比較と上限段省略判断を含める | partial | high | codex | src/screens/SessionScreen.tsx | local_checked | 前段比UI/保存は次フェーズ | 同重量直近平均比の固定観測snapshotをVBT相談/1セット相談へ追加。前段比の専用UIと各段保存テンプレは未実装 |
+| 2026-06-10-01 | exercise-master | 設定の種目編集カテゴリがトレーニング時の種目選択カテゴリと一致していない | implemented | high | codex | app/(tabs)/settings.tsx, src/constants/exerciseCatalog.ts, src/constants/__tests__/exerciseCatalog.test.ts | local_checked | 実機で設定カテゴリ表示確認待ち | 設定の新規追加/編集カテゴリを、種目選択と同じベンチ系/スクワット系/デッド系/肩/背中などの表示グループに統一。保存時は内部カテゴリへ安全に変換する共通マップを追加 |
+| 2026-06-10-02 | manual-entry | 手動入力メニューにチャッピー監督への相談ボタンを作る | implemented | high | codex | src/screens/ManualEntryScreen.tsx | local_checked | 実機でコピー/ChatGPT起動確認待ち | 入力中ドラフトまたは保存済み最新セットから、負荷/回数/RPE/AV/VL/ROM/e1RM/直近同種目履歴/JSONを含む監督相談パケットをコピーし、ChatGPTを開くボタンを追加 |
+| 2026-06-10-03 | crash/video | Gmailのクラッシュ報告でフォーム動画ON時のクラッシュ疑いがある | implemented | critical | codex | src/screens/SessionScreen.tsx | local_checked | 実機で動画クラッシュ後の自動OFF確認待ち | Gmail報告のreason=form_video_overlay_open_attemptを確認。前回フォーム動画オーバーレイ開始直前に落ちた疑いがある場合、次回セッション画面でフォーム動画を自動OFFに戻し再クラッシュを避ける |
 
 ## Active Focus
 

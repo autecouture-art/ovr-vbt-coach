@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  EXERCISE_EDIT_GROUPS,
   getCanonicalExerciseName,
   getCanonicalExerciseMigrationPairs,
+  getDefaultCategoryForSelectionGroup,
   getExerciseSelectionGroup,
   getExerciseSelectionGroups,
+  getPrimarySelectionGroupForCategory,
   inferExercisePreset,
   matchesExerciseSelectionGroup,
 } from "../exerciseCatalog";
@@ -90,5 +93,16 @@ describe("exercise selection grouping", () => {
     expect(getExerciseSelectionGroups(exercise("hamstring"))).toContain(
       "posterior_chain",
     );
+  });
+
+  it("maps settings edit chips to the same exercise selection groups", () => {
+    expect(EXERCISE_EDIT_GROUPS.map((group) => group.id)).not.toContain("all");
+    expect(getDefaultCategoryForSelectionGroup("shoulders")).toBe("press");
+    expect(getDefaultCategoryForSelectionGroup("posterior_chain")).toBe(
+      "hamstring",
+    );
+    expect(getPrimarySelectionGroupForCategory("press")).toBe("shoulders");
+    expect(getPrimarySelectionGroupForCategory("quad")).toBe("quads");
+    expect(getPrimarySelectionGroupForCategory("accessory")).toBe("other");
   });
 });

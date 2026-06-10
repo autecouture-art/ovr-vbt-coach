@@ -616,6 +616,7 @@ export default function SessionScreen() {
   const [previousVbtCrashContext, setPreviousVbtCrashContext] =
     useState<VBTScreenCrashContext | null>(null);
   const lastCrashContextSavedAtRef = useRef(0);
+  const disabledFormVideoAfterCrashRef = useRef(false);
   const [lvpProfile, setLvpProfile] = useState<LVPData | null>(null);
   const targetVelocityRange = useMemo<[number, number] | null>(() => {
     const mvt = currentExercise?.mvt ?? lvpProfile?.mvt ?? null;
@@ -998,6 +999,38 @@ export default function SessionScreen() {
       );
     }
   }, [settings, updateSettings]);
+  useEffect(() => {
+    if (
+      disabledFormVideoAfterCrashRef.current ||
+      previousVbtCrashContext?.reason !== "form_video_overlay_open_attempt" ||
+      !settings.enable_video_recording
+    ) {
+      return;
+    }
+
+    disabledFormVideoAfterCrashRef.current = true;
+    const nextSettings: AppSettings = {
+      ...settings,
+      enable_video_recording: false,
+    };
+    updateSettings(nextSettings);
+    void saveAppSettings(nextSettings).catch((error) => {
+      console.warn(
+        "[SessionScreen] Failed to disable form video after crash context:",
+        error,
+      );
+      updateSettings(settings);
+    });
+    Alert.alert(
+      "フォーム動画を一時OFFにしました",
+      "前回フォーム録画を開く直前のクラッシュ疑いがあるため、再クラッシュ防止で動画ボタンを非表示にしました。使う時はセッション画面で再度ONにしてください。",
+    );
+  }, [
+    previousVbtCrashContext?.reason,
+    settings,
+    settings.enable_video_recording,
+    updateSettings,
+  ]);
   const lastCompletedSetAt = setHistory[setHistory.length - 1]?.timestamp ?? null;
   const showAdviceDisplay = settings.session_display_advice_group;
   const nextSetPurposeLabel =

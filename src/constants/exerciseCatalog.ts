@@ -59,6 +59,66 @@ export const EXERCISE_SELECTION_GROUPS: {
   { id: "other", label: "その他" },
 ];
 
+export const EXERCISE_EDIT_GROUPS = EXERCISE_SELECTION_GROUPS.filter(
+  (group) => group.id !== "all",
+) as {
+  id: Exclude<ExerciseSelectionGroupId, "all">;
+  label: string;
+}[];
+
+export const DEFAULT_CATEGORY_BY_SELECTION_GROUP: Record<
+  Exclude<ExerciseSelectionGroupId, "all">,
+  Exercise["category"]
+> = {
+  bench: "bench",
+  squat: "squat",
+  deadlift: "deadlift",
+  chest: "bench",
+  shoulders: "press",
+  back: "row",
+  quads: "quad",
+  posterior_chain: "hamstring",
+  adductors: "adductor",
+  arms: "triceps",
+  core: "core",
+  other: "accessory",
+};
+
+export const PRIMARY_SELECTION_GROUP_BY_CATEGORY: Record<
+  Exercise["category"],
+  Exclude<ExerciseSelectionGroupId, "all">
+> = {
+  squat: "squat",
+  bench: "bench",
+  deadlift: "deadlift",
+  press: "shoulders",
+  pull: "back",
+  row: "back",
+  vertical_pull: "back",
+  single_leg: "quads",
+  quad: "quads",
+  hamstring: "posterior_chain",
+  adductor: "adductors",
+  glute: "posterior_chain",
+  triceps: "arms",
+  biceps: "arms",
+  core: "core",
+  accessory: "other",
+};
+
+export function getDefaultCategoryForSelectionGroup(
+  groupId: ExerciseSelectionGroupId,
+): Exercise["category"] {
+  if (groupId === "all") return "accessory";
+  return DEFAULT_CATEGORY_BY_SELECTION_GROUP[groupId];
+}
+
+export function getPrimarySelectionGroupForCategory(
+  category: Exercise["category"],
+): Exclude<ExerciseSelectionGroupId, "all"> {
+  return PRIMARY_SELECTION_GROUP_BY_CATEGORY[category] ?? "other";
+}
+
 const DEFAULT_EXERCISE_SEEDS: ExerciseSeed[] = [
   {
     id: "squat",

@@ -12,11 +12,14 @@ import {
 } from "react-native";
 
 import {
+  EXERCISE_EDIT_GROUPS,
   EXERCISE_CATEGORY_LABELS,
   EXERCISE_SELECTION_GROUPS,
   formatLoadKg,
+  getDefaultCategoryForSelectionGroup,
   getExerciseCategoryLabel,
   getExerciseSelectionGroup,
+  getPrimarySelectionGroupForCategory,
   inferExercisePreset,
   matchesExerciseSelectionGroup,
   type ExerciseSelectionGroupId,
@@ -79,6 +82,10 @@ const DEFAULT_WEEK_BY_PHASE: Record<
   peaking: 9,
   power: 5,
 };
+
+const getSelectionGroupLabel = (groupId: ExerciseSelectionGroupId) =>
+  EXERCISE_SELECTION_GROUPS.find((group) => group.id === groupId)?.label ??
+  groupId;
 
 type SettingsSectionId =
   | "training"
@@ -436,6 +443,18 @@ export default function SettingsTab() {
       console.error("Failed to add exercise:", error);
       Alert.alert("追加失敗", "種目の追加に失敗しました。");
     }
+  };
+
+  const handleSelectNewExerciseGroup = (groupId: ExerciseSelectionGroupId) => {
+    if (groupId === "all") return;
+    setNewExerciseCategory(getDefaultCategoryForSelectionGroup(groupId));
+  };
+
+  const handleSelectEditingExerciseGroup = (
+    groupId: ExerciseSelectionGroupId,
+  ) => {
+    if (groupId === "all") return;
+    setEditingExerciseCategory(getDefaultCategoryForSelectionGroup(groupId));
   };
 
   const loadExerciseMaster = async (force: boolean = false) => {
@@ -1232,22 +1251,26 @@ export default function SettingsTab() {
               placeholderTextColor={GarageTheme.textSubtle}
               autoCapitalize="words"
             />
+            <Text style={styles.helperText}>
+              種目選択画面と同じカテゴリで選びます。保存時は内部カテゴリへ自動変換します。
+            </Text>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
               style={styles.categorySelectorScroll}
             >
-              {Object.keys(EXERCISE_CATEGORY_LABELS).map((cat) => {
-                const category = cat as Exercise["category"];
-                const selected = newExerciseCategory === category;
+              {EXERCISE_EDIT_GROUPS.map((group) => {
+                const selected =
+                  getPrimarySelectionGroupForCategory(newExerciseCategory) ===
+                  group.id;
                 return (
                   <TouchableOpacity
-                    key={category}
+                    key={group.id}
                     style={[
                       styles.categoryChip,
                       selected && styles.categoryChipActive,
                     ]}
-                    onPress={() => setNewExerciseCategory(category)}
+                    onPress={() => handleSelectNewExerciseGroup(group.id)}
                   >
                     <Text
                       style={[
@@ -1255,12 +1278,15 @@ export default function SettingsTab() {
                         selected && styles.categoryChipTextActive,
                       ]}
                     >
-                      {EXERCISE_CATEGORY_LABELS[category]}
+                      {group.label}
                     </Text>
                   </TouchableOpacity>
                 );
               })}
             </ScrollView>
+            <Text style={styles.helperText}>
+              内部カテゴリ: {EXERCISE_CATEGORY_LABELS[newExerciseCategory]}
+            </Text>
             <TextInput
               style={[styles.input, styles.stackInput]}
               value={newExerciseDescription}
@@ -1350,7 +1376,12 @@ export default function SettingsTab() {
                               ) : null}
                             </View>
                             <Text style={styles.exerciseMeta}>
-                              {getExerciseCategoryLabel(exercise.category)} /{" "}
+                              {getSelectionGroupLabel(
+                                getPrimarySelectionGroupForCategory(
+                                  exercise.category,
+                                ),
+                              )}{" "}
+                              / {getExerciseCategoryLabel(exercise.category)} /{" "}
                               {
                                 MODE_LABELS[
                                   exercise.rep_detection_mode ?? "standard"
@@ -1384,28 +1415,31 @@ export default function SettingsTab() {
                                   <Text style={styles.exerciseEditLabel}>
                                     カテゴリ
                                   </Text>
+                                  <Text style={styles.helperText}>
+                                    種目選択画面と同じカテゴリで選択
+                                  </Text>
                                   <ScrollView
                                     horizontal
                                     showsHorizontalScrollIndicator={false}
                                     style={styles.categorySelectorScroll}
                                   >
-                                    {Object.keys(EXERCISE_CATEGORY_LABELS).map(
-                                      (cat) => {
-                                        const category =
-                                          cat as Exercise["category"];
+                                    {EXERCISE_EDIT_GROUPS.map(
+                                      (group) => {
                                         const isSelected =
-                                          editingExerciseCategory === category;
+                                          getPrimarySelectionGroupForCategory(
+                                            editingExerciseCategory,
+                                          ) === group.id;
                                         return (
                                           <TouchableOpacity
-                                            key={category}
+                                            key={group.id}
                                             style={[
                                               styles.categoryChip,
                                               isSelected &&
                                                 styles.categoryChipActive,
                                             ]}
                                             onPress={() =>
-                                              setEditingExerciseCategory(
-                                                category,
+                                              handleSelectEditingExerciseGroup(
+                                                group.id,
                                               )
                                             }
                                           >
@@ -1416,17 +1450,21 @@ export default function SettingsTab() {
                                                   styles.categoryChipTextActive,
                                               ]}
                                             >
-                                              {
-                                                EXERCISE_CATEGORY_LABELS[
-                                                  category
-                                                ]
-                                              }
+                                              {group.label}
                                             </Text>
                                           </TouchableOpacity>
                                         );
                                       },
                                     )}
                                   </ScrollView>
+                                  <Text style={styles.helperText}>
+                                    内部カテゴリ:{" "}
+                                    {
+                                      EXERCISE_CATEGORY_LABELS[
+                                        editingExerciseCategory
+                                      ]
+                                    }
+                                  </Text>
                                 </View>
 
                                 <View style={styles.exerciseEditRow}>
@@ -1994,6 +2032,11 @@ const styles = StyleSheet.create({
     color: GarageTheme.textMuted,
     fontSize: 12,
     lineHeight: 18,
+  },
+  helperText: {
+    color: GarageTheme.textSubtle,
+    fontSize: 11,
+    lineHeight: 16,
   },
   exerciseDescription: {
     color: GarageTheme.textSubtle,

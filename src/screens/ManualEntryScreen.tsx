@@ -13,6 +13,8 @@ import {
   TextInput,
   Alert,
 } from "react-native";
+import * as Clipboard from "expo-clipboard";
+import * as Linking from "expo-linking";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import DatabaseService from "../services/DatabaseService";
 import ExerciseService from "../services/ExerciseService";
@@ -36,6 +38,32 @@ interface ManualEntryScreenProps {
 }
 
 type SupersetSlot = "active" | "A" | "B";
+
+const CHATGPT_APP_URL = "chatgpt://";
+const CHATGPT_WEB_URL = "https://chatgpt.com/";
+
+const openChatGPT = async (): Promise<"app" | "web" | "none"> => {
+  try {
+    const canOpenApp = await Linking.canOpenURL(CHATGPT_APP_URL);
+    if (canOpenApp) {
+      await Linking.openURL(CHATGPT_APP_URL);
+      return "app";
+    }
+    await Linking.openURL(CHATGPT_WEB_URL);
+    return "web";
+  } catch {
+    return "none";
+  }
+};
+
+const formatNumber = (
+  value: number | null | undefined,
+  digits = 1,
+  suffix = "",
+): string => {
+  if (value == null || !Number.isFinite(value)) return "-";
+  return `${value.toFixed(digits)}${suffix}`;
+};
 
 const formatRelativeTime = (timestamp?: string | null): string => {
   if (!timestamp) return "前回日時なし";
@@ -212,6 +240,129 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({
     savedSets,
     selectedExercise,
   ]);
+
+  const latestManualConsultationSet = draftSet ?? savedSets[savedSets.length - 1] ?? null;
+
+  const handleCopyManualSupervisorPacket = async () => {
+    if (!latestManualConsultationSet) {
+      Alert.alert(
+        "相談データなし",
+        "負荷とレップ数を入力するか、先に1セット保存してください。",
+      );
+      return;
+    }
+
+    const sameLiftHistory = [
+      ...savedSets.filter((set) => set.lift === latestManualConsultationSet.lift),
+      ...recentLiftSets.filter(
+        (set) => set.lift === latestManualConsultationSet.lift,
+      ),
+    ]
+      .slice()
+      .sort(
+        (a, b) =>
+          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+      )
+      .slice(0, 5);
+    const currentSetSource = draftSet ? "入力中ドラフト" : "保存済み最新セット";
+    const historyRows =
+      sameLiftHistory
+        .map(
+          (set) =>
+            `| ${new Date(set.timestamp).toLocaleString("ja-JP")} | ${set.load_kg} | ${set.reps} | ${formatNumber(set.avg_velocity, 2)} | ${formatNumber(set.velocity_loss_last ?? set.velocity_loss, 1, "%")} | ${formatNumber(set.avg_rom_cm, 1, "cm")} | ${formatNumber(set.rpe, 1)} |`,
+        )
+        .join("\n") || "| - | - | - | - | - | - | - |";
+    const packetJson = {
+      source: "RepVeloCoach manual entry",
+      generated_at: new Date().toISOString(),
+      session_id: sessionId,
+      source_state: currentSetSource,
+      exercise: {
+        name: latestManualConsultationSet.lift,
+        category: selectedExercise?.category ?? null,
+        category_label: selectedExercise
+          ? getExerciseCategoryLabel(selectedExercise.category)
+          : null,
+        set_type: latestManualConsultationSet.set_type,
+      },
+      current_set: {
+        set_index: latestManualConsultationSet.set_index,
+        load_kg: latestManualConsultationSet.load_kg,
+        reps: latestManualConsultationSet.reps,
+        rpe: latestManualConsultationSet.rpe ?? null,
+        avg_velocity: latestManualConsultationSet.avg_velocity,
+        vl_avg:
+          latestManualConsultationSet.velocity_loss_avg ??
+          latestManualConsultationSet.velocity_loss,
+        vl_last: latestManualConsultationSet.velocity_loss_last ?? null,
+        vl_min: latestManualConsultationSet.velocity_loss_min ?? null,
+        rom_cm: latestManualConsultationSet.avg_rom_cm ?? null,
+        e1rm: latestManualConsultationSet.e1rm ?? null,
+        notes: latestManualConsultationSet.notes ?? (notes || null),
+      },
+      today_summary: sessionSummary,
+      deterministic_preview: manualCoachDecision
+        ? {
+            action: manualCoachDecision.action,
+            message: manualCoachDecision.message,
+            suggestedAction: manualCoachDecision.suggestedAction ?? null,
+          }
+        : null,
+      recent_same_lift_sets: sameLiftHistory.map((set) => ({
+        timestamp: set.timestamp,
+        load_kg: set.load_kg,
+        reps: set.reps,
+        avg_velocity: set.avg_velocity,
+        vl_last: set.velocity_loss_last ?? set.velocity_loss ?? null,
+        rom_cm: set.avg_rom_cm ?? null,
+        rpe: set.rpe ?? null,
+        e1rm: set.e1rm ?? null,
+      })),
+    };
+
+    const packet = [
+      "# チャッピー監督 手動入力相談パケット",
+      `出力日時: ${new Date().toLocaleString("ja-JP")}`,
+      `状態: ${currentSetSource}`,
+      `種目: ${latestManualConsultationSet.lift}`,
+      `カテゴリ: ${
+        selectedExercise
+          ? getExerciseCategoryLabel(selectedExercise.category)
+          : "-"
+      }`,
+      `セット: ${latestManualConsultationSet.set_index}`,
+      `負荷/回数: ${formatNumber(latestManualConsultationSet.load_kg, 1, "kg")} x ${latestManualConsultationSet.reps}`,
+      `RPE: ${formatNumber(latestManualConsultationSet.rpe, 1)}`,
+      `AV: ${formatNumber(latestManualConsultationSet.avg_velocity, 2, "m/s")}`,
+      `VL avg/last/min: ${formatNumber(latestManualConsultationSet.velocity_loss_avg ?? latestManualConsultationSet.velocity_loss, 1, "%")} / ${formatNumber(latestManualConsultationSet.velocity_loss_last, 1, "%")} / ${formatNumber(latestManualConsultationSet.velocity_loss_min, 1, "%")}`,
+      `ROM: ${formatNumber(latestManualConsultationSet.avg_rom_cm, 1, "cm")}`,
+      `e1RM: ${formatNumber(latestManualConsultationSet.e1rm, 1, "kg")}`,
+      manualCoachDecision
+        ? `アプリ暫定判定: ${manualCoachDecision.action} / ${manualCoachDecision.message}`
+        : "アプリ暫定判定: 速度未入力または判定なし",
+      "",
+      "## 直近同種目履歴",
+      "| time | load | reps | AV | VL_last | ROM | RPE |",
+      "|---|---:|---:|---:|---:|---:|---:|",
+      historyRows,
+      "",
+      "## 相談したいこと",
+      "この手動入力データだけを根拠に、次セットの重量・回数・休憩・継続可否を実用的に判断してください。速度が未入力の場合はRPE/履歴/メモを中心に、断定しすぎず条件つきで提案してください。",
+      "",
+      "```json",
+      JSON.stringify(packetJson, null, 2),
+      "```",
+    ].join("\n");
+
+    await Clipboard.setStringAsync(packet);
+    const openResult = await openChatGPT();
+    Alert.alert(
+      openResult === "none" ? "コピーしました" : "コピーしてChatGPTを開きました",
+      openResult === "none"
+        ? "チャッピー監督用パケットをコピーしました。"
+        : "ChatGPTへ貼り付けて相談してください。",
+    );
+  };
 
   // 種目別プリセット重量
   const exercisePresets: Record<string, number[]> = {
@@ -640,6 +791,20 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({
             </View>
           </View>
         </View>
+
+        <TouchableOpacity
+          style={[
+            styles.coachButton,
+            !latestManualConsultationSet && styles.coachButtonDisabled,
+          ]}
+          onPress={() => void handleCopyManualSupervisorPacket()}
+          disabled={!latestManualConsultationSet}
+        >
+          <Text style={styles.coachButtonText}>チャッピー監督へ相談</Text>
+          <Text style={styles.coachButtonSubtext}>
+            入力中または保存済み最新セットをコピーしてChatGPTへ渡す
+          </Text>
+        </TouchableOpacity>
 
         <Text style={styles.label}>種目</Text>
         <TouchableOpacity
@@ -1148,6 +1313,9 @@ const styles = StyleSheet.create({
   coachButtonSubtext: {
     color: "#d4a58f",
     fontSize: 12,
+  },
+  coachButtonDisabled: {
+    opacity: 0.45,
   },
   todaySummaryCard: {
     padding: 14,

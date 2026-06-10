@@ -1,5 +1,29 @@
 # Agent Walkthrough Log
 
+## 2026-06-10 (Codex / GPT-5)
+
+Scope: Exercise category alignment, manual-entry supervisor handoff, and form-video crash safety.
+Actions:
+
+- Read the latest Gmail crash report and confirmed the reported previous reason was `form_video_overlay_open_attempt` with VBT connected and form video enabled.
+- Added shared exercise edit group mappings so Settings uses the same visible category groups as the training exercise picker while still saving safe internal categories.
+- Updated Settings new/edit exercise category chips to show Bench/Squat/Deadlift/Shoulders/Back/etc. rather than raw internal-only categories.
+- Added a Manual Entry `チャッピー監督へ相談` button that copies an in-progress draft set or latest saved manual set with AV/VL/ROM/RPE/e1RM/recent history and opens ChatGPT.
+- Added a safety guard that disables form-video mode after a suspected `form_video_overlay_open_attempt` crash to avoid repeated crash loops.
+- Added `docs/TRAINING_SUPERVISOR_IMPLEMENTATION_REPORT_2026-06-10.md` for supervisor handoff.
+- Updated `docs/IMPROVEMENT_TRACKER.md` with `2026-06-10-01` through `2026-06-10-03`.
+
+Results:
+
+- `pnpm check` passed.
+- `pnpm lint` passed.
+- `pnpm test -- exerciseCatalog SessionDecisionService` passed: 12 tests.
+- `git diff --check` passed.
+
+Remaining:
+
+- Real-device confirmation for Settings category chips, Manual Entry copy/Open ChatGPT flow, and the form-video crash-loop guard.
+
 ## 2026-06-08 (Codex / GPT-5)
 
 Scope: Training supervisor handoff, readiness metadata, latest-set packet consistency, and safer form-video crash diagnostics.
