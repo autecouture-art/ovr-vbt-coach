@@ -3,7 +3,7 @@
 ## Canonical Workspace
 - Repo root: /Volumes/0RICON_APP/Developer/MyFiles/repvelocoach-git-sync-20260320/repo
 - Branch: main
-- HEAD at record time: current `chore: record TestFlight build 96` commit
+- HEAD at record time: current `feat: align exercise categories and manual supervisor handoff` commit plus build 103 release-record changes
 - Treat this repo as the only active source of truth.
 - Legacy folders such as `/Volumes/0RICON_APP/Developer/MyFiles/RepVeloCoach` and `/Volumes/0RICON_APP/Developer/MyFiles/ovr-vbt-coach-local` are reference/archive only unless explicitly proven newer.
 
@@ -11,16 +11,16 @@
 - App name: RepVelo VBT Coach
 - iOS bundle id: `com.autecouture.repvelocoach.hh`
 - Marketing version: `2.3.5`
-- Native iOS build number in `ios/RepVeloCoach/Info.plist`: `96`
-- Expo config build number in `app.config.ts`: `96`
-- Latest successful TestFlight upload: build `96` (uploaded 2026-06-04 14:23:36 JST)
+- Native iOS build number in `ios/RepVeloCoach/Info.plist`: `103`
+- Expo config build number in `app.config.ts`: `103`
+- Latest successful TestFlight upload: build `103` (uploaded 2026-06-10 10:04:43 JST)
 
 ## Build Number Status
-- `app.config.ts`, `ios/RepVeloCoach/Info.plist`, and `ios/RepVeloCoach.xcodeproj/project.pbxproj` are aligned at build `96`.
-- For the next release, bump to a value higher than `96` and keep all three sources synchronized.
+- `app.config.ts`, `ios/RepVeloCoach/Info.plist`, and `ios/RepVeloCoach.xcodeproj/project.pbxproj` are aligned at build `103`.
+- For the next release, bump to a value higher than `103` and keep all three sources synchronized.
 
 ## Current Working Tree
-- Working tree was clean immediately after recording the successful build `96` upload.
+- Working tree contains only the build 103 release-record changes until the release-record commit is created.
 
 ## What Was Implemented Recently
 - **Phase 1 & 2 Improvements** (build 78):
@@ -68,6 +68,10 @@
   - The Session tab can now show crash-report sharing controls without importing the heavy Session module.
   - The heavy Session screen loads only after tapping `セッション本体を開く`.
   - Added a `session_screen_mount_attempt` crash marker so a relaunch report can distinguish tab entry from heavy-screen mount failure.
+- **Build 103 Release**:
+  - Settings exercise category editing now uses the same visible groups as the training exercise picker while saving safe internal categories.
+  - Manual Entry now has a `チャッピー監督へ相談` button that copies the current draft or latest saved manual set with VBT context and opens ChatGPT.
+  - After a suspected `form_video_overlay_open_attempt` crash, form-video mode is disabled on next Session load to avoid repeated crash loops.
 - Previous implementations:
   - Direct GLM mode with local API key
   - AI Coach error reporting improvements
@@ -99,8 +103,8 @@
 
 ## Validation Status
 - TypeScript check passed: `pnpm -s tsc --noEmit`
-- TestFlight upload succeeded for version `2.3.5` build `96`.
-- Build numbers are aligned across all three sources (app.config.ts, Info.plist, project.pbxproj) at `96`.
+- TestFlight upload succeeded for version `2.3.5` build `103`.
+- Build numbers are aligned across all three sources (app.config.ts, Info.plist, project.pbxproj) at `103`.
 - Real-device verification is still required for:
   - AI Coach live send success
   - Session detail appearing immediately after set completion
@@ -170,6 +174,15 @@
 - dSYM: `ios/fastlane_export/RepVeloCoach.app.dSYM.zip`
 - Command: `source ~/.zshrc && REPVELO_XCODE_APP=/Users/hoshinohideyuki/Developer/Xcode-RepVelo.app REPVELO_CLEAN=false REPVELO_EXTRA_XCARGS='-jobs 1 COMPILER_INDEX_STORE_ENABLE=NO' FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT=20 FASTLANE_XCODEBUILD_SETTINGS_RETRIES=6 bash scripts/deploy.sh`
 - Notes: build number was bumped and aligned from 95 to 96 before upload. This build adds the Session Safe Gate: tapping the Session tab first opens a lightweight diagnostic gate, and the heavy Session screen is dynamically imported only after `セッション本体を開く`. If that second step still crashes, relaunch and share the `session_screen_mount_attempt` report with `本文共有`. TestFlight processing may take 15-30 minutes.
+
+## Latest TestFlight Upload (2026-06-10)
+- Version: `2.3.5`
+- Build: `103`
+- Upload result: succeeded at 2026-06-10 10:04:43 JST
+- IPA: `ios/fastlane_export/RepVeloCoach.ipa`
+- dSYM: `ios/fastlane_export/RepVeloCoach.app.dSYM.zip`
+- Command: `REPVELO_XCODE_APP=/Applications/Xcode.app FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT=20 FASTLANE_XCODEBUILD_SETTINGS_RETRIES=6 REPVELO_EXTRA_XCARGS='-jobs 1 COMPILER_INDEX_STORE_ENABLE=NO' bash scripts/deploy.sh`
+- Notes: build number was bumped and aligned from 102 to 103 before upload. This build includes Settings exercise category alignment with training picker categories, Manual Entry `チャッピー監督へ相談`, and the form-video crash-loop guard based on the Gmail crash report. TestFlight processing may take 15-30 minutes.
 
 ## Build And Upload
 Use the repo-local canonical path above. The agent-neutral release workflow is documented in:

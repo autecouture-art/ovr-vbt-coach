@@ -19,10 +19,33 @@ Results:
 - `pnpm lint` passed.
 - `pnpm test -- exerciseCatalog SessionDecisionService` passed: 12 tests.
 - `git diff --check` passed.
+- Sent the supervisor handoff email to `autecouture@gmail.com` with `docs/TRAINING_SUPERVISOR_IMPLEMENTATION_REPORT_2026-06-10.md` attached.
 
 Remaining:
 
 - Real-device confirmation for Settings category chips, Manual Entry copy/Open ChatGPT flow, and the form-video crash-loop guard.
+
+## 2026-06-10 (Codex / GPT-5)
+
+Scope: TestFlight build 103.
+Actions:
+
+- Bumped RepVeloCoach build number from 102 to 103 in `app.config.ts`, `ios/RepVeloCoach/Info.plist`, and `ios/RepVeloCoach.xcodeproj/project.pbxproj`.
+- Ran the repo-local TestFlight deployment with `/Applications/Xcode.app`, low-parallel archive flags, and Fastlane retry settings:
+  `REPVELO_XCODE_APP=/Applications/Xcode.app FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT=20 FASTLANE_XCODEBUILD_SETTINGS_RETRIES=6 REPVELO_EXTRA_XCARGS='-jobs 1 COMPILER_INDEX_STORE_ENABLE=NO' bash scripts/deploy.sh`
+
+Results:
+
+- Archive succeeded.
+- IPA exported to `ios/fastlane_export/RepVeloCoach.ipa`.
+- dSYM exported to `ios/fastlane_export/RepVeloCoach.app.dSYM.zip`.
+- App Store Connect upload succeeded for build 103 at 2026-06-10 10:04:43 JST.
+- TestFlight processing was left to App Store Connect.
+- Non-fatal build warnings remained from Expo/React Native bundle globals and Fastlane version notice.
+
+Remaining:
+
+- Wait for App Store Connect/TestFlight processing before installing on device.
 
 ## 2026-06-08 (Codex / GPT-5)
 
