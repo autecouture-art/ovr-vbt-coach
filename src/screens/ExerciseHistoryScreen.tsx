@@ -72,6 +72,14 @@ const ExerciseHistoryScreen: React.FC<ExerciseHistoryScreenProps> = ({ navigatio
     setSelectedExercise(lift);
   };
 
+  const handleBackPress = () => {
+    navigation.goBack();
+  };
+
+  const handleHomePress = () => {
+    navigation.navigate('Home');
+  };
+
   const handleSessionPress = (entry: ExerciseHistoryEntry) => {
     navigation.navigate('SessionDetail', {
       session_id: entry.session_id,
@@ -103,6 +111,16 @@ const ExerciseHistoryScreen: React.FC<ExerciseHistoryScreenProps> = ({ navigatio
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
+        <View style={styles.loadingHeader}>
+          <View style={styles.headerActions}>
+            <TouchableOpacity style={styles.headerButton} onPress={handleBackPress}>
+              <Text style={styles.headerButtonText}>← 戻る</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.headerButton} onPress={handleHomePress}>
+              <Text style={styles.headerButtonText}>ホーム</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
         <ActivityIndicator size="large" color={GarageTheme.accent} />
         <Text style={styles.loadingText}>読み込み中...</Text>
       </View>
@@ -113,6 +131,14 @@ const ExerciseHistoryScreen: React.FC<ExerciseHistoryScreenProps> = ({ navigatio
     return (
       <View style={styles.container}>
         <View style={styles.header}>
+          <View style={styles.headerActions}>
+            <TouchableOpacity style={styles.headerButton} onPress={handleBackPress}>
+              <Text style={styles.headerButtonText}>← 戻る</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.headerButton} onPress={handleHomePress}>
+              <Text style={styles.headerButtonText}>ホーム</Text>
+            </TouchableOpacity>
+          </View>
           <Text style={styles.title}>種目別履歴</Text>
           <Text style={styles.subtitle}>種目を選択してトレンドを確認</Text>
         </View>
@@ -126,6 +152,14 @@ const ExerciseHistoryScreen: React.FC<ExerciseHistoryScreenProps> = ({ navigatio
   return (
     <View style={styles.container}>
       <View style={styles.header}>
+        <View style={styles.headerActions}>
+          <TouchableOpacity style={styles.headerButton} onPress={handleBackPress}>
+            <Text style={styles.headerButtonText}>← 戻る</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.headerButton} onPress={handleHomePress}>
+            <Text style={styles.headerButtonText}>ホーム</Text>
+          </TouchableOpacity>
+        </View>
         <Text style={styles.title}>種目別履歴</Text>
         <Text style={styles.subtitle}>種目を選択してトレンドを確認</Text>
       </View>
@@ -263,19 +297,45 @@ const styles = StyleSheet.create({
   },
   loadingContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
     backgroundColor: GarageTheme.background,
+  },
+  loadingHeader: {
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: GarageTheme.border,
   },
   loadingText: {
     marginTop: 16,
     fontSize: 14,
     color: GarageTheme.textMuted,
+    textAlign: 'center',
   },
   header: {
     padding: 16,
     borderBottomWidth: 1,
     borderBottomColor: GarageTheme.border,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+    gap: 10,
+  },
+  headerButton: {
+    minHeight: 38,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: GarageTheme.border,
+    backgroundColor: GarageTheme.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerButtonText: {
+    color: GarageTheme.textStrong,
+    fontSize: 13,
+    fontWeight: '700',
   },
   title: {
     fontSize: 24,

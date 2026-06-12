@@ -134,6 +134,9 @@ Codex / Claude / GLM / Gemini を含む全エージェントは、改善作業�
 | 2026-06-10-01 | exercise-master | 設定の種目編集カテゴリがトレーニング時の種目選択カテゴリと一致していない | implemented | high | codex | app/(tabs)/settings.tsx, src/constants/exerciseCatalog.ts, src/constants/__tests__/exerciseCatalog.test.ts | local_checked | 実機で設定カテゴリ表示確認待ち | 設定の新規追加/編集カテゴリを、種目選択と同じベンチ系/スクワット系/デッド系/肩/背中などの表示グループに統一。保存時は内部カテゴリへ安全に変換する共通マップを追加 |
 | 2026-06-10-02 | manual-entry | 手動入力メニューにチャッピー監督への相談ボタンを作る | implemented | high | codex | src/screens/ManualEntryScreen.tsx | local_checked | 実機でコピー/ChatGPT起動確認待ち | 入力中ドラフトまたは保存済み最新セットから、負荷/回数/RPE/AV/VL/ROM/e1RM/直近同種目履歴/JSONを含む監督相談パケットをコピーし、ChatGPTを開くボタンを追加 |
 | 2026-06-10-03 | crash/video | Gmailのクラッシュ報告でフォーム動画ON時のクラッシュ疑いがある | implemented | critical | codex | src/screens/SessionScreen.tsx | local_checked | 実機で動画クラッシュ後の自動OFF確認待ち | Gmail報告のreason=form_video_overlay_open_attemptを確認。前回フォーム動画オーバーレイ開始直前に落ちた疑いがある場合、次回セッション画面でフォーム動画を自動OFFに戻し再クラッシュを避ける |
+| 2026-06-12-01 | navigation | 種目別履歴からホーム画面に戻れない | implemented | high | codex | app/exercise-history.tsx, src/screens/ExerciseHistoryScreen.tsx | local_checked | 実機で戻る/ホーム確認待ち | 種目別履歴の通常/読込/空状態に戻る・ホームボタンを追加。route wrapperでHome遷移を`/(tabs)`へreplaceする |
+| 2026-06-12-02 | readiness | Week-Dayはプルダウンで入力したい | implemented | medium | codex | src/screens/SessionScreen.tsx | local_checked | 実機でWeek-Day選択確認待ち | 監督チェックのWeek-DayをTextInputからW1-D1〜W6-D4のモーダル選択に変更 |
+| 2026-06-12-03 | crash/video | build 103でもフォーム動画ONでクラッシュ報告が届いた | implemented | critical | codex | src/screens/SessionScreen.tsx | local_checked | 実機でフォーム動画ボタン非表示と通常VBT安定確認待ち | Gmail最新報告もreason=form_video_overlay_open_attempt。前回クラッシュ疑いがある間は録画ボタン自体を出さず、開く関数入口でも録画をブロックして設定OFFを保存する |
 
 ## Active Focus
 

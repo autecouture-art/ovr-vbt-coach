@@ -20,6 +20,10 @@ export default function ExerciseHistoryRoute() {
       router.replace('/(tabs)');
     },
     navigate: (name: string, params?: Record<string, unknown>) => {
+      if (name === 'Home') {
+        router.replace('/(tabs)');
+        return;
+      }
       if (name === 'SessionDetail') {
         const sessionId = params?.session_id
           ? String(params.session_id)

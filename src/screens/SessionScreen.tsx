@@ -22,6 +22,7 @@ import {
   Alert,
   AppState,
   Share,
+  Modal,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNavigation, useRouter } from "expo-router";
@@ -193,6 +194,13 @@ const SLEEP_QUALITY_OPTIONS: {
   { value: "ok", label: "普通" },
   { value: "bad", label: "悪い" },
 ];
+
+const WEEK_DAY_OPTIONS = Array.from({ length: 6 }, (_, weekIndex) =>
+  Array.from({ length: 4 }, (_, dayIndex) => ({
+    value: `Week${weekIndex + 1}-Day${dayIndex + 1}`,
+    label: `W${weekIndex + 1}-D${dayIndex + 1}`,
+  })),
+).flat();
 
 function removeSessionReadinessMarker(notes: string) {
   return notes
@@ -390,6 +398,7 @@ export default function SessionScreen() {
   const [readinessPainArea, setReadinessPainArea] = useState("");
   const [readinessPainScore, setReadinessPainScore] = useState("0");
   const [readinessWeekDay, setReadinessWeekDay] = useState("Week1-Day1");
+  const [weekDayPickerVisible, setWeekDayPickerVisible] = useState(false);
   const [readinessMainLift, setReadinessMainLift] =
     useState<SessionReadinessData["main_lift"]>(null);
   const buildSessionReadinessPayload = useCallback(
@@ -973,6 +982,7 @@ export default function SessionScreen() {
   const hiddenSetHistoryCount = setHistory.length - visibleSetHistory.length;
   const formRecordingAvailable =
     Boolean(settings.enable_video_recording) &&
+    previousVbtCrashContext?.reason !== "form_video_overlay_open_attempt" &&
     Boolean(currentSession?.session_id) &&
     Boolean(currentLift || currentExercise?.name);
   const currentRecordingLift = currentLift || currentExercise?.name || "";
@@ -1959,6 +1969,26 @@ export default function SessionScreen() {
   };
 
   const handleOpenFormVideoRecorder = async () => {
+    if (previousVbtCrashContext?.reason === "form_video_overlay_open_attempt") {
+      const nextSettings: AppSettings = {
+        ...settings,
+        enable_video_recording: false,
+      };
+      updateSettings(nextSettings);
+      void saveAppSettings(nextSettings).catch((error) => {
+        console.warn(
+          "[SessionScreen] Failed to persist form video crash block:",
+          error,
+        );
+        updateSettings(settings);
+      });
+      Alert.alert(
+        "フォーム動画を一時停止中",
+        "前回フォーム録画を開く直前にクラッシュした疑いがあるため、録画を開かずに停止しました。まず通常のVBTセッションが安定するか確認してください。",
+      );
+      return;
+    }
+
     if (!currentSession?.session_id || !currentRecordingLift) {
       Alert.alert(
         "録画できません",
@@ -3249,13 +3279,15 @@ export default function SessionScreen() {
             <View style={styles.readinessGrid}>
               <View style={styles.readinessField}>
                 <Text style={styles.readinessLabel}>Week-Day</Text>
-                <TextInput
-                  style={styles.readinessInput}
-                  value={readinessWeekDay}
-                  onChangeText={setReadinessWeekDay}
-                  placeholder="Week1-Day1"
-                  placeholderTextColor={GarageTheme.textSubtle}
-                />
+                <TouchableOpacity
+                  style={styles.readinessSelect}
+                  onPress={() => setWeekDayPickerVisible(true)}
+                >
+                  <Text style={styles.readinessSelectText}>
+                    {readinessWeekDay || "Week-Dayを選択"}
+                  </Text>
+                  <Text style={styles.readinessSelectArrow}>▼</Text>
+                </TouchableOpacity>
               </View>
               <View style={styles.readinessField}>
                 <Text style={styles.readinessLabel}>痛み 0-10</Text>
@@ -3364,6 +3396,55 @@ export default function SessionScreen() {
             </Text>
           </View>
 
+          <Modal
+            visible={weekDayPickerVisible}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setWeekDayPickerVisible(false)}
+          >
+            <TouchableOpacity
+              style={styles.modalBackdrop}
+              activeOpacity={1}
+              onPress={() => setWeekDayPickerVisible(false)}
+            >
+              <View style={styles.weekDayPickerCard}>
+                <Text style={styles.weekDayPickerTitle}>Week-Dayを選択</Text>
+                <View style={styles.weekDayPickerGrid}>
+                  {WEEK_DAY_OPTIONS.map((option) => (
+                    <TouchableOpacity
+                      key={option.value}
+                      style={[
+                        styles.weekDayOption,
+                        readinessWeekDay === option.value &&
+                          styles.weekDayOptionActive,
+                      ]}
+                      onPress={() => {
+                        setReadinessWeekDay(option.value);
+                        setWeekDayPickerVisible(false);
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.weekDayOptionText,
+                          readinessWeekDay === option.value &&
+                            styles.weekDayOptionTextActive,
+                        ]}
+                      >
+                        {option.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <TouchableOpacity
+                  style={styles.weekDayCancelButton}
+                  onPress={() => setWeekDayPickerVisible(false)}
+                >
+                  <Text style={styles.weekDayCancelText}>閉じる</Text>
+                </TouchableOpacity>
+              </View>
+            </TouchableOpacity>
+          </Modal>
+
           {/* VL Threshold Quick Setting */}
           {settings.session_display_vl_settings && currentExercise && (
             <View style={styles.vlSettingsCard}>
@@ -3453,7 +3534,10 @@ export default function SessionScreen() {
               <View style={{ flex: 1, paddingRight: 12 }}>
                 <Text style={styles.vlSettingsTitle}>フォーム動画</Text>
                 <Text style={styles.vlSettingsMeta}>
-                  {settings.enable_video_recording
+                  {previousVbtCrashContext?.reason ===
+                  "form_video_overlay_open_attempt"
+                    ? "前回クラッシュ疑いのため一時停止中"
+                    : settings.enable_video_recording
                     ? "セッション画面に録画ボタンを表示中"
                     : "セッション画面から録画ボタンを出す"}
                 </Text>
@@ -5882,6 +5966,88 @@ const styles = StyleSheet.create({
     color: GarageTheme.textStrong,
     fontSize: 15,
     fontWeight: "700",
+  },
+  readinessSelect: {
+    minHeight: 42,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: GarageTheme.border,
+    backgroundColor: GarageTheme.background,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  readinessSelectText: {
+    color: GarageTheme.textStrong,
+    fontSize: 15,
+    fontWeight: "800",
+  },
+  readinessSelectArrow: {
+    color: GarageTheme.info,
+    fontSize: 11,
+    fontWeight: "900",
+  },
+  modalBackdrop: {
+    flex: 1,
+    padding: 20,
+    backgroundColor: "rgba(0, 0, 0, 0.68)",
+    justifyContent: "center",
+  },
+  weekDayPickerCard: {
+    padding: 18,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: GarageTheme.borderStrong,
+    backgroundColor: GarageTheme.surface,
+  },
+  weekDayPickerTitle: {
+    color: GarageTheme.textStrong,
+    fontSize: 18,
+    fontWeight: "900",
+    marginBottom: 14,
+  },
+  weekDayPickerGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  weekDayOption: {
+    width: "23%",
+    minHeight: 40,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: GarageTheme.border,
+    backgroundColor: GarageTheme.background,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  weekDayOptionActive: {
+    borderColor: GarageTheme.info,
+    backgroundColor: GarageTheme.info + "25",
+  },
+  weekDayOptionText: {
+    color: GarageTheme.textMuted,
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  weekDayOptionTextActive: {
+    color: GarageTheme.textStrong,
+  },
+  weekDayCancelButton: {
+    marginTop: 16,
+    minHeight: 42,
+    borderRadius: 12,
+    backgroundColor: GarageTheme.panel,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  weekDayCancelText: {
+    color: GarageTheme.textStrong,
+    fontSize: 14,
+    fontWeight: "800",
   },
   readinessChipRow: {
     flexDirection: "row",

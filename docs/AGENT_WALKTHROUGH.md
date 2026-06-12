@@ -1,5 +1,26 @@
 # Agent Walkthrough Log
 
+## 2026-06-12 (Codex / GPT-5)
+
+Scope: Exercise-history escape route, Week-Day picker, and follow-up form-video crash guard.
+Actions:
+
+- Read the latest Gmail crash report and confirmed build 103 still reported `reason: form_video_overlay_open_attempt` with VBT connected, form video enabled, and Bench Press active.
+- Added explicit `戻る` and `ホーム` actions to the exercise-specific history screen, including loading/empty states.
+- Added a Home navigation handler to the `exercise-history` route wrapper so the new Home action always exits the screen.
+- Replaced the supervisor `Week-Day` free text input with a dropdown-style modal picker covering `Week1-Day1` through `Week6-Day4`.
+- Hardened form-video crash safety so a previous `form_video_overlay_open_attempt` hides the recording entry point and blocks `handleOpenFormVideoRecorder` before the overlay can mount.
+
+Results:
+
+- `pnpm check` passed.
+- `pnpm lint` passed.
+- `git diff --check` passed.
+
+Remaining:
+
+- Real-device confirmation: exercise-history Home escape, Week-Day picker tap behavior, and whether normal VBT Session use is stable with form video disabled after the crash marker.
+
 ## 2026-06-10 (Codex / GPT-5)
 
 Scope: Exercise category alignment, manual-entry supervisor handoff, and form-video crash safety.
