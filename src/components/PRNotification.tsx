@@ -156,12 +156,12 @@ const styles = StyleSheet.create({
   },
   container: {
     backgroundColor: '#2a2a2a',
-    borderRadius: 20,
+    borderRadius: 12,
     padding: 24,
     width: '100%',
     maxWidth: 400,
     borderWidth: 3,
-    borderColor: '#FFD700',
+    borderColor: '#828fff',
   },
   header: {
     alignItems: 'center',
@@ -174,7 +174,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#FFD700',
+    color: '#828fff',
     textAlign: 'center',
   },
   content: {
@@ -184,7 +184,7 @@ const styles = StyleSheet.create({
   liftName: {
     fontSize: 24,
     fontWeight: '600',
-    color: '#fff',
+    color: '#f7f8f8',
     marginBottom: 16,
     textAlign: 'center',
   },
@@ -192,7 +192,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#3a3a3a',
     paddingHorizontal: 16,
     paddingVertical: 8,
-    borderRadius: 20,
+    borderRadius: 12,
     marginBottom: 16,
   },
   prTypeLabel: {
@@ -263,7 +263,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   closeButtonText: {
-    color: '#fff',
+    color: '#f7f8f8',
     fontSize: 18,
     fontWeight: '600',
   },

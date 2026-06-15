@@ -39,7 +39,7 @@ const styles = StyleSheet.create({
   helpButton: {
     width: 36,
     height: 36,
-    borderRadius: 18,
+    borderRadius: 12,
     backgroundColor: GarageTheme.chip,
     borderWidth: 1,
     borderColor: GarageTheme.borderStrong,
@@ -48,7 +48,7 @@ const styles = StyleSheet.create({
   },
   helpIcon: {
     fontSize: 18,
-    fontWeight: '700',
+    fontWeight: '500',
     color: GarageTheme.textMuted,
   },
 });

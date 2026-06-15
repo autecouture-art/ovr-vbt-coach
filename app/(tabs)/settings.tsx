@@ -10,6 +10,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
   EXERCISE_EDIT_GROUPS,
@@ -56,6 +57,8 @@ const OVR_SAMPLE_EXERCISE_NAMES = [
   "Larsen Bottom Pulse Bench",
   "Adductor-Focused Wide Dea",
   "Cable Press Down",
+  "Cable Face Pull",
+  "Cable Upright Row",
   "SSB Adductor  Squat",
   "Seal Row",
   "Larsen 4/2/0 tempo bench",
@@ -300,6 +303,7 @@ const FOCUS_DISPLAY_TOGGLES: {
 ];
 
 export default function SettingsTab() {
+  const insets = useSafeAreaInsets();
   const updateGlobalSettings = useTrainingStore(
     (state) => state.updateSettings,
   );
@@ -644,7 +648,10 @@ export default function SettingsTab() {
   );
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={[styles.content, { paddingTop: insets.top + 16 }]}
+    >
       <View style={styles.headerRow}>
         <View style={styles.headerText}>
           <Text style={styles.eyebrow}>SYSTEM / SETTINGS</Text>
@@ -1649,14 +1656,14 @@ const styles = StyleSheet.create({
   eyebrow: {
     color: GarageTheme.accent,
     fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 2,
+    fontWeight: "600",
+    letterSpacing: 0,
     marginTop: 8,
   },
   title: {
     color: GarageTheme.text,
     fontSize: 32,
-    fontWeight: "800",
+    fontWeight: "600",
     marginTop: 8,
   },
   subtitle: {
@@ -1681,7 +1688,7 @@ const styles = StyleSheet.create({
   },
   sectionMenuCard: {
     width: "47%",
-    borderRadius: 14,
+    borderRadius: 12,
     backgroundColor: GarageTheme.chip,
     borderWidth: 1,
     borderColor: GarageTheme.borderStrong,
@@ -1694,7 +1701,7 @@ const styles = StyleSheet.create({
   sectionMenuLabel: {
     color: GarageTheme.text,
     fontSize: 14,
-    fontWeight: "800",
+    fontWeight: "600",
     marginBottom: 4,
   },
   sectionMenuLabelActive: {
@@ -1706,7 +1713,7 @@ const styles = StyleSheet.create({
     lineHeight: 15,
   },
   card: {
-    borderRadius: 18,
+    borderRadius: 12,
     backgroundColor: GarageTheme.surface,
     borderWidth: 1,
     borderColor: GarageTheme.border,
@@ -1726,7 +1733,7 @@ const styles = StyleSheet.create({
   toggleLabel: {
     color: GarageTheme.text,
     fontSize: 16,
-    fontWeight: "700",
+    fontWeight: "500",
   },
   toggleMeta: {
     color: GarageTheme.textMuted,
@@ -1736,7 +1743,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     color: GarageTheme.text,
     fontSize: 16,
-    fontWeight: "700",
+    fontWeight: "500",
     marginBottom: 12,
   },
   thresholdLabel: {
@@ -1765,7 +1772,7 @@ const styles = StyleSheet.create({
   thresholdText: {
     color: GarageTheme.textMuted,
     fontSize: 14,
-    fontWeight: "700",
+    fontWeight: "500",
   },
   thresholdTextActive: {
     color: GarageTheme.textStrong,
@@ -1788,7 +1795,7 @@ const styles = StyleSheet.create({
   phaseOptionLabel: {
     color: GarageTheme.text,
     fontSize: 14,
-    fontWeight: "800",
+    fontWeight: "600",
     marginBottom: 4,
   },
   phaseOptionLabelActive: {
@@ -1810,12 +1817,12 @@ const styles = StyleSheet.create({
   blockWeekTitle: {
     color: GarageTheme.textStrong,
     fontSize: 14,
-    fontWeight: "800",
+    fontWeight: "600",
   },
   blockWeekMeta: {
     color: GarageTheme.accent,
     fontSize: 12,
-    fontWeight: "800",
+    fontWeight: "600",
     textAlign: "right",
   },
   weekGrid: {
@@ -1841,7 +1848,7 @@ const styles = StyleSheet.create({
   weekChipText: {
     color: GarageTheme.textMuted,
     fontSize: 13,
-    fontWeight: "800",
+    fontWeight: "600",
   },
   weekChipTextActive: {
     color: GarageTheme.textStrong,
@@ -1853,7 +1860,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   input: {
-    borderRadius: 14,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: GarageTheme.borderStrong,
     backgroundColor: GarageTheme.chip,
@@ -1868,8 +1875,8 @@ const styles = StyleSheet.create({
   statusLabel: {
     color: GarageTheme.accentSoft,
     fontSize: 12,
-    fontWeight: "800",
-    letterSpacing: 1,
+    fontWeight: "600",
+    letterSpacing: 0,
     marginTop: 14,
     marginBottom: 6,
   },
@@ -1893,7 +1900,7 @@ const styles = StyleSheet.create({
   },
   syncButton: {
     minWidth: 86,
-    borderRadius: 14,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: GarageTheme.accent,
     backgroundColor: "#4b2416",
@@ -1905,7 +1912,7 @@ const styles = StyleSheet.create({
   syncButtonText: {
     color: GarageTheme.textStrong,
     fontSize: 13,
-    fontWeight: "800",
+    fontWeight: "600",
   },
   masterSummaryRow: {
     flexDirection: "row",
@@ -1914,7 +1921,7 @@ const styles = StyleSheet.create({
   },
   summaryTile: {
     flex: 1,
-    borderRadius: 14,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: GarageTheme.border,
     backgroundColor: GarageTheme.chip,
@@ -1924,13 +1931,13 @@ const styles = StyleSheet.create({
   summaryLabel: {
     color: GarageTheme.textSubtle,
     fontSize: 11,
-    fontWeight: "700",
-    letterSpacing: 1,
+    fontWeight: "500",
+    letterSpacing: 0,
   },
   summaryValue: {
     color: GarageTheme.textStrong,
     fontSize: 22,
-    fontWeight: "800",
+    fontWeight: "600",
     marginTop: 6,
   },
   groupScroll: {
@@ -1956,7 +1963,7 @@ const styles = StyleSheet.create({
   groupChipText: {
     color: GarageTheme.textMuted,
     fontSize: 13,
-    fontWeight: "700",
+    fontWeight: "500",
   },
   groupChipTextActive: {
     color: GarageTheme.textStrong,
@@ -1986,15 +1993,15 @@ const styles = StyleSheet.create({
   masterGroupTitle: {
     color: GarageTheme.textStrong,
     fontSize: 15,
-    fontWeight: "800",
+    fontWeight: "600",
   },
   masterGroupCount: {
     color: GarageTheme.accentSoft,
     fontSize: 12,
-    fontWeight: "800",
+    fontWeight: "600",
   },
   exerciseRow: {
-    borderRadius: 16,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: GarageTheme.border,
     backgroundColor: GarageTheme.chip,
@@ -2012,7 +2019,7 @@ const styles = StyleSheet.create({
     flex: 1,
     color: GarageTheme.textStrong,
     fontSize: 15,
-    fontWeight: "800",
+    fontWeight: "600",
   },
   lvpBadge: {
     borderRadius: 999,
@@ -2025,8 +2032,8 @@ const styles = StyleSheet.create({
   lvpBadgeText: {
     color: GarageTheme.accentSoft,
     fontSize: 10,
-    fontWeight: "900",
-    letterSpacing: 1,
+    fontWeight: "600",
+    letterSpacing: 0,
   },
   exerciseMeta: {
     color: GarageTheme.textMuted,
@@ -2059,7 +2066,7 @@ const styles = StyleSheet.create({
   exerciseInlineToggleLabel: {
     color: GarageTheme.textStrong,
     fontSize: 13,
-    fontWeight: "700",
+    fontWeight: "500",
   },
   exerciseInlineToggleMeta: {
     color: GarageTheme.textMuted,
@@ -2088,12 +2095,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   exerciseDeleteBtn: {
-    borderColor: "#ff4444",
+    borderColor: "#ef4444",
     backgroundColor: "#2a1a1a",
   },
   exerciseActionText: {
     fontSize: 12,
-    fontWeight: "700",
+    fontWeight: "500",
     color: GarageTheme.textStrong,
   },
   exerciseEditForm: {
@@ -2109,9 +2116,9 @@ const styles = StyleSheet.create({
   exerciseEditLabel: {
     color: GarageTheme.textMuted,
     fontSize: 11,
-    fontWeight: "700",
+    fontWeight: "500",
     textTransform: "uppercase",
-    letterSpacing: 0.5,
+    letterSpacing: 0,
   },
   exerciseEditInput: {
     backgroundColor: GarageTheme.chip,
@@ -2152,7 +2159,7 @@ const styles = StyleSheet.create({
   vlThresholdChipText: {
     color: GarageTheme.textMuted,
     fontSize: 12,
-    fontWeight: "700",
+    fontWeight: "500",
   },
   vlThresholdChipTextActive: {
     color: GarageTheme.textStrong,
@@ -2173,7 +2180,7 @@ const styles = StyleSheet.create({
   categoryChipText: {
     color: GarageTheme.textMuted,
     fontSize: 12,
-    fontWeight: "700",
+    fontWeight: "500",
   },
   categoryChipTextActive: {
     color: GarageTheme.textStrong,
@@ -2190,8 +2197,8 @@ const styles = StyleSheet.create({
   saveExerciseButtonText: {
     color: GarageTheme.textStrong,
     fontSize: 14,
-    fontWeight: "800",
-    letterSpacing: 0.5,
+    fontWeight: "600",
+    letterSpacing: 0,
   },
   masterActionsRow: {
     flexDirection: "row",
@@ -2199,7 +2206,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   addExerciseBox: {
-    borderRadius: 16,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: GarageTheme.border,
     backgroundColor: "rgba(255,255,255,0.03)",
@@ -2223,13 +2230,13 @@ const styles = StyleSheet.create({
     borderColor: GarageTheme.success,
   },
   actionButtonText: {
-    color: "#fff",
+    color: "#f7f8f8",
     fontSize: 14,
-    fontWeight: "800",
-    letterSpacing: 0.5,
+    fontWeight: "600",
+    letterSpacing: 0,
   },
   emptyState: {
-    borderRadius: 16,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: GarageTheme.border,
     backgroundColor: GarageTheme.chip,
@@ -2239,7 +2246,7 @@ const styles = StyleSheet.create({
   emptyStateTitle: {
     color: GarageTheme.textStrong,
     fontSize: 14,
-    fontWeight: "700",
+    fontWeight: "500",
   },
   emptyStateText: {
     color: GarageTheme.textMuted,
@@ -2249,7 +2256,7 @@ const styles = StyleSheet.create({
   },
   secondaryButton: {
     flex: 1,
-    borderRadius: 14,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: GarageTheme.borderStrong,
     backgroundColor: GarageTheme.chip,
@@ -2259,11 +2266,11 @@ const styles = StyleSheet.create({
   secondaryButtonText: {
     color: GarageTheme.textStrong,
     fontSize: 14,
-    fontWeight: "800",
+    fontWeight: "600",
   },
   primaryButton: {
     flex: 1,
-    borderRadius: 14,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: GarageTheme.accent,
     backgroundColor: "#4b2416",
@@ -2273,6 +2280,6 @@ const styles = StyleSheet.create({
   primaryButtonText: {
     color: GarageTheme.textStrong,
     fontSize: 14,
-    fontWeight: "800",
+    fontWeight: "600",
   },
 });

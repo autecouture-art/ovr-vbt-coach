@@ -1,5 +1,41 @@
 # Agent Walkthrough Log
 
+## 2026-06-12 (Codex / Simulator crash hard-check)
+
+Scope: Strict simulator crash pass for app launch, Session Safe Gate, Session body, VBT SIM controls, primary tabs, and form-video route.
+
+Required context checked at start:
+
+- Google Drive shared supervisor context MD.
+- `docs/TRAINING_SHARED_CONTEXT_2026-06-12.md`.
+- `docs/IMPROVEMENT_TRACKER.md`.
+
+Actions:
+
+- Built the iOS simulator target directly with Xcode because Expo attempted to use a stale unavailable simulator.
+- Installed and launched the Debug simulator app on iPhone 17 Pro simulator.
+- Started Metro for the dev-client bundle and confirmed the home screen loads.
+- Opened Session Safe Gate, then Session body, and verified the screen reaches the full session UI without crashing.
+- Exercised VBT SIM `CONNECT`, `REP`, and `SET`; the simulator correctly entered sensor-connected state and guarded REP/SET while no session was active.
+- Opened the main tabs by deep link: Home, Graph, Manual Entry, History, Settings, Data/Import.
+- Opened the form-video recorder route with both missing and supplied context; no app crash was observed.
+- Fixed the form-video missing-context/permission button layout so a single action button no longer stretches vertically.
+- Migrated the training Zustand store to `createWithEqualityFn` to remove the equality-function warning used by Session selectors.
+- Updated Session Start to use `react-native-safe-area-context` SafeAreaView.
+
+Validation:
+
+- `pnpm check` passed.
+- `pnpm test` passed: 40 tests passed, 1 skipped.
+- `git diff --check` passed.
+- `xcodebuild -workspace ios/RepVeloCoach.xcworkspace -scheme RepVeloCoach -configuration Debug -destination 'id=7FE03B78-99C5-4436-8D1D-78E732BD62F8' -derivedDataPath ios/build/simulator-derived build` passed.
+- Simulator route checks reported no RepVeloCoach `Fatal`, `Exception`, `crash`, `RCTFatal`, or recent DiagnosticReports crash file.
+
+Remaining:
+
+- Simulator cannot reproduce real BLE hardware or real camera recording behavior; final confidence for VBT device connection and camera recording still requires iPhone TestFlight/device confirmation.
+- `expo-av` deprecation warning remains and should be handled as a separate dependency migration, not as a crash blocker.
+
 ## 2026-06-12 (Codex / GPT-5)
 
 Scope: Exercise-history escape route, Week-Day picker, and follow-up form-video crash guard.
@@ -2430,3 +2466,157 @@ Remaining:
 - Install build `101` from TestFlight after processing completes.
 - Configure the Google Apps Script Web App URL in Settings before using Drive crash report upload.
 - Verify on iPhone that a crash context creates both Markdown and JSON files in Google Drive.
+
+## 2026-06-12 (Codex accessory 5-15RM target table)
+
+Scope: Implement supervisor-requested accessory movement RM target support so accessory sets can chase estimated 1RM in the 5-15 rep range.
+
+Required context checked at start:
+
+- Google Drive shared supervisor context MD.
+- `docs/TRAINING_SHARED_CONTEXT_2026-06-12.md`.
+- `docs/IMPROVEMENT_TRACKER.md`.
+
+Actions:
+
+- Added `src/utils/AccessoryRMTarget.ts` to centralize accessory e1RM target logic.
+- Added a 5-15 rep conversion table using the existing Epley-style e1RM convention.
+- The table uses previous best e1RM as the target when history exists; otherwise it treats the current load/reps as the first baseline.
+- Added an accessory target card to Session mode for non-Big3 exercises.
+- Added the same target card to Manual Entry.
+- Added `accessory_rm_target` and the 5-15 rep conversion table to:
+  - GPT training context packet.
+  - One-Set Supervisor Packet.
+  - Manual Entry Chappy packet.
+- Increased recent same-lift history lookup from 5/3 sets to 30 sets for better accessory target selection.
+- Updated `docs/IMPROVEMENT_TRACKER.md` row `2026-06-12-06`.
+
+Validation:
+
+- `pnpm check` passed.
+- `pnpm test` passed: 40 tests passed, 1 skipped.
+
+Remaining:
+
+- Re-read the three supervisor context files before final handoff: done.
+- Verify on device that accessory target cards are readable during training.
+
+## 2026-06-12 (Codex focus same-load fastest AV)
+
+Scope: Show the past fastest velocity for the current load on the set-start/focus screen.
+
+Required context checked at start:
+
+- Google Drive shared supervisor context MD.
+- `docs/TRAINING_SHARED_CONTEXT_2026-06-12.md`.
+- `docs/IMPROVEMENT_TRACKER.md`.
+
+Actions:
+
+- Added a `sameLoadFastestSet` calculation from prior same-lift/same-load history.
+- Added `BEST AV` to the focus mode information grid.
+- When live AV exists, the card shows the delta against the past fastest same-load AV.
+- Added tracker row `2026-06-12-11`.
+
+Validation:
+
+- `pnpm check` passed.
+- `pnpm test` passed: 40 tests passed, 1 skipped.
+
+Remaining:
+
+- Re-read the three supervisor context files before final handoff: done.
+- Verify on iPhone that the added BEST AV cell fits cleanly in the focus screen.
+
+## 2026-06-12 (Codex Linear design and home navigation pass)
+
+Scope: Apply the installed `awesome-design-skill` with the `linear.app` style, reduce AI-looking visual noise, and verify that app screens have a clear path back to Home.
+
+Required context checked at start:
+
+- Google Drive shared supervisor context MD.
+- `docs/TRAINING_SHARED_CONTEXT_2026-06-12.md`.
+- `docs/IMPROVEMENT_TRACKER.md`.
+
+Actions:
+
+- Read the installed `awesome-design-skill` instructions.
+- Copied the `linear.app` design guide into `design.md`.
+- Reworked `GarageTheme` to a Linear-like dark palette:
+  - near-black background
+  - dark raised surfaces
+  - subtle white borders
+  - restrained indigo accent
+  - muted text hierarchy
+- Set the root status bar to light for the dark UI.
+- Tuned tab bar color, label weight, and radius to the new theme.
+- Reduced large rounded cards, heavy font weights, strong shadows, and wide letter spacing across app UI styles.
+- Added or preserved explicit Home navigation on:
+  - Glossary
+  - Session Start
+  - Session Detail
+  - Form Video Recorder
+  - Exercise History
+- Fixed Safe Area spacing on Settings and Exercise History after simulator screenshots showed the top UI too close to system status/Dynamic Island.
+- Kept the functional training flows intact; this pass changed presentation and navigation only.
+
+Validation:
+
+- `pnpm check` passed.
+- `pnpm test` passed: 40 tests passed, 1 skipped.
+- `git diff --check` passed.
+- iPhone 17 Pro Simulator public-route sweep passed with no RepVeloCoach Fatal/Exception/crash logs:
+  - `repvelocoachrepvelocoach://`
+  - `repvelocoachrepvelocoach://session`
+  - `repvelocoachrepvelocoach://graph`
+  - `repvelocoachrepvelocoach://manual`
+  - `repvelocoachrepvelocoach://history`
+  - `repvelocoachrepvelocoach://settings`
+  - `repvelocoachrepvelocoach://import`
+  - `repvelocoachrepvelocoach://glossary`
+  - `repvelocoachrepvelocoach://session-start`
+  - `repvelocoachrepvelocoach://session-detail`
+  - `repvelocoachrepvelocoach://form-video-recorder`
+  - `repvelocoachrepvelocoach://exercise-history`
+- Visual screenshots retained under:
+  - `tmp/linear-home-final/`
+  - `tmp/linear-routes-public-final/`
+  - `tmp/linear-safearea-final/`
+
+Notes:
+
+- The iOS top-left `TimeTracker` text visible in some simulator screenshots is the system "back to previous app" breadcrumb caused by launching deep links during testing, not an app UI element.
+- The earlier `repvelocoachrepvelocoach:///(tabs)/index` test produced an Expo Router Unmatched Route because that is not the app's public path. Re-tested with `repvelocoachrepvelocoach://` and the public routes listed above.
+
+Remaining:
+
+- Re-read the three supervisor context files before final handoff.
+- Verify on iPhone that the Linear visual pass feels good under real brightness and that Home buttons are comfortable to tap.
+
+## 2026-06-12 (Codex TestFlight build 104)
+
+Scope: Build and upload the current RepVeloCoach worktree to TestFlight.
+
+Actions:
+
+- Bumped iOS build number from `103` to `104` in:
+  - `app.config.ts`
+  - `ios/RepVeloCoach/Info.plist`
+  - `ios/RepVeloCoach.xcodeproj/project.pbxproj`
+- Ran the RepVeloCoach TestFlight deploy script with the project root override.
+- Fastlane archived, exported, signed, and uploaded the IPA.
+
+Validation:
+
+- `pnpm check` passed.
+- `git diff --check` passed before upload.
+- Fastlane `beta` finished successfully.
+- Generated IPA:
+  - `ios/fastlane_export/RepVeloCoach.ipa`
+- App Store Connect accepted the uploaded package:
+  - `Successfully uploaded package to App Store Connect`
+
+Notes:
+
+- TestFlight build processing in App Store Connect usually takes 15-30 minutes.
+- Build warnings were from React Native/Expo/Pods bundle and native dependencies; no fatal build error occurred.

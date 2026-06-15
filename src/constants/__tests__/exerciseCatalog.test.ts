@@ -57,6 +57,22 @@ describe("exercise selection grouping", () => {
     expect(inferExercisePreset("ハイバー").subcategory).toBe("high_bar_squat");
   });
 
+  it("treats cable face pull and cable upright row as shoulder exercises", () => {
+    const facePull = inferExercisePreset("Cable Face Pull");
+    const uprightRow = inferExercisePreset("Cable up right row");
+
+    expect(facePull.category).toBe("press");
+    expect(facePull.subcategory).toBe("rear_delt_face_pull");
+    expect(getExerciseSelectionGroups(facePull as Exercise)).toContain(
+      "shoulders",
+    );
+    expect(uprightRow.category).toBe("press");
+    expect(uprightRow.subcategory).toBe("upright_row");
+    expect(getExerciseSelectionGroups(uprightRow as Exercise)).toContain(
+      "shoulders",
+    );
+  });
+
   it("groups bench assistance under the bench family", () => {
     expect(getExerciseSelectionGroup(exercise("bench"))).toBe("bench");
     expect(getExerciseSelectionGroup(exercise("press"))).toBe("bench");

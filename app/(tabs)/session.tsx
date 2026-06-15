@@ -345,7 +345,7 @@ const styles = StyleSheet.create({
     paddingBottom: 32,
   },
   heroCard: {
-    borderRadius: 24,
+    borderRadius: 12,
     padding: 22,
     backgroundColor: GarageTheme.surface,
     borderWidth: 1,
@@ -358,25 +358,25 @@ const styles = StyleSheet.create({
   eyebrow: {
     color: GarageTheme.accentSoft,
     fontSize: 12,
-    fontWeight: "900",
-    letterSpacing: 1,
+    fontWeight: "600",
+    letterSpacing: 0,
   },
   title: {
     color: GarageTheme.textStrong,
     fontSize: 34,
-    fontWeight: "900",
+    fontWeight: "600",
     marginTop: 10,
   },
   description: {
     color: GarageTheme.textMuted,
     fontSize: 14,
-    fontWeight: "700",
+    fontWeight: "500",
     lineHeight: 21,
     marginTop: 12,
   },
   primaryButton: {
     minHeight: 52,
-    borderRadius: 16,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: GarageTheme.accent,
@@ -388,11 +388,11 @@ const styles = StyleSheet.create({
   primaryButtonText: {
     color: GarageTheme.background,
     fontSize: 15,
-    fontWeight: "900",
+    fontWeight: "600",
   },
   secondaryButton: {
     minHeight: 48,
-    borderRadius: 16,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: GarageTheme.panel,
@@ -403,12 +403,12 @@ const styles = StyleSheet.create({
   secondaryButtonText: {
     color: GarageTheme.textStrong,
     fontSize: 14,
-    fontWeight: "900",
+    fontWeight: "600",
   },
   crashReportCard: {
     marginTop: 16,
     padding: 16,
-    borderRadius: 20,
+    borderRadius: 12,
     backgroundColor: GarageTheme.surface,
     borderWidth: 1,
     borderColor: GarageTheme.warning,
@@ -431,7 +431,7 @@ const styles = StyleSheet.create({
   crashReportTitle: {
     color: GarageTheme.textStrong,
     fontSize: 16,
-    fontWeight: "900",
+    fontWeight: "600",
   },
   crashReportSubtitle: {
     color: GarageTheme.textMuted,
@@ -456,7 +456,7 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 86,
     minHeight: 42,
-    borderRadius: 14,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
@@ -470,17 +470,17 @@ const styles = StyleSheet.create({
   crashReportButtonText: {
     color: GarageTheme.textMuted,
     fontSize: 13,
-    fontWeight: "800",
+    fontWeight: "600",
   },
   crashReportButtonTextPrimary: {
     color: GarageTheme.accent,
     fontSize: 13,
-    fontWeight: "800",
+    fontWeight: "600",
   },
   noteCard: {
     marginTop: 16,
     padding: 16,
-    borderRadius: 20,
+    borderRadius: 12,
     backgroundColor: GarageTheme.panel,
     borderWidth: 1,
     borderColor: GarageTheme.border,
@@ -488,7 +488,7 @@ const styles = StyleSheet.create({
   noteTitle: {
     color: GarageTheme.textStrong,
     fontSize: 15,
-    fontWeight: "900",
+    fontWeight: "600",
   },
   noteText: {
     color: GarageTheme.textMuted,

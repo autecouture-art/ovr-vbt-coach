@@ -398,19 +398,19 @@ const styles = StyleSheet.create({
   kicker: {
     color: GarageTheme.accent,
     fontSize: 11,
-    fontWeight: "900",
+    fontWeight: "600",
     letterSpacing: 0,
   },
   title: {
     color: GarageTheme.text,
     fontSize: 18,
-    fontWeight: "900",
+    fontWeight: "600",
     marginTop: 3,
   },
   contextText: {
     color: GarageTheme.textMuted,
     fontSize: 12,
-    fontWeight: "700",
+    fontWeight: "500",
     marginTop: 2,
   },
   closeButton: {
@@ -423,7 +423,7 @@ const styles = StyleSheet.create({
   closeButtonText: {
     color: GarageTheme.text,
     fontSize: 13,
-    fontWeight: "800",
+    fontWeight: "600",
   },
   cameraFrame: {
     backgroundColor: "#050505",
@@ -457,7 +457,7 @@ const styles = StyleSheet.create({
   statusText: {
     color: GarageTheme.text,
     fontSize: 13,
-    fontWeight: "700",
+    fontWeight: "500",
     lineHeight: 19,
     marginTop: 10,
     textAlign: "center",
@@ -488,9 +488,9 @@ const styles = StyleSheet.create({
     paddingVertical: 13,
   },
   primaryButtonText: {
-    color: "#ffffff",
+    color: "#f7f8f8",
     fontSize: 14,
-    fontWeight: "900",
+    fontWeight: "600",
   },
   secondaryButton: {
     alignItems: "center",
@@ -503,7 +503,7 @@ const styles = StyleSheet.create({
   secondaryButtonText: {
     color: GarageTheme.text,
     fontSize: 14,
-    fontWeight: "800",
+    fontWeight: "600",
   },
   disabledButton: {
     opacity: 0.45,

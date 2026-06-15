@@ -211,7 +211,7 @@ export function RepDetailModal({
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-              <Ionicons name="close" size={24} color="#fff" />
+              <Ionicons name="close" size={24} color="#f7f8f8" />
             </TouchableOpacity>
           </View>
 
@@ -221,7 +221,7 @@ export function RepDetailModal({
                 style={styles.headerActionBtn}
                 onPress={onEditSetLoad}
               >
-                <Ionicons name="create-outline" size={16} color="#ff8c42" />
+                <Ionicons name="create-outline" size={16} color="#7170ff" />
                 <Text style={styles.headerActionText}>重量を修正</Text>
               </TouchableOpacity>
             </View>
@@ -395,7 +395,7 @@ export function RepDetailModal({
                           <Ionicons
                             name="share-outline"
                             size={17}
-                            color="#ffb347"
+                            color="#828fff"
                           />
                         </TouchableOpacity>
                       ) : null}
@@ -407,7 +407,7 @@ export function RepDetailModal({
                           <Ionicons
                             name="unlink-outline"
                             size={17}
-                            color="#ff6b6b"
+                            color="#ef4444"
                           />
                         </TouchableOpacity>
                       ) : null}
@@ -582,12 +582,12 @@ export function RepDetailModal({
                                 : "close-circle-outline"
                             }
                             size={18}
-                            color={rep.is_failed ? "#4CAF50" : "#FF9800"}
+                            color={rep.is_failed ? "#4CAF50" : "#7170ff"}
                           />
                           <Text
                             style={[
                               styles.actionBtnText,
-                              { color: rep.is_failed ? "#4CAF50" : "#FF9800" },
+                              { color: rep.is_failed ? "#4CAF50" : "#7170ff" },
                             ]}
                           >
                             {rep.is_failed ? "失敗取消" : "失敗"}
@@ -735,7 +735,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   title: {
-    color: "#fff",
+    color: "#f7f8f8",
     fontSize: 18,
     fontWeight: "bold",
   },
@@ -762,13 +762,13 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: "#ff8c42",
+    borderColor: "#7170ff",
     backgroundColor: "rgba(255, 140, 66, 0.08)",
   },
   headerActionText: {
-    color: "#ff8c42",
+    color: "#7170ff",
     fontSize: 13,
-    fontWeight: "700",
+    fontWeight: "500",
   },
   timingPanel: {
     flexDirection: "row",
@@ -789,20 +789,20 @@ const styles = StyleSheet.create({
   timingLabel: {
     color: "#888",
     fontSize: 11,
-    fontWeight: "700",
+    fontWeight: "500",
     marginBottom: 4,
   },
   timingValue: {
-    color: "#fff",
+    color: "#f7f8f8",
     fontSize: 13,
-    fontWeight: "800",
+    fontWeight: "600",
   },
   scrollArea: {
     padding: 16,
   },
   summaryPanel: {
     backgroundColor: "#141414",
-    borderRadius: 14,
+    borderRadius: 12,
     padding: 14,
     marginBottom: 16,
     borderWidth: 1,
@@ -816,15 +816,15 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   summaryTitle: {
-    color: "#fff",
+    color: "#f7f8f8",
     fontSize: 13,
-    fontWeight: "900",
-    letterSpacing: 0.6,
+    fontWeight: "600",
+    letterSpacing: 0,
   },
   summaryMeta: {
     color: "#aaa",
     fontSize: 12,
-    fontWeight: "700",
+    fontWeight: "500",
   },
   highlightGrid: {
     flexDirection: "row",
@@ -843,13 +843,13 @@ const styles = StyleSheet.create({
   metricCardLabel: {
     color: "#8d8d8d",
     fontSize: 10,
-    fontWeight: "800",
+    fontWeight: "600",
     marginBottom: 4,
   },
   metricCardValue: {
-    color: "#ffb347",
+    color: "#828fff",
     fontSize: 14,
-    fontWeight: "900",
+    fontWeight: "600",
   },
   detailGrid: {
     marginTop: 12,
@@ -866,18 +866,18 @@ const styles = StyleSheet.create({
   detailLabel: {
     color: "#8d8d8d",
     fontSize: 12,
-    fontWeight: "700",
+    fontWeight: "500",
   },
   detailValue: {
     flex: 1,
-    color: "#fff",
+    color: "#f7f8f8",
     fontSize: 12,
-    fontWeight: "800",
+    fontWeight: "600",
     textAlign: "right",
   },
   videoPanel: {
     backgroundColor: "#101820",
-    borderRadius: 14,
+    borderRadius: 12,
     padding: 14,
     marginBottom: 16,
     borderWidth: 1,
@@ -896,14 +896,14 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   videoTitle: {
-    color: "#ffffff",
+    color: "#f7f8f8",
     fontSize: 14,
-    fontWeight: "900",
+    fontWeight: "600",
   },
   videoMeta: {
     color: "#91a4b7",
     fontSize: 12,
-    fontWeight: "700",
+    fontWeight: "500",
     marginTop: 3,
   },
   videoActions: {
@@ -914,7 +914,7 @@ const styles = StyleSheet.create({
   videoActionBtn: {
     width: 34,
     height: 34,
-    borderRadius: 17,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
@@ -926,16 +926,16 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255, 107, 107, 0.08)",
   },
   addRepButton: {
-    backgroundColor: "#ff7a1a",
+    backgroundColor: "#5e6ad2",
     padding: 16,
     borderRadius: 12,
     alignItems: "center",
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: "#ffb347",
+    borderColor: "#828fff",
   },
   addRepButtonText: {
-    color: "#fff5ee",
+    color: "#f7f8f8",
     fontSize: 16,
     fontWeight: "bold",
   },
@@ -954,7 +954,7 @@ const styles = StyleSheet.create({
     borderColor: "#383838",
   },
   repRowFailed: {
-    borderLeftColor: "#FF9800",
+    borderLeftColor: "#7170ff",
     borderLeftWidth: 4,
     backgroundColor: "rgba(255, 152, 0, 0.05)",
   },
@@ -978,7 +978,7 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
   },
   repNumberFailed: {
-    color: "#FF9800",
+    color: "#7170ff",
   },
   badge: {
     fontSize: 10,
@@ -993,8 +993,8 @@ const styles = StyleSheet.create({
     borderColor: "#5ec8ff",
   },
   failedBadge: {
-    color: "#FF9800",
-    borderColor: "#FF9800",
+    color: "#7170ff",
+    borderColor: "#7170ff",
   },
   excludedBadge: {
     color: "#f44336",
@@ -1006,16 +1006,16 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   metricText: {
-    color: "#fff",
+    color: "#f7f8f8",
     fontSize: 15,
     fontWeight: "600",
   },
   metricTextFailed: {
-    color: "#FF9800",
+    color: "#7170ff",
     textDecorationLine: "line-through",
   },
   vlText: {
-    color: "#FF9500",
+    color: "#828fff",
   },
   actionButtons: {
     flexDirection: "row",
@@ -1036,7 +1036,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(94, 200, 255, 0.08)",
   },
   failBtn: {
-    borderColor: "#FF9800",
+    borderColor: "#7170ff",
     backgroundColor: "rgba(255, 152, 0, 0.1)",
   },
   unfailBtn: {

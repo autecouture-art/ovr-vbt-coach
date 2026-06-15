@@ -211,16 +211,16 @@ const styles = StyleSheet.create({
   eyebrow: {
     color: GarageTheme.accent,
     fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 2,
+    fontWeight: '600',
+    letterSpacing: 0,
     marginTop: 8,
   },
   title: {
     color: GarageTheme.textStrong,
     fontSize: 34,
-    fontWeight: '800',
+    fontWeight: '600',
     marginTop: 8,
-    letterSpacing: 0.4,
+    letterSpacing: 0,
   },
   subtitle: {
     color: GarageTheme.textMuted,
@@ -230,7 +230,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   heroCard: {
-    borderRadius: 22,
+    borderRadius: 12,
     backgroundColor: GarageTheme.surface,
     borderWidth: 1,
     borderColor: GarageTheme.borderStrong,
@@ -240,9 +240,9 @@ const styles = StyleSheet.create({
   heroTitle: {
     color: GarageTheme.textStrong,
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: '600',
     marginBottom: 12,
-    letterSpacing: 1.8,
+    letterSpacing: 0,
   },
   heroStats: {
     flexDirection: 'row',
@@ -251,7 +251,7 @@ const styles = StyleSheet.create({
   statPill: {
     flex: 1,
     padding: 12,
-    borderRadius: 14,
+    borderRadius: 12,
     backgroundColor: GarageTheme.panel,
     borderWidth: 1,
     borderColor: GarageTheme.border,
@@ -259,17 +259,17 @@ const styles = StyleSheet.create({
   statLabel: {
     color: GarageTheme.textMuted,
     fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 1.4,
+    fontWeight: '600',
+    letterSpacing: 0,
     marginBottom: 6,
   },
   statValue: {
     color: GarageTheme.textStrong,
     fontSize: 24,
-    fontWeight: '800',
+    fontWeight: '600',
   },
   card: {
-    borderRadius: 18,
+    borderRadius: 12,
     backgroundColor: GarageTheme.surface,
     borderWidth: 1,
     borderColor: GarageTheme.border,
@@ -277,7 +277,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   codexCard: {
-    borderRadius: 18,
+    borderRadius: 12,
     backgroundColor: GarageTheme.surface,
     borderWidth: 1,
     borderColor: GarageTheme.accent,
@@ -302,20 +302,20 @@ const styles = StyleSheet.create({
   codexBadgeText: {
     color: GarageTheme.accent,
     fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 1.2,
+    fontWeight: '600',
+    letterSpacing: 0,
   },
   cardTitle: {
     color: GarageTheme.accentSoft,
     fontSize: 11,
-    fontWeight: '800',
+    fontWeight: '600',
     marginBottom: 10,
-    letterSpacing: 1.8,
+    letterSpacing: 0,
   },
   cardMain: {
     color: GarageTheme.textStrong,
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '500',
     marginBottom: 6,
   },
   cardSub: {
@@ -331,7 +331,7 @@ const styles = StyleSheet.create({
   exportMeta: {
     color: GarageTheme.textStrong,
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '500',
     marginTop: 12,
     lineHeight: 18,
   },
@@ -352,14 +352,14 @@ const styles = StyleSheet.create({
   exportSummaryLabel: {
     color: GarageTheme.textMuted,
     fontSize: 9,
-    fontWeight: '800',
-    letterSpacing: 1.1,
+    fontWeight: '600',
+    letterSpacing: 0,
     marginBottom: 4,
   },
   exportSummaryValue: {
     color: GarageTheme.textStrong,
     fontSize: 18,
-    fontWeight: '800',
+    fontWeight: '600',
   },
   emptyText: {
     color: GarageTheme.textSubtle,
@@ -369,7 +369,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   refreshButton: {
-    borderRadius: 16,
+    borderRadius: 12,
     backgroundColor: GarageTheme.panel,
     borderWidth: 1,
     borderColor: GarageTheme.accent,
@@ -379,11 +379,11 @@ const styles = StyleSheet.create({
   refreshButtonText: {
     color: GarageTheme.textStrong,
     fontSize: 13,
-    fontWeight: '800',
-    letterSpacing: 1,
+    fontWeight: '600',
+    letterSpacing: 0,
   },
   secondaryButton: {
-    borderRadius: 16,
+    borderRadius: 12,
     backgroundColor: GarageTheme.surfaceAlt,
     borderWidth: 1,
     borderColor: GarageTheme.border,
@@ -393,11 +393,11 @@ const styles = StyleSheet.create({
   secondaryButtonText: {
     color: GarageTheme.textStrong,
     fontSize: 13,
-    fontWeight: '700',
-    letterSpacing: 1,
+    fontWeight: '500',
+    letterSpacing: 0,
   },
   exportButton: {
-    borderRadius: 16,
+    borderRadius: 12,
     backgroundColor: GarageTheme.accent,
     borderWidth: 1,
     borderColor: GarageTheme.accent,
@@ -407,7 +407,7 @@ const styles = StyleSheet.create({
   exportButtonText: {
     color: GarageTheme.background,
     fontSize: 13,
-    fontWeight: '800',
-    letterSpacing: 1,
+    fontWeight: '600',
+    letterSpacing: 0,
   },
 });

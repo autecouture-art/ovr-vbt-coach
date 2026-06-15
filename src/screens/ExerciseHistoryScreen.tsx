@@ -18,6 +18,7 @@ import { GarageTheme } from '../constants/garageTheme';
 import type { ExerciseHistoryEntry, ExerciseStats } from '../types/index';
 import { format, parseISO } from 'date-fns';
 import { useFocusEffect } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface ExerciseHistoryScreenProps {
   navigation: any;
@@ -30,6 +31,7 @@ interface TrainedExercise {
 }
 
 const ExerciseHistoryScreen: React.FC<ExerciseHistoryScreenProps> = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const [trainedExercises, setTrainedExercises] = useState<TrainedExercise[]>([]);
   const [selectedExercise, setSelectedExercise] = useState<string | null>(null);
   const [exerciseStats, setExerciseStats] = useState<ExerciseStats | null>(null);
@@ -111,7 +113,7 @@ const ExerciseHistoryScreen: React.FC<ExerciseHistoryScreenProps> = ({ navigatio
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <View style={styles.loadingHeader}>
+        <View style={[styles.loadingHeader, { paddingTop: insets.top + 16 }]}>
           <View style={styles.headerActions}>
             <TouchableOpacity style={styles.headerButton} onPress={handleBackPress}>
               <Text style={styles.headerButtonText}>← 戻る</Text>
@@ -130,7 +132,7 @@ const ExerciseHistoryScreen: React.FC<ExerciseHistoryScreenProps> = ({ navigatio
   if (trainedExercises.length === 0) {
     return (
       <View style={styles.container}>
-        <View style={styles.header}>
+        <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
           <View style={styles.headerActions}>
             <TouchableOpacity style={styles.headerButton} onPress={handleBackPress}>
               <Text style={styles.headerButtonText}>← 戻る</Text>
@@ -151,7 +153,7 @@ const ExerciseHistoryScreen: React.FC<ExerciseHistoryScreenProps> = ({ navigatio
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
         <View style={styles.headerActions}>
           <TouchableOpacity style={styles.headerButton} onPress={handleBackPress}>
             <Text style={styles.headerButtonText}>← 戻る</Text>
@@ -335,11 +337,11 @@ const styles = StyleSheet.create({
   headerButtonText: {
     color: GarageTheme.textStrong,
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: '500',
   },
   title: {
     fontSize: 24,
-    fontWeight: '800',
+    fontWeight: '600',
     color: GarageTheme.textStrong,
     marginBottom: 4,
   },
@@ -372,7 +374,7 @@ const styles = StyleSheet.create({
   },
   exerciseChip: {
     backgroundColor: GarageTheme.surface,
-    borderRadius: 16,
+    borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 12,
     minWidth: 120,
@@ -390,7 +392,7 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   exerciseChipTextActive: {
-    color: '#ffffff',
+    color: '#f7f8f8',
   },
   exerciseChipSubtext: {
     fontSize: 11,
@@ -432,7 +434,7 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '500',
     color: GarageTheme.textStrong,
     marginBottom: 12,
   },

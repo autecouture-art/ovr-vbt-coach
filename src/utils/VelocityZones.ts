@@ -75,14 +75,14 @@ export function createDynamicZones(percentiles: VelocityPercentiles): VelocityZo
       min_velocity: percentiles.p90,
       max_velocity: 999,
       load_range: '<40% 1RM',
-      color: '#FFD700',
+      color: '#828fff',
     },
     {
       name: 'strength_speed',
       min_velocity: percentiles.p75,
       max_velocity: percentiles.p90,
       load_range: '40-60% 1RM',
-      color: '#FF8C00',
+      color: '#828fff',
     },
     {
       name: 'hypertrophy',
@@ -136,14 +136,14 @@ function getFixedVelocityZones(): VelocityZone[] {
       min_velocity: 1.0,
       max_velocity: 999,
       load_range: '<30% 1RM',
-      color: '#FFD700',
+      color: '#828fff',
     },
     {
       name: 'strength_speed',
       min_velocity: 0.75,
       max_velocity: 1.0,
       load_range: '30-60% 1RM',
-      color: '#FF8C00',
+      color: '#828fff',
     },
     {
       name: 'hypertrophy',

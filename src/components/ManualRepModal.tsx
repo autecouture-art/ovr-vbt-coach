@@ -156,7 +156,7 @@ const styles = StyleSheet.create({
   closeBtn: {
     width: 32,
     height: 32,
-    borderRadius: 16,
+    borderRadius: 12,
     backgroundColor: GarageTheme.chip,
     justifyContent: 'center',
     alignItems: 'center',
@@ -219,6 +219,6 @@ const styles = StyleSheet.create({
   addButtonText: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#FFF',
+    color: '#f7f8f8',
   },
 });

@@ -46,7 +46,7 @@ export default function RootLayout() {
                 <Stack.Screen name="(tabs)" />
                 <Stack.Screen name="oauth/callback" />
               </Stack>
-              <StatusBar style="auto" />
+              <StatusBar style="light" />
             </QueryClientProvider>
           </trpc.Provider>
         </SafeAreaProvider>

@@ -122,6 +122,10 @@ export default function FormVideoRecorderScreen() {
     cameraRef.current?.stopRecording();
   };
 
+  const handleHome = () => {
+    router.replace("/(tabs)");
+  };
+
   const handleDiscard = () => {
     setCapturedUri(null);
     setStartedAt(null);
@@ -159,8 +163,17 @@ export default function FormVideoRecorderScreen() {
       <View style={[styles.container, styles.centered, { paddingTop: insets.top }]}>
         <Text style={styles.title}>フォーム動画</Text>
         <Text style={styles.message}>セッション、種目、セット情報が不足しています。</Text>
-        <TouchableOpacity style={styles.secondaryButton} onPress={() => router.back()}>
+        <TouchableOpacity
+          style={[styles.secondaryButton, styles.centeredActionButton]}
+          onPress={() => router.back()}
+        >
           <Text style={styles.secondaryButtonText}>戻る</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.secondaryButton, styles.centeredActionButton]}
+          onPress={handleHome}
+        >
+          <Text style={styles.secondaryButtonText}>ホーム</Text>
         </TouchableOpacity>
       </View>
     );
@@ -182,11 +195,23 @@ export default function FormVideoRecorderScreen() {
         <Text style={styles.message}>
           カメラとマイクの権限を許可すると、セットに紐付けるフォーム動画を撮れます。
         </Text>
-        <TouchableOpacity style={styles.primaryButton} onPress={requestPermissions}>
+        <TouchableOpacity
+          style={[styles.primaryButton, styles.centeredActionButton]}
+          onPress={requestPermissions}
+        >
           <Text style={styles.primaryButtonText}>権限を許可</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.secondaryButton} onPress={() => router.back()}>
+        <TouchableOpacity
+          style={[styles.secondaryButton, styles.centeredActionButton]}
+          onPress={() => router.back()}
+        >
           <Text style={styles.secondaryButtonText}>キャンセル</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.secondaryButton, styles.centeredActionButton]}
+          onPress={handleHome}
+        >
+          <Text style={styles.secondaryButtonText}>ホーム</Text>
         </TouchableOpacity>
       </View>
     );
@@ -217,17 +242,24 @@ export default function FormVideoRecorderScreen() {
             Set {recordingContext.setIndex} / {recordingContext.loadKg}kg
           </Text>
         </View>
-        <TouchableOpacity
-          style={styles.closeButton}
-          onPress={() => {
-            if (recording) {
-              handleStop();
-            }
-            router.back();
-          }}
-        >
-          <Text style={styles.closeButtonText}>閉じる</Text>
-        </TouchableOpacity>
+        <View style={styles.topActions}>
+          <TouchableOpacity
+            style={styles.closeButton}
+            onPress={() => {
+              if (recording) {
+                handleStop();
+              }
+              router.back();
+            }}
+          >
+            <Text style={styles.closeButtonText}>閉じる</Text>
+          </TouchableOpacity>
+          {!recording ? (
+            <TouchableOpacity style={styles.closeButton} onPress={handleHome}>
+              <Text style={styles.closeButtonText}>ホーム</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
       </View>
 
       {cameraAvailable === false && (
@@ -327,13 +359,13 @@ const styles = StyleSheet.create({
   kicker: {
     color: GarageTheme.accent,
     fontSize: 12,
-    fontWeight: "800",
+    fontWeight: "600",
     letterSpacing: 0,
   },
   title: {
     color: GarageTheme.text,
     fontSize: 24,
-    fontWeight: "900",
+    fontWeight: "600",
     marginTop: 6,
   },
   contextText: {
@@ -350,15 +382,19 @@ const styles = StyleSheet.create({
   },
   closeButton: {
     borderColor: "rgba(255,255,255,0.28)",
-    borderRadius: 8,
+    borderRadius: 6,
     borderWidth: 1,
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
+  topActions: {
+    flexDirection: "row",
+    gap: 8,
+  },
   closeButtonText: {
     color: GarageTheme.text,
     fontSize: 13,
-    fontWeight: "700",
+    fontWeight: "500",
   },
   unavailablePanel: {
     alignSelf: "center",
@@ -382,7 +418,7 @@ const styles = StyleSheet.create({
   statusText: {
     color: GarageTheme.text,
     fontSize: 14,
-    fontWeight: "700",
+    fontWeight: "500",
     lineHeight: 20,
     marginBottom: 14,
     textAlign: "center",
@@ -406,9 +442,9 @@ const styles = StyleSheet.create({
     paddingVertical: 15,
   },
   primaryButtonText: {
-    color: "#ffffff",
+    color: "#f7f8f8",
     fontSize: 15,
-    fontWeight: "900",
+    fontWeight: "600",
   },
   secondaryButton: {
     alignItems: "center",
@@ -419,10 +455,16 @@ const styles = StyleSheet.create({
     marginTop: 12,
     paddingVertical: 15,
   },
+  centeredActionButton: {
+    alignSelf: "stretch",
+    flex: 0,
+    maxWidth: 320,
+    minWidth: 220,
+  },
   secondaryButtonText: {
     color: GarageTheme.text,
     fontSize: 15,
-    fontWeight: "800",
+    fontWeight: "600",
   },
   disabledButton: {
     opacity: 0.45,

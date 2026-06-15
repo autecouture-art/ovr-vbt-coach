@@ -426,6 +426,39 @@ const DEFAULT_EXERCISE_SEEDS: ExerciseSeed[] = [
     aliases: ["ランドマインショルダープレス", "landmune shoulder press"],
   },
   {
+    id: "cable_face_pull",
+    name: "Cable Face Pull",
+    category: "press",
+    subcategory: "rear_delt_face_pull",
+    has_lvp: false,
+    machine_weight_steps: [1, 2.5, 5],
+    min_rom_threshold: 8,
+    rep_detection_mode: "short_rom",
+    rom_range_min_cm: 10,
+    rom_range_max_cm: 28,
+    description: "リアデルタ・外旋系の肩補助種目。",
+    aliases: ["ケーブルフェイスプル", "face pull", "cable facepull"],
+  },
+  {
+    id: "cable_upright_row",
+    name: "Cable Upright Row",
+    category: "press",
+    subcategory: "upright_row",
+    has_lvp: false,
+    machine_weight_steps: [1, 2.5, 5],
+    min_rom_threshold: 8,
+    rep_detection_mode: "short_rom",
+    rom_range_min_cm: 10,
+    rom_range_max_cm: 30,
+    description: "三角筋狙いのケーブルアップライトロウ。",
+    aliases: [
+      "ケーブルアップライトロウ",
+      "cable up right row",
+      "cable upright row",
+      "upright row",
+    ],
+  },
+  {
     id: "seal_row",
     name: "Seal Row",
     category: "row",
@@ -921,6 +954,11 @@ export function inferExercisePreset(
   } else if (/(deadlift|デッド|rdl|ルーマニアン|hinge)/.test(key)) {
     category = "deadlift";
     subcategory = "hinge_variant";
+  } else if (/(facepull|フェイスプル|uprightrow|upright|アップライト)/.test(key)) {
+    category = "press";
+    subcategory = /facepull|フェイスプル/.test(key)
+      ? "rear_delt_face_pull"
+      : "upright_row";
   } else if (
     /(landmine|shoulderpress|ショルダー|ohp|overheadpress|press$)/.test(key)
   ) {

@@ -170,7 +170,7 @@ const LVPScreen: React.FC<LVPScreenProps> = ({ navigation, route }) => {
             <VictoryAxis
               label="Load (kg)"
               style={{
-                axisLabel: { fill: '#fff', padding: 35, fontSize: 12 },
+                axisLabel: { fill: '#f7f8f8', padding: 35, fontSize: 12 },
                 axis: { stroke: '#666' },
                 tickLabels: { fill: '#999', fontSize: 10 },
                 grid: { stroke: '#333' },
@@ -180,7 +180,7 @@ const LVPScreen: React.FC<LVPScreenProps> = ({ navigation, route }) => {
               dependentAxis
               label="Velocity (m/s)"
               style={{
-                axisLabel: { fill: '#fff', padding: 40, fontSize: 12 },
+                axisLabel: { fill: '#f7f8f8', padding: 40, fontSize: 12 },
                 axis: { stroke: '#666' },
                 tickLabels: { fill: '#999', fontSize: 10 },
                 grid: { stroke: '#333' },
@@ -219,7 +219,7 @@ const LVPScreen: React.FC<LVPScreenProps> = ({ navigation, route }) => {
         <Text style={styles.zonesTitle}>速度ゾーン</Text>
 
         <View style={styles.zoneItem}>
-          <View style={[styles.zoneIndicator, { backgroundColor: '#FFD700' }]} />
+          <View style={[styles.zoneIndicator, { backgroundColor: '#828fff' }]} />
           <View style={styles.zoneInfo}>
             <Text style={styles.zoneName}>Power</Text>
             <Text style={styles.zoneRange}>≥1.0 m/s | &lt;30% 1RM</Text>
@@ -227,7 +227,7 @@ const LVPScreen: React.FC<LVPScreenProps> = ({ navigation, route }) => {
         </View>
 
         <View style={styles.zoneItem}>
-          <View style={[styles.zoneIndicator, { backgroundColor: '#FF8C00' }]} />
+          <View style={[styles.zoneIndicator, { backgroundColor: '#828fff' }]} />
           <View style={styles.zoneInfo}>
             <Text style={styles.zoneName}>Strength-Speed</Text>
             <Text style={styles.zoneRange}>0.75-1.0 m/s | 30-60% 1RM</Text>
@@ -274,7 +274,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#fff',
+    color: '#f7f8f8',
   },
   liftCard: {
     margin: 16,
@@ -285,7 +285,7 @@ const styles = StyleSheet.create({
   liftName: {
     fontSize: 22,
     fontWeight: 'bold',
-    color: '#fff',
+    color: '#f7f8f8',
     marginBottom: 16,
     textAlign: 'center',
   },
@@ -340,7 +340,7 @@ const styles = StyleSheet.create({
   zonesTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#fff',
+    color: '#f7f8f8',
     marginBottom: 16,
   },
   zoneItem: {
@@ -360,7 +360,7 @@ const styles = StyleSheet.create({
   zoneName: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#fff',
+    color: '#f7f8f8',
     marginBottom: 2,
   },
   zoneRange: {

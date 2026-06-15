@@ -17,11 +17,11 @@ export default function MonitorRoute() {
         router.back();
         return;
       }
-      router.replace('/');
+      router.replace('/(tabs)');
     },
     navigate: (name: string, params?: Record<string, unknown>) => {
       if (name === 'Home') {
-        router.replace('/');
+        router.replace('/(tabs)');
         return;
       }
 

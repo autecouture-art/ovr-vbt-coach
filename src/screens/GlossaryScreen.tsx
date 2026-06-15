@@ -77,6 +77,12 @@ export default function GlossaryScreen() {
           <Text style={styles.title}>用語集</Text>
           <Text style={styles.subtitle}>VBTで使う用語の説明</Text>
         </View>
+        <TouchableOpacity
+          onPress={() => router.replace('/(tabs)')}
+          style={styles.homeButton}
+        >
+          <Text style={styles.homeButtonText}>ホーム</Text>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.content}>
@@ -106,7 +112,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#333',
+    borderBottomColor: GarageTheme.border,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
@@ -117,13 +123,27 @@ const styles = StyleSheet.create({
   backButtonText: {
     color: GarageTheme.accent,
     fontSize: 16,
+    fontWeight: '500',
   },
   headerText: {
     flex: 1,
   },
+  homeButton: {
+    borderWidth: 1,
+    borderColor: GarageTheme.border,
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    backgroundColor: GarageTheme.chip,
+  },
+  homeButtonText: {
+    color: GarageTheme.text,
+    fontSize: 13,
+    fontWeight: '500',
+  },
   title: {
     fontSize: 24,
-    fontWeight: 'bold',
+    fontWeight: '500',
     color: GarageTheme.textStrong,
   },
   subtitle: {
@@ -136,7 +156,7 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: GarageTheme.surface,
-    borderRadius: 12,
+    borderRadius: 8,
     padding: 16,
     marginBottom: 12,
     borderWidth: 1,
@@ -144,7 +164,7 @@ const styles = StyleSheet.create({
   },
   term: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '500',
     color: GarageTheme.accent,
     marginBottom: 8,
   },
@@ -164,7 +184,7 @@ const styles = StyleSheet.create({
   exampleLabel: {
     fontSize: 12,
     color: GarageTheme.info,
-    fontWeight: '700',
+    fontWeight: '500',
     marginBottom: 6,
   },
   exampleText: {

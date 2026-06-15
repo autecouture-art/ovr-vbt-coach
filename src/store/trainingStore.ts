@@ -3,7 +3,7 @@
  * Manages VBT training session state, ensuring data persistence across screens.
  */
 
-import { create } from "zustand";
+import { createWithEqualityFn } from "zustand/traditional";
 import type {
   TrainingSession,
   SetData,
@@ -118,7 +118,7 @@ interface TrainingState {
   setPaused: (paused: boolean, reason?: "manual" | "rest") => void;
 }
 
-export const useTrainingStore = create<TrainingState>((set, get) => ({
+export const useTrainingStore = createWithEqualityFn<TrainingState>((set, get) => ({
   // Initial State
   currentSession: null,
   isSessionActive: false,

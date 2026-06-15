@@ -203,7 +203,7 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
             value={settings.use_metric}
             onValueChange={() => handleToggle("use_metric")}
             trackColor={{ false: "#444", true: "#2196F3" }}
-            thumbColor={settings.use_metric ? "#fff" : "#ccc"}
+            thumbColor={settings.use_metric ? "#f7f8f8" : "#ccc"}
           />
         </View>
 
@@ -218,7 +218,7 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
             value={settings.enable_audio_feedback}
             onValueChange={() => handleToggle("enable_audio_feedback")}
             trackColor={{ false: "#444", true: "#2196F3" }}
-            thumbColor={settings.enable_audio_feedback ? "#fff" : "#ccc"}
+            thumbColor={settings.enable_audio_feedback ? "#f7f8f8" : "#ccc"}
           />
         </View>
 
@@ -233,7 +233,7 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
             value={settings.enable_voice_commands}
             onValueChange={() => handleToggle("enable_voice_commands")}
             trackColor={{ false: "#444", true: "#2196F3" }}
-            thumbColor={settings.enable_voice_commands ? "#fff" : "#ccc"}
+            thumbColor={settings.enable_voice_commands ? "#f7f8f8" : "#ccc"}
             disabled
           />
         </View>
@@ -249,7 +249,7 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
             value={settings.enable_video_recording}
             onValueChange={() => handleToggle("enable_video_recording")}
             trackColor={{ false: "#444", true: "#2196F3" }}
-            thumbColor={settings.enable_video_recording ? "#fff" : "#ccc"}
+            thumbColor={settings.enable_video_recording ? "#f7f8f8" : "#ccc"}
           />
         </View>
 
@@ -267,7 +267,7 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
             }
             trackColor={{ false: "#444", true: "#2196F3" }}
             thumbColor={
-              settings.enable_form_video_ble_safe_mode ? "#fff" : "#ccc"
+              settings.enable_form_video_ble_safe_mode ? "#f7f8f8" : "#ccc"
             }
           />
         </View>
@@ -438,7 +438,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 24,
     fontWeight: "bold",
-    color: "#fff",
+    color: "#f7f8f8",
   },
   section: {
     marginTop: 24,
@@ -467,7 +467,7 @@ const styles = StyleSheet.create({
   settingLabel: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#fff",
+    color: "#f7f8f8",
     marginBottom: 4,
   },
   settingDescription: {
@@ -491,7 +491,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#444",
     borderRadius: 10,
-    color: "#fff",
+    color: "#f7f8f8",
     fontSize: 16,
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -518,10 +518,10 @@ const styles = StyleSheet.create({
   categoryChipText: {
     color: "#aaa",
     fontSize: 12,
-    fontWeight: "700",
+    fontWeight: "500",
   },
   categoryChipTextActive: {
-    color: "#fff",
+    color: "#f7f8f8",
   },
   compactInputRow: {
     flexDirection: "row",
@@ -538,9 +538,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   addExerciseButtonText: {
-    color: "#fff",
+    color: "#f7f8f8",
     fontSize: 15,
-    fontWeight: "800",
+    fontWeight: "600",
   },
   optionsContainer: {
     flexDirection: "row",
@@ -567,7 +567,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   optionButtonTextActive: {
-    color: "#fff",
+    color: "#f7f8f8",
   },
   phaseCard: {
     flexDirection: "row",
@@ -590,7 +590,7 @@ const styles = StyleSheet.create({
   phaseLabel: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#fff",
+    color: "#f7f8f8",
     marginBottom: 4,
   },
   phaseDescription: {
@@ -611,7 +611,7 @@ const styles = StyleSheet.create({
   aboutTitle: {
     fontSize: 20,
     fontWeight: "bold",
-    color: "#fff",
+    color: "#f7f8f8",
     marginBottom: 8,
   },
   aboutVersion: {

@@ -140,7 +140,7 @@ const styles = StyleSheet.create({
   },
   tooltipContainer: {
     backgroundColor: GarageTheme.surface,
-    borderRadius: 20,
+    borderRadius: 12,
     padding: 20,
     maxWidth: 340,
     width: '100%',
@@ -156,13 +156,13 @@ const styles = StyleSheet.create({
   tooltipTitle: {
     color: GarageTheme.textStrong,
     fontSize: 18,
-    fontWeight: '700',
+    fontWeight: '500',
     flex: 1,
   },
   closeButton: {
     width: 32,
     height: 32,
-    borderRadius: 16,
+    borderRadius: 12,
     backgroundColor: GarageTheme.chip,
     justifyContent: 'center',
     alignItems: 'center',
@@ -170,7 +170,7 @@ const styles = StyleSheet.create({
   closeButtonText: {
     color: GarageTheme.textStrong,
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '500',
   },
   tooltipContent: {
     marginBottom: 20,
@@ -190,7 +190,7 @@ const styles = StyleSheet.create({
   sectionLabel: {
     color: GarageTheme.textMuted,
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '500',
     marginBottom: 6,
   },
   sectionValue: {
@@ -206,7 +206,7 @@ const styles = StyleSheet.create({
   },
   statusText: {
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: '500',
   },
   closeButtonBottom: {
     backgroundColor: GarageTheme.accent,
@@ -215,8 +215,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   closeButtonBottomText: {
-    color: '#fff4ec',
+    color: '#f7f8f8',
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '500',
   },
 });

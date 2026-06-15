@@ -11,10 +11,9 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-  SafeAreaView,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTrainingStore } from '@/src/store/trainingStore';
 import { useSessionStartData } from '@/src/hooks/useSessionStartData';
 import { ReadinessCard } from '@/src/components/ReadinessCard';
@@ -39,6 +38,10 @@ export default function SessionStartScreen() {
     router.back();
   }, [router]);
 
+  const handleHome = useCallback(() => {
+    router.replace('/(tabs)');
+  }, [router]);
+
   if (loading) {
     return (
       <View style={[styles.container, styles.centering]}>
@@ -52,9 +55,14 @@ export default function SessionStartScreen() {
     return (
       <View style={[styles.container, styles.centering]}>
         <Text style={styles.errorText}>エラーが発生しました</Text>
-        <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-          <Text style={styles.backButtonText}>戻る</Text>
-        </TouchableOpacity>
+        <View style={styles.centerActionRow}>
+          <TouchableOpacity style={styles.backButton} onPress={handleBack}>
+            <Text style={styles.backButtonText}>戻る</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.backButton} onPress={handleHome}>
+            <Text style={styles.backButtonText}>ホーム</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     );
   }
@@ -63,9 +71,14 @@ export default function SessionStartScreen() {
     return (
       <View style={[styles.container, styles.centering]}>
         <Text style={styles.errorText}>種目を選択してください</Text>
-        <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-          <Text style={styles.backButtonText}>戻る</Text>
-        </TouchableOpacity>
+        <View style={styles.centerActionRow}>
+          <TouchableOpacity style={styles.backButton} onPress={handleBack}>
+            <Text style={styles.backButtonText}>戻る</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.backButton} onPress={handleHome}>
+            <Text style={styles.backButtonText}>ホーム</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     );
   }
@@ -80,7 +93,9 @@ export default function SessionStartScreen() {
           <Text style={styles.headerTitle}>{currentExercise.name}</Text>
           <Text style={styles.headerSubtitle}>{data.currentLoad}kg</Text>
         </View>
-        <View style={styles.headerButton} />
+        <TouchableOpacity style={styles.homeHeaderButton} onPress={handleHome}>
+          <Text style={styles.homeHeaderButtonText}>ホーム</Text>
+        </TouchableOpacity>
       </View>
 
       <ScrollView
@@ -156,6 +171,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  centerActionRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -175,7 +194,7 @@ const styles = StyleSheet.create({
   headerButtonText: {
     fontSize: 24,
     color: GarageTheme.text,
-    fontWeight: 'bold',
+    fontWeight: '500',
   },
   aiCoachButton: {
     fontSize: 24,
@@ -186,8 +205,24 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '500',
     color: GarageTheme.text,
+  },
+  homeHeaderButton: {
+    minWidth: 58,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: GarageTheme.border,
+    backgroundColor: GarageTheme.chip,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  homeHeaderButtonText: {
+    color: GarageTheme.text,
+    fontSize: 13,
+    fontWeight: '500',
   },
   headerSubtitle: {
     fontSize: 14,
@@ -202,7 +237,7 @@ const styles = StyleSheet.create({
   },
   historyCard: {
     backgroundColor: GarageTheme.panel,
-    borderRadius: 16,
+    borderRadius: 8,
     padding: 20,
     margin: 16,
     shadowColor: '#000',
@@ -213,7 +248,7 @@ const styles = StyleSheet.create({
   },
   historyTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '500',
     color: GarageTheme.text,
     marginBottom: 12,
   },
@@ -251,14 +286,14 @@ const styles = StyleSheet.create({
   },
   startButton: {
     backgroundColor: GarageTheme.accent,
-    borderRadius: 12,
+    borderRadius: 6,
     paddingVertical: 16,
     alignItems: 'center',
   },
   startButtonText: {
-    color: '#FFF',
+    color: '#f7f8f8',
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '500',
   },
   loadingText: {
     marginTop: 16,
@@ -272,14 +307,16 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   backButton: {
-    backgroundColor: GarageTheme.accent,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
+    backgroundColor: GarageTheme.chip,
+    borderColor: GarageTheme.border,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 6,
   },
   backButtonText: {
-    color: '#FFF',
+    color: GarageTheme.accentSoft,
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '500',
   },
 });

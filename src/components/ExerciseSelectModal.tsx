@@ -412,19 +412,19 @@ const styles = StyleSheet.create({
   eyebrow: {
     color: GarageTheme.accent,
     fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 2,
+    fontWeight: "600",
+    letterSpacing: 0,
     marginBottom: 4,
   },
   title: {
     fontSize: 22,
-    fontWeight: "800",
+    fontWeight: "600",
     color: GarageTheme.text,
   },
   closeButton: {
     width: 38,
     height: 38,
-    borderRadius: 19,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: GarageTheme.chip,
@@ -441,7 +441,7 @@ const styles = StyleSheet.create({
   },
   searchInput: {
     backgroundColor: GarageTheme.chip,
-    borderRadius: 14,
+    borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 13,
     fontSize: 15,
@@ -474,7 +474,7 @@ const styles = StyleSheet.create({
   categoryChipActive: {
     backgroundColor: GarageTheme.accent,
     borderColor: GarageTheme.accent,
-    shadowColor: "#ff6a2a",
+    shadowColor: "#7170ff",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.5,
     shadowRadius: 4,
@@ -483,12 +483,12 @@ const styles = StyleSheet.create({
   categoryChipText: {
     fontSize: 11,
     color: GarageTheme.textMuted,
-    fontWeight: "700",
-    letterSpacing: 0.5,
+    fontWeight: "500",
+    letterSpacing: 0,
   },
   categoryChipTextActive: {
-    color: "#fff4ec",
-    fontWeight: "800",
+    color: "#f7f8f8",
+    fontWeight: "600",
   },
   exerciseList: {
     flex: 1,
@@ -508,8 +508,8 @@ const styles = StyleSheet.create({
   groupTitle: {
     color: GarageTheme.accentSoft,
     fontSize: 13,
-    fontWeight: "800",
-    letterSpacing: 1.2,
+    fontWeight: "600",
+    letterSpacing: 0,
     marginBottom: 12,
     marginTop: 8,
   },
@@ -519,7 +519,7 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
     padding: 16,
     backgroundColor: GarageTheme.surface,
-    borderRadius: 16,
+    borderRadius: 12,
     marginBottom: 10,
     borderWidth: 1.5,
     borderColor: GarageTheme.borderStrong,
@@ -533,7 +533,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#4b2416",
     borderColor: GarageTheme.accent,
     borderWidth: 2,
-    shadowColor: "#ff6a2a",
+    shadowColor: "#7170ff",
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.4,
     shadowRadius: 5,
@@ -550,10 +550,10 @@ const styles = StyleSheet.create({
   },
   exerciseName: {
     fontSize: 17,
-    fontWeight: "700",
+    fontWeight: "500",
     color: GarageTheme.textStrong,
     flexShrink: 1,
-    letterSpacing: 0.3,
+    letterSpacing: 0,
   },
   exerciseMetaRow: {
     flexDirection: "row",
@@ -564,7 +564,7 @@ const styles = StyleSheet.create({
   exerciseCategory: {
     color: GarageTheme.info,
     fontSize: 13,
-    fontWeight: "700",
+    fontWeight: "500",
   },
   exerciseMetaDot: {
     color: GarageTheme.textSubtle,
@@ -573,13 +573,13 @@ const styles = StyleSheet.create({
   exerciseMeta: {
     color: GarageTheme.textMuted,
     fontSize: 13,
-    fontWeight: "700",
+    fontWeight: "500",
   },
   exerciseRom: {
     color: GarageTheme.accentSoft,
     fontSize: 13,
     marginTop: 10,
-    fontWeight: "700",
+    fontWeight: "500",
   },
   exerciseDescription: {
     color: GarageTheme.textMuted,
@@ -598,28 +598,28 @@ const styles = StyleSheet.create({
   lvpBadgeText: {
     color: GarageTheme.success,
     fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 0.8,
+    fontWeight: "600",
+    letterSpacing: 0,
   },
   checkmark: {
     backgroundColor: GarageTheme.accent,
-    color: "#fff4ec",
+    color: "#f7f8f8",
     fontSize: 16,
-    fontWeight: "800",
+    fontWeight: "600",
     width: 28,
     height: 28,
-    borderRadius: 14,
+    borderRadius: 12,
     textAlign: "center",
     lineHeight: 28,
     marginLeft: 12,
-    shadowColor: "#ff6a2a",
+    shadowColor: "#7170ff",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.4,
     shadowRadius: 3,
     elevation: 3,
   },
   addExerciseButton: {
-    borderRadius: 16,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: GarageTheme.accent,
     backgroundColor: "#4b2416",
@@ -630,11 +630,11 @@ const styles = StyleSheet.create({
   addExerciseButtonText: {
     color: GarageTheme.textStrong,
     fontSize: 15,
-    fontWeight: "800",
+    fontWeight: "600",
   },
   addForm: {
     backgroundColor: GarageTheme.surface,
-    borderRadius: 18,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: GarageTheme.border,
     padding: 16,
@@ -642,12 +642,12 @@ const styles = StyleSheet.create({
   addFormTitle: {
     color: GarageTheme.textStrong,
     fontSize: 18,
-    fontWeight: "800",
+    fontWeight: "600",
     marginBottom: 12,
   },
   nameInput: {
     backgroundColor: GarageTheme.chip,
-    borderRadius: 14,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: GarageTheme.borderStrong,
     paddingHorizontal: 14,
@@ -658,7 +658,7 @@ const styles = StyleSheet.create({
   previewCard: {
     marginTop: 12,
     padding: 14,
-    borderRadius: 14,
+    borderRadius: 12,
     backgroundColor: GarageTheme.chip,
     borderWidth: 1,
     borderColor: GarageTheme.borderStrong,
@@ -666,8 +666,8 @@ const styles = StyleSheet.create({
   previewTitle: {
     color: GarageTheme.textMuted,
     fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 1,
+    fontWeight: "600",
+    letterSpacing: 0,
     marginBottom: 10,
   },
   previewRow: {
@@ -684,12 +684,12 @@ const styles = StyleSheet.create({
   previewMain: {
     color: GarageTheme.textStrong,
     fontSize: 15,
-    fontWeight: "800",
+    fontWeight: "600",
   },
   previewMeta: {
     color: GarageTheme.accentSoft,
     fontSize: 13,
-    fontWeight: "700",
+    fontWeight: "500",
   },
   previewPlaceholder: {
     color: GarageTheme.textMuted,
@@ -711,8 +711,8 @@ const styles = StyleSheet.create({
   lvpIndicatorText: {
     color: GarageTheme.success,
     fontSize: 12,
-    fontWeight: "800",
-    letterSpacing: 0.5,
+    fontWeight: "600",
+    letterSpacing: 0,
   },
   addFormButtons: {
     flexDirection: "row",
@@ -721,7 +721,7 @@ const styles = StyleSheet.create({
   },
   addFormButton: {
     flex: 1,
-    borderRadius: 14,
+    borderRadius: 12,
     paddingVertical: 14,
     alignItems: "center",
   },
@@ -738,7 +738,7 @@ const styles = StyleSheet.create({
   addFormButtonText: {
     color: GarageTheme.textStrong,
     fontSize: 14,
-    fontWeight: "800",
+    fontWeight: "600",
   },
   emptyState: {
     paddingVertical: 24,
@@ -747,7 +747,7 @@ const styles = StyleSheet.create({
   emptyStateText: {
     color: GarageTheme.textStrong,
     fontSize: 15,
-    fontWeight: "700",
+    fontWeight: "500",
     marginBottom: 6,
   },
   emptyStateSubText: {

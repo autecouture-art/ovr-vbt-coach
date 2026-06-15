@@ -1097,7 +1097,7 @@ const styles = StyleSheet.create({
   refreshChipText: {
     color: GarageTheme.textStrong,
     fontSize: 12,
-    fontWeight: "700",
+    fontWeight: "500",
   },
   exercisePickerSection: {
     paddingHorizontal: 16,
@@ -1106,8 +1106,8 @@ const styles = StyleSheet.create({
   exercisePickerLabel: {
     color: GarageTheme.accentSoft,
     fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 1.5,
+    fontWeight: "600",
+    letterSpacing: 0,
     marginBottom: 10,
   },
   tabBar: {
@@ -1139,14 +1139,14 @@ const styles = StyleSheet.create({
   groupChipText: {
     color: GarageTheme.textMuted,
     fontSize: 12,
-    fontWeight: "700",
+    fontWeight: "500",
   },
   groupChipTextActive: { color: GarageTheme.textStrong },
   exerciseButton: {
     paddingHorizontal: 16,
     paddingVertical: 8,
     backgroundColor: GarageTheme.surfaceAlt,
-    borderRadius: 20,
+    borderRadius: 12,
     marginRight: 8,
   },
   exerciseButtonActive: {
@@ -1230,7 +1230,7 @@ const styles = StyleSheet.create({
   dateRangeButtonText: {
     color: GarageTheme.textMuted,
     fontSize: 12,
-    fontWeight: "700",
+    fontWeight: "500",
   },
   dateRangeButtonTextActive: { color: GarageTheme.textStrong },
   svgChartContainer: {
@@ -1273,7 +1273,7 @@ const styles = StyleSheet.create({
   },
   trendSummaryValue: {
     fontSize: 18,
-    fontWeight: "700",
+    fontWeight: "500",
     color: GarageTheme.textStrong,
   },
   trendSummaryMeta: {

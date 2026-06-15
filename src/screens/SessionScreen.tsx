@@ -68,6 +68,10 @@ import {
   getVelocityLossForJudgement,
 } from "@/src/utils/VBTCalculations";
 import {
+  buildAccessoryRMTargetContext,
+  formatAccessoryTargetLoad,
+} from "@/src/utils/AccessoryRMTarget";
+import {
   calculateRecoverySignal,
   getPeakHeartRate,
 } from "@/src/utils/HeartRateUtils";
@@ -126,7 +130,9 @@ const formatClockTime = (timestamp?: string | null): string | null => {
   });
 };
 
-const formatClockTimeWithSeconds = (timestamp?: string | null): string | null => {
+const formatClockTimeWithSeconds = (
+  timestamp?: string | null,
+): string | null => {
   if (!timestamp) return null;
   const time = new Date(timestamp);
   if (Number.isNaN(time.getTime())) return null;
@@ -171,9 +177,17 @@ const NEXT_SET_PURPOSE_OPTIONS: {
   shortLabel: string;
 }[] = [
   { value: "menu_completion", label: "メニュー完遂優先", shortLabel: "完遂" },
-  { value: "form_consistency", label: "フォーム固定優先", shortLabel: "フォーム" },
+  {
+    value: "form_consistency",
+    label: "フォーム固定優先",
+    shortLabel: "フォーム",
+  },
   { value: "lvp_building", label: "LVP作成優先", shortLabel: "LVP" },
-  { value: "hypertrophy_volume", label: "筋肥大ボリューム優先", shortLabel: "量" },
+  {
+    value: "hypertrophy_volume",
+    label: "筋肥大ボリューム優先",
+    shortLabel: "量",
+  },
 ];
 
 const MAIN_LIFT_OPTIONS: {
@@ -195,12 +209,60 @@ const SLEEP_QUALITY_OPTIONS: {
   { value: "bad", label: "悪い" },
 ];
 
-const WEEK_DAY_OPTIONS = Array.from({ length: 6 }, (_, weekIndex) =>
-  Array.from({ length: 4 }, (_, dayIndex) => ({
-    value: `Week${weekIndex + 1}-Day${dayIndex + 1}`,
-    label: `W${weekIndex + 1}-D${dayIndex + 1}`,
-  })),
+const PROGRAM_WEEK_COUNT = 12;
+const PROGRAM_DAYS_PER_WEEK = 4;
+
+const WEEK_DAY_OPTIONS = Array.from(
+  { length: PROGRAM_WEEK_COUNT },
+  (_, weekIndex) =>
+    Array.from({ length: 4 }, (_, dayIndex) => ({
+      value: `Week${weekIndex + 1}-Day${dayIndex + 1}`,
+      label: `W${weekIndex + 1}-D${dayIndex + 1}`,
+    })),
 ).flat();
+
+type ProgramLocation = {
+  week: number;
+  day: number;
+  value: string;
+  shortLabel: string;
+};
+
+const clampProgramWeek = (week: number) =>
+  Math.min(PROGRAM_WEEK_COUNT, Math.max(1, Math.round(week)));
+
+const clampProgramDay = (day: number) =>
+  Math.min(PROGRAM_DAYS_PER_WEEK, Math.max(1, Math.round(day)));
+
+const formatProgramLocation = (week: number, day: number): ProgramLocation => {
+  const normalizedWeek = clampProgramWeek(week);
+  const normalizedDay = clampProgramDay(day);
+  return {
+    week: normalizedWeek,
+    day: normalizedDay,
+    value: `Week${normalizedWeek}-Day${normalizedDay}`,
+    shortLabel: `W${normalizedWeek}-D${normalizedDay}`,
+  };
+};
+
+const parseProgramLocation = (
+  value?: string | null,
+): ProgramLocation | null => {
+  if (!value) return null;
+  const match = value.match(/week\s*(\d+)\s*[-_ ]?\s*day\s*(\d+)/i);
+  if (!match) return null;
+  return formatProgramLocation(Number(match[1]), Number(match[2]));
+};
+
+const getNextProgramLocation = (location: ProgramLocation): ProgramLocation => {
+  if (location.day < PROGRAM_DAYS_PER_WEEK) {
+    return formatProgramLocation(location.week, location.day + 1);
+  }
+  if (location.week < PROGRAM_WEEK_COUNT) {
+    return formatProgramLocation(location.week + 1, 1);
+  }
+  return formatProgramLocation(PROGRAM_WEEK_COUNT, PROGRAM_DAYS_PER_WEEK);
+};
 
 function removeSessionReadinessMarker(notes: string) {
   return notes
@@ -233,8 +295,7 @@ function parseSessionReadinessMarker(
       markerLine.trim().slice(SESSION_READINESS_NOTE_PREFIX.length),
     ) as SessionReadinessData;
     return {
-      dieting:
-        typeof parsed.dieting === "boolean" ? parsed.dieting : null,
+      dieting: typeof parsed.dieting === "boolean" ? parsed.dieting : null,
       sleep_quality:
         parsed.sleep_quality === "good" ||
         parsed.sleep_quality === "ok" ||
@@ -272,9 +333,7 @@ function parseSessionReadinessMarker(
   }
 }
 
-function getMainLiftCanonicalName(
-  mainLift: SessionReadinessData["main_lift"],
-) {
+function getMainLiftCanonicalName(mainLift: SessionReadinessData["main_lift"]) {
   return (
     MAIN_LIFT_OPTIONS.find((option) => option.value === mainLift)
       ?.canonicalLift ?? null
@@ -303,7 +362,9 @@ type LazyFormVideoOverlayProps = {
 };
 
 const LazyFormVideoOverlay = React.lazy(
-  async (): Promise<{ default: React.ComponentType<LazyFormVideoOverlayProps> }> => {
+  async (): Promise<{
+    default: React.ComponentType<LazyFormVideoOverlayProps>;
+  }> => {
     const module = await import("@/src/components/FormVideoOverlay");
     return { default: module.FormVideoOverlay };
   },
@@ -398,36 +459,36 @@ export default function SessionScreen() {
   const [readinessPainArea, setReadinessPainArea] = useState("");
   const [readinessPainScore, setReadinessPainScore] = useState("0");
   const [readinessWeekDay, setReadinessWeekDay] = useState("Week1-Day1");
+  const [programLocationHint, setProgramLocationHint] =
+    useState("設定値から初期化");
   const [weekDayPickerVisible, setWeekDayPickerVisible] = useState(false);
+  const readinessWeekDayTouchedRef = useRef(false);
   const [readinessMainLift, setReadinessMainLift] =
     useState<SessionReadinessData["main_lift"]>(null);
-  const buildSessionReadinessPayload = useCallback(
-    (): SessionReadinessData => {
-      const painScore = Number.parseInt(readinessPainScore, 10);
-      return {
-        dieting: readinessDieting,
-        sleep_quality: readinessSleepQuality,
-        pain_area: readinessPainArea.trim() || null,
-        pain_score: Number.isFinite(painScore)
-          ? Math.max(0, Math.min(10, painScore))
-          : null,
-        week_day: readinessWeekDay.trim() || null,
-        main_lift: readinessMainLift,
-        day_role: readinessMainLift
-          ? `${readinessMainLift.toLowerCase()}_main_day`
-          : null,
-        captured_at: new Date().toISOString(),
-      };
-    },
-    [
-      readinessDieting,
-      readinessMainLift,
-      readinessPainArea,
-      readinessPainScore,
-      readinessSleepQuality,
-      readinessWeekDay,
-    ],
-  );
+  const buildSessionReadinessPayload = useCallback((): SessionReadinessData => {
+    const painScore = Number.parseInt(readinessPainScore, 10);
+    return {
+      dieting: readinessDieting,
+      sleep_quality: readinessSleepQuality,
+      pain_area: readinessPainArea.trim() || null,
+      pain_score: Number.isFinite(painScore)
+        ? Math.max(0, Math.min(10, painScore))
+        : null,
+      week_day: readinessWeekDay.trim() || null,
+      main_lift: readinessMainLift,
+      day_role: readinessMainLift
+        ? `${readinessMainLift.toLowerCase()}_main_day`
+        : null,
+      captured_at: new Date().toISOString(),
+    };
+  }, [
+    readinessDieting,
+    readinessMainLift,
+    readinessPainArea,
+    readinessPainScore,
+    readinessSleepQuality,
+    readinessWeekDay,
+  ]);
 
   // Custom Hook for Logic（PR検知コールバックを渡す）
   const {
@@ -588,11 +649,13 @@ export default function SessionScreen() {
     [currentExercise?.mvt, vbtProtocol],
   );
   useEffect(() => {
+    if (readinessWeekDayTouchedRef.current) return;
     setReadinessWeekDay((current) =>
       current === "Week1-Day1"
         ? `Week${settings.powerlifting_block_week}-Day1`
         : current,
     );
+    setProgramLocationHint("設定値から初期化");
   }, [settings.powerlifting_block_week]);
   // レップ詳細モーダルの状態
   const [repDetailVisible, setRepDetailVisible] = useState(false);
@@ -762,7 +825,7 @@ export default function SessionScreen() {
     try {
       const recentSets = await DatabaseService.getRecentSetsForLift(
         currentLift,
-        5,
+        30,
         currentSession?.session_id,
       );
       setRecentExerciseHistory(recentSets);
@@ -834,6 +897,33 @@ export default function SessionScreen() {
       ),
     [currentLoad, recentExerciseHistory],
   );
+  const sameLoadFastestSet = useMemo(() => {
+    const candidates = sameLoadRecentHistory.filter(
+      (set) => set.avg_velocity != null && set.avg_velocity > 0,
+    );
+    if (candidates.length === 0) return null;
+    return candidates.reduce((best, set) =>
+      (set.avg_velocity ?? 0) > (best.avg_velocity ?? 0) ? set : best,
+    );
+  }, [sameLoadRecentHistory]);
+  const sameLoadFastestText =
+    sameLoadFastestSet?.avg_velocity != null
+      ? `${sameLoadFastestSet.avg_velocity.toFixed(2)} m/s`
+      : "-";
+  const sameLoadFastestMeta = sameLoadFastestSet
+    ? `${sameLoadFastestSet.reps} reps / ${new Date(
+        sameLoadFastestSet.timestamp,
+      ).toLocaleDateString("ja-JP", {
+        month: "numeric",
+        day: "numeric",
+      })}`
+    : "履歴なし";
+  const sameLoadFastestDeltaText =
+    liveData?.mean_velocity != null && sameLoadFastestSet?.avg_velocity
+      ? `${liveData.mean_velocity >= sameLoadFastestSet.avg_velocity ? "+" : ""}${(
+          liveData.mean_velocity - sameLoadFastestSet.avg_velocity
+        ).toFixed(2)}`
+      : null;
   const similarLoadRecentHistory = useMemo(
     () =>
       recentExerciseHistory.filter(
@@ -842,13 +932,15 @@ export default function SessionScreen() {
       ),
     [currentLoad, recentExerciseHistory],
   );
+  const currentProgramLocation = useMemo(
+    () => parseProgramLocation(readinessWeekDay),
+    [readinessWeekDay],
+  );
+  const currentProgramWeek =
+    currentProgramLocation?.week ?? settings.powerlifting_block_week;
   const blockWeekPlan = useMemo(
-    () =>
-      getBlockWeekPlan(
-        settings.powerlifting_block_week,
-        currentExercise?.category,
-      ),
-    [currentExercise?.category, settings.powerlifting_block_week],
+    () => getBlockWeekPlan(currentProgramWeek, currentExercise?.category),
+    [currentExercise?.category, currentProgramWeek],
   );
   const liveVelocityLossDecision = useMemo(() => {
     const validVelocities = repHistory
@@ -927,6 +1019,23 @@ export default function SessionScreen() {
       : currentDayRole === "optional_accessory"
         ? "補助/任意"
         : "未分類";
+  const accessoryRMTarget = useMemo(
+    () =>
+      buildAccessoryRMTargetContext({
+        lift: currentLift || currentExercise?.name || "Unknown",
+        currentLoadKg: currentLoad,
+        currentReps,
+        exercise: currentExercise,
+        historySets: recentExerciseHistory,
+      }),
+    [
+      currentExercise,
+      currentLift,
+      currentLoad,
+      currentReps,
+      recentExerciseHistory,
+    ],
+  );
   const romConsistencyMessage = useMemo(() => {
     if (!liveData?.rom_cm || !currentExercise) return null;
     const minRom =
@@ -1001,12 +1110,12 @@ export default function SessionScreen() {
       const saved = await saveAppSettings(nextSettings);
       updateSettings(saved);
     } catch (error) {
-      console.error("[SessionScreen] Failed to save form video setting:", error);
-      updateSettings(settings);
-      Alert.alert(
-        "設定保存エラー",
-        "フォーム動画モードの保存に失敗しました。",
+      console.error(
+        "[SessionScreen] Failed to save form video setting:",
+        error,
       );
+      updateSettings(settings);
+      Alert.alert("設定保存エラー", "フォーム動画モードの保存に失敗しました。");
     }
   }, [settings, updateSettings]);
   useEffect(() => {
@@ -1041,20 +1150,25 @@ export default function SessionScreen() {
     settings.enable_video_recording,
     updateSettings,
   ]);
-  const lastCompletedSetAt = setHistory[setHistory.length - 1]?.timestamp ?? null;
+  const lastCompletedSetAt =
+    setHistory[setHistory.length - 1]?.timestamp ?? null;
   const showAdviceDisplay = settings.session_display_advice_group;
   const nextSetPurposeLabel =
     NEXT_SET_PURPOSE_OPTIONS.find((option) => option.value === nextSetPurpose)
       ?.label ?? "フォーム固定優先";
   const plannedSetText =
-    plannedSetCount == null ? `現在Set ${currentSetIndex}` : `${plannedSetCount}セット予定`;
+    plannedSetCount == null
+      ? `現在Set ${currentSetIndex}`
+      : `${plannedSetCount}セット予定`;
   const plannedRpeText = plannedRpe == null ? "任意" : `RPE ${plannedRpe}`;
   const sessionDecision = useMemo(
     () =>
       SessionDecisionService.analyze({
         sets: setHistory.filter(
           (setItem) =>
-            !currentLift || setItem.lift === currentLift || setItem.lift === currentExercise?.name,
+            !currentLift ||
+            setItem.lift === currentLift ||
+            setItem.lift === currentExercise?.name,
         ),
         currentLoad,
         currentHeartRate,
@@ -1088,9 +1202,54 @@ export default function SessionScreen() {
         ? String(parsedReadiness.pain_score)
         : "0",
     );
-    setReadinessWeekDay((current) => parsedReadiness.week_day ?? current);
+    if (parsedReadiness.week_day) {
+      readinessWeekDayTouchedRef.current = true;
+      setReadinessWeekDay(parsedReadiness.week_day);
+      setProgramLocationHint("このセッションに保存済み");
+    }
     setReadinessMainLift(parsedReadiness.main_lift);
   }, [currentSession?.notes]);
+
+  useEffect(() => {
+    if (isSessionActive || currentSession?.session_id) return;
+    if (readinessWeekDayTouchedRef.current) return;
+
+    let mounted = true;
+
+    const inferNextProgramLocation = async () => {
+      try {
+        await DatabaseService.initialize();
+        const sessions = await DatabaseService.getSessions();
+        const latestReadiness = sessions
+          .map((session) => ({
+            session,
+            readiness: parseSessionReadinessMarker(session.notes),
+          }))
+          .find(({ readiness }) => parseProgramLocation(readiness?.week_day));
+        const previousLocation = parseProgramLocation(
+          latestReadiness?.readiness?.week_day,
+        );
+        if (!mounted || !previousLocation) return;
+
+        const nextLocation = getNextProgramLocation(previousLocation);
+        setReadinessWeekDay(nextLocation.value);
+        setProgramLocationHint(
+          `前回 ${previousLocation.value} から自動計算: ${nextLocation.value}`,
+        );
+      } catch (error) {
+        console.warn(
+          "[SessionScreen] Failed to infer program location from sessions:",
+          error,
+        );
+      }
+    };
+
+    void inferNextProgramLocation();
+
+    return () => {
+      mounted = false;
+    };
+  }, [currentSession?.session_id, isSessionActive]);
 
   const recoveryInitializedRef = useRef(false);
   const recoverySaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
@@ -1109,7 +1268,8 @@ export default function SessionScreen() {
         const recovery = await SessionRecoveryService.getActiveSession();
 
         if (recovery) {
-          const recoveryAge = Date.now() - new Date(recovery.saved_at).getTime();
+          const recoveryAge =
+            Date.now() - new Date(recovery.saved_at).getTime();
           if (recoveryAge <= SESSION_RECOVERY_MAX_AGE_MS) {
             const session =
               (await DatabaseService.getSession(recovery.session_id)) ??
@@ -1172,10 +1332,10 @@ export default function SessionScreen() {
         const lastExercise = await SessionRecoveryService.getLastExercise();
         const exercise =
           (lastExercise
-            ? exercises.find((item) => item.id === lastExercise.exercise_id) ??
+            ? (exercises.find((item) => item.id === lastExercise.exercise_id) ??
               exercises.find(
                 (item) => item.name === lastExercise.exercise_name,
-              )
+              ))
             : null) ?? null;
         if (exercise && !currentExercise) {
           setCurrentExercise(exercise);
@@ -1281,9 +1441,7 @@ export default function SessionScreen() {
   const [inputTargetWeight, setInputTargetWeight] = useState("");
   const [inputLoad, setInputLoad] = useState(formatLoadKg(currentLoad));
   const [inputPlannedSetCount, setInputPlannedSetCount] = useState("");
-  const [inputPlannedReps, setInputPlannedReps] = useState(
-    String(currentReps),
-  );
+  const [inputPlannedReps, setInputPlannedReps] = useState(String(currentReps));
   const [inputPlannedRpe, setInputPlannedRpe] = useState("");
   const [formVideoOverlayVisible, setFormVideoOverlayVisible] = useState(false);
   const sensorInputMutedBeforeVideoRef = useRef<boolean | null>(null);
@@ -1453,7 +1611,9 @@ export default function SessionScreen() {
     }
     const value = Number.parseInt(normalized, 10);
     if (Number.isNaN(value)) {
-      setInputPlannedSetCount(plannedSetCount == null ? "" : String(plannedSetCount));
+      setInputPlannedSetCount(
+        plannedSetCount == null ? "" : String(plannedSetCount),
+      );
       return;
     }
     setPlannedSetCount(value);
@@ -1535,9 +1695,8 @@ export default function SessionScreen() {
     }
 
     try {
-      const videos = await VideoRecordingService.getFormVideosForSession(
-        sessionId,
-      );
+      const videos =
+        await VideoRecordingService.getFormVideosForSession(sessionId);
       const counts: Record<string, number> = {};
       for (const video of videos) {
         if (!video.lift || video.set_index == null) continue;
@@ -1549,11 +1708,7 @@ export default function SessionScreen() {
       console.warn("[SessionScreen] Failed to load form videos:", error);
       setFormVideoCountsBySet({});
     }
-  }, [
-    currentSession?.session_id,
-    getSetKey,
-    settings.enable_video_recording,
-  ]);
+  }, [currentSession?.session_id, getSetKey, settings.enable_video_recording]);
 
   const handleOpenFormVideo = async (video: FormVideoRecord) => {
     try {
@@ -2022,7 +2177,9 @@ export default function SessionScreen() {
           session_history: Boolean(settings.session_display_session_history),
           velocity_chart: Boolean(settings.session_display_velocity_chart),
           recent_history: Boolean(settings.session_display_recent_history),
-          same_load_history: Boolean(settings.session_display_same_load_history),
+          same_load_history: Boolean(
+            settings.session_display_same_load_history,
+          ),
           form_video: Boolean(settings.enable_video_recording),
         },
       });
@@ -2049,10 +2206,7 @@ export default function SessionScreen() {
       sensorInputMutedBeforeVideoRef.current = null;
       setSensorInputMuted(previousMuted ?? false);
     }
-  }, [
-    setSensorInputMuted,
-    settings.enable_form_video_ble_safe_mode,
-  ]);
+  }, [setSensorInputMuted, settings.enable_form_video_ble_safe_mode]);
 
   const handleFormVideoOverlaySaved = useCallback(
     (record: FormVideoRecord) => {
@@ -2095,7 +2249,10 @@ export default function SessionScreen() {
       const now = new Date();
       const activeLift = currentLift || currentExercise?.name || "Unknown";
       const readiness = buildSessionReadinessPayload();
-      const packetDayRole = getCurrentLiftDayRole(activeLift, readiness.main_lift);
+      const packetDayRole = getCurrentLiftDayRole(
+        activeLift,
+        readiness.main_lift,
+      );
       const dbSessionSets = currentSession?.session_id
         ? await DatabaseService.getSetsForSession(currentSession.session_id)
         : [];
@@ -2114,6 +2271,15 @@ export default function SessionScreen() {
         recentExerciseHistory,
         currentExercise,
       );
+      const packetAccessoryRMTarget = buildAccessoryRMTargetContext({
+        lift: latestCompletedSet?.lift ?? activeLift,
+        currentLoadKg: latestCompletedSet?.load_kg ?? currentLoad,
+        currentReps: latestCompletedSet?.reps ?? currentReps,
+        currentE1RMKg: latestCompletedSet?.e1rm ?? null,
+        exercise: currentExercise,
+        historySets: recentExerciseHistory,
+        currentSet: latestCompletedSet,
+      });
       const decisionWorkingSetsLast =
         sessionDecision.workingSets[sessionDecision.workingSets.length - 1] ??
         null;
@@ -2152,16 +2318,16 @@ export default function SessionScreen() {
         latestCompletedSet == null ||
         Math.abs((latestCompletedSet.load_kg ?? 0) - currentLoad) < 0.26;
       const packetConsistencyWarnings = [
-        latestCompletedSet == null
-          ? "latest_completed_set_not_found"
-          : null,
+        latestCompletedSet == null ? "latest_completed_set_not_found" : null,
         latestCompletedSet != null && !latestSetIncludedInWorkingSets
           ? "latest_set_missing_from_working_sets"
           : null,
         latestCompletedSet != null && !latestSetWasAlreadyInDecisionWorkingSets
           ? "decision_working_sets_were_stale_before_packet_merge"
           : null,
-        !currentLoadMatchesLatest ? "current_load_differs_from_latest_set" : null,
+        !currentLoadMatchesLatest
+          ? "current_load_differs_from_latest_set"
+          : null,
         latestCompletedSet != null &&
         repHistory.length === 0 &&
         latestSetReps.length === 0
@@ -2171,7 +2337,9 @@ export default function SessionScreen() {
       const sessionDurationSeconds = sessionStartTime
         ? (Date.now() - sessionStartTime) / 1000
         : null;
-      const currentSetReps = (repHistory.length > 0 ? repHistory : latestSetReps)
+      const currentSetReps = (
+        repHistory.length > 0 ? repHistory : latestSetReps
+      )
         .map(
           (rep) =>
             `| ${rep.rep_index} | ${formatNumber(rep.mean_velocity)} | ${formatNumber(rep.peak_velocity)} | ${formatNumber(rep.rom_cm, 1, " cm")} | ${rep.hr_bpm ?? "-"} | ${rep.is_excluded ? "除外" : rep.is_failed ? "失敗" : rep.is_valid_rep ? "有効" : "無効"} |`,
@@ -2190,11 +2358,19 @@ export default function SessionScreen() {
             `| ${set.timestamp.split("T")[0]} | ${set.lift} | ${formatNumber(set.load_kg, 1, " kg")} | ${set.reps} | ${formatNumber(set.avg_velocity)} | ${formatVelocityLossTriplet(set)} | ${formatNumber(set.avg_rom_cm, 1, " cm")} | ${formatNumber(set.e1rm, 1, " kg")} |`,
         )
         .join("\n");
+      const accessoryTargetRows = packetAccessoryRMTarget.enabled
+        ? packetAccessoryRMTarget.conversionTable
+            .map(
+              (row) =>
+                `| ${row.reps} | ${formatAccessoryTargetLoad(row.targetLoadKg)} | ${formatNumber(row.targetE1RMKg, 1, "kg")} | ${formatNumber(row.currentLoadE1RMKg, 1, "kg")} | ${row.currentLoadHitsTarget == null ? "-" : row.currentLoadHitsTarget ? "yes" : "no"} |`,
+            )
+            .join("\n")
+        : "";
       const appDecisionJson = {
         session: {
           lift: currentLift || currentExercise?.name || null,
           phase: settings.target_training_phase,
-          week: settings.powerlifting_block_week,
+          week: currentProgramWeek,
           weekDay: readiness.week_day,
           mainLift: readiness.main_lift,
           dayRole: readiness.day_role,
@@ -2257,6 +2433,7 @@ export default function SessionScreen() {
         },
         fixedObservation,
         accessoryAndRom,
+        accessory_rm_target: packetAccessoryRMTarget,
         summary: {
           allSetAvgAV: sessionDecision.allSetAvgAV,
           workingSetAvgAV: sessionDecision.workingSetAvgAV,
@@ -2280,10 +2457,15 @@ export default function SessionScreen() {
               load: latestCompletedSet.load_kg,
               reps: latestCompletedSet.reps,
               av: latestCompletedSet.avg_velocity ?? null,
-              vlAvg: latestCompletedSet.velocity_loss_avg ?? latestCompletedSet.velocity_loss ?? null,
+              vlAvg:
+                latestCompletedSet.velocity_loss_avg ??
+                latestCompletedSet.velocity_loss ??
+                null,
               vlLast: latestCompletedSet.velocity_loss_last ?? null,
               vlMin: latestCompletedSet.velocity_loss_min ?? null,
-              timestamp: latestCompletedSet.end_timestamp ?? latestCompletedSet.timestamp,
+              timestamp:
+                latestCompletedSet.end_timestamp ??
+                latestCompletedSet.timestamp,
             }
           : null,
         trendFlags: sessionDecision.trendFlags,
@@ -2313,7 +2495,7 @@ export default function SessionScreen() {
         "",
         "## 2. 今日の目的・メニュー",
         `- 期分け: ${settings.target_training_phase}`,
-        `- ブロック週: Week ${settings.powerlifting_block_week}`,
+        `- ブロック週: Week ${currentProgramWeek}`,
         `- Week-Day: ${readiness.week_day ?? "-"}`,
         `- 主種目: ${readiness.main_lift ?? "-"} / 現在種目の扱い: ${currentDayRoleLabel}`,
         `- 減量中: ${readiness.dieting == null ? "-" : readiness.dieting ? "yes" : "no"}`,
@@ -2370,6 +2552,9 @@ export default function SessionScreen() {
         accessoryAndRom?.isAccessory
           ? `- 補助種目PR候補: e1RM ${accessoryAndRom.e1rmPR ? "yes" : "no"} / 同重量rep ${accessoryAndRom.sameLoadRepPR ? "yes" : "no"} / 同重量volume ${accessoryAndRom.sameLoadVolumePR ? "yes" : "no"}`
           : "- 補助種目PR候補: 対象外",
+        packetAccessoryRMTarget.enabled
+          ? `- 補助RM目標: 5〜15rep / 目標e1RM ${formatNumber(packetAccessoryRMTarget.targetE1RMKg, 1, "kg")} / ${packetAccessoryRMTarget.targetSource === "previous_best" ? "過去Best更新狙い" : "初回基準作成"}`
+          : "- 補助RM目標: 対象外",
         "",
         "## 7. PR判定用情報",
         `- 同種目履歴: ${recentExerciseHistory.length}件`,
@@ -2383,12 +2568,17 @@ export default function SessionScreen() {
         "|---|---|---:|---:|---:|---:|---:|---:|",
         sameLoadRows || "| - | - | - | - | - | - | - | - |",
         "",
-        "## 9. AI用JSON",
+        "## 9. 補助種目 5〜15rep換算表",
+        "| reps | 目標重量 | 目標e1RM | 現在重量ならe1RM | 現在重量で達成 |",
+        "|---:|---:|---:|---:|---|",
+        accessoryTargetRows || "| - | - | - | - | - |",
+        "",
+        "## 10. AI用JSON",
         "```json",
         JSON.stringify(appDecisionJson, null, 2),
         "```",
         "",
-        "## 10. ChatGPTへの依頼",
+        "## 11. ChatGPTへの依頼",
         "下の実測データだけを根拠に、疲労度、次セット重量、休憩時間、今日の狙いから外れていないか、PR扱いするかを実用的に判断してください。断定しすぎず、理由と条件つきで提案してください。",
       ].join("\n");
 
@@ -2415,7 +2605,10 @@ export default function SessionScreen() {
     try {
       const activeLift = currentLift || currentExercise?.name || "Unknown";
       const readiness = buildSessionReadinessPayload();
-      const packetDayRole = getCurrentLiftDayRole(activeLift, readiness.main_lift);
+      const packetDayRole = getCurrentLiftDayRole(
+        activeLift,
+        readiness.main_lift,
+      );
       const dbSessionSets = currentSession?.session_id
         ? await DatabaseService.getSetsForSession(currentSession.session_id)
         : [];
@@ -2438,6 +2631,23 @@ export default function SessionScreen() {
         recentExerciseHistory,
         currentExercise,
       );
+      const packetAccessoryRMTarget = buildAccessoryRMTargetContext({
+        lift: latestSet.lift,
+        currentLoadKg: latestSet.load_kg,
+        currentReps: latestSet.reps,
+        currentE1RMKg: latestSet.e1rm ?? null,
+        exercise: currentExercise,
+        historySets: recentExerciseHistory,
+        currentSet: latestSet,
+      });
+      const accessoryTargetRows = packetAccessoryRMTarget.enabled
+        ? packetAccessoryRMTarget.conversionTable
+            .map(
+              (row) =>
+                `| ${row.reps} | ${formatAccessoryTargetLoad(row.targetLoadKg)} | ${formatNumber(row.targetE1RMKg, 1, "kg")} | ${formatNumber(row.currentLoadE1RMKg, 1, "kg")} | ${row.currentLoadHitsTarget == null ? "-" : row.currentLoadHitsTarget ? "yes" : "no"} |`,
+            )
+            .join("\n")
+        : "";
 
       const reps = currentSession?.session_id
         ? await getAIPacketRepsForSet(currentSession.session_id, latestSet)
@@ -2450,7 +2660,7 @@ export default function SessionScreen() {
       const supervisorJson = {
         date: new Date().toISOString().split("T")[0],
         session_id: currentSession?.session_id ?? latestSet.session_id,
-        week_day: readiness.week_day ?? `Week${settings.powerlifting_block_week}`,
+        week_day: readiness.week_day ?? `Week${currentProgramWeek}`,
         main_lift: readiness.main_lift,
         day_role: readiness.day_role,
         required_optional: packetDayRole,
@@ -2472,7 +2682,8 @@ export default function SessionScreen() {
           first_rep_mps: firstRep?.mean_velocity ?? null,
           last_rep_mps: lastRep?.mean_velocity ?? null,
           avg_mps: latestSet.avg_velocity ?? null,
-          vl_avg_pct: latestSet.velocity_loss_avg ?? latestSet.velocity_loss ?? null,
+          vl_avg_pct:
+            latestSet.velocity_loss_avg ?? latestSet.velocity_loss ?? null,
           vl_last_pct: latestSet.velocity_loss_last ?? null,
           vl_min_pct: latestSet.velocity_loss_min ?? null,
         },
@@ -2483,12 +2694,13 @@ export default function SessionScreen() {
         },
         fixedObservation,
         accessoryAndRom,
+        accessory_rm_target: packetAccessoryRMTarget,
         notes: latestSet.notes ?? null,
       };
       const packet = [
         "# One-Set Supervisor Packet",
         `出力日時: ${formatDateTimeWithSeconds(new Date())}`,
-        `Week-Day: ${readiness.week_day ?? `Week${settings.powerlifting_block_week}`}`,
+        `Week-Day: ${readiness.week_day ?? `Week${currentProgramWeek}`}`,
         `主種目: ${readiness.main_lift ?? "-"} / 現在種目の扱い: ${currentDayRoleLabel}`,
         `種目: ${latestSet.lift}`,
         `予定: ${formatNumber(currentLoad, 1, "kg")} x ${currentReps} / ${plannedSetText} / ${plannedRpeText}`,
@@ -2509,7 +2721,15 @@ export default function SessionScreen() {
         accessoryAndRom?.isAccessory
           ? `補助PR候補: e1RM ${accessoryAndRom.e1rmPR ? "yes" : "no"} / rep ${accessoryAndRom.sameLoadRepPR ? "yes" : "no"} / volume ${accessoryAndRom.sameLoadVolumePR ? "yes" : "no"}`
           : "補助PR候補: 対象外",
+        packetAccessoryRMTarget.enabled
+          ? `補助RM目標: 5〜15rep / 目標e1RM ${formatNumber(packetAccessoryRMTarget.targetE1RMKg, 1, "kg")} / ${packetAccessoryRMTarget.targetSource === "previous_best" ? "過去Best更新狙い" : "初回基準作成"}`
+          : "補助RM目標: 対象外",
         `メモ: ${latestSet.notes ?? "-"}`,
+        "",
+        "## 補助種目 5〜15rep換算表",
+        "| reps | 目標重量 | 目標e1RM | 現在重量ならe1RM | 現在重量で達成 |",
+        "|---:|---:|---:|---:|---|",
+        accessoryTargetRows || "| - | - | - | - | - |",
         "",
         "```json",
         JSON.stringify(supervisorJson, null, 2),
@@ -2519,7 +2739,9 @@ export default function SessionScreen() {
       await Clipboard.setStringAsync(packet);
       const openResult = await openChatGPT();
       Alert.alert(
-        openResult === "none" ? "コピーしました" : "監督パケットをコピーしました",
+        openResult === "none"
+          ? "コピーしました"
+          : "監督パケットをコピーしました",
         openResult === "none"
           ? "最新1セット分の監督パケットをコピーしました。"
           : "ChatGPTへ貼り付けて監督に相談してください。",
@@ -2623,8 +2845,8 @@ export default function SessionScreen() {
 
   const getVBTScreenCrashReport = async (): Promise<string | null> => {
     const snapshot =
-        previousVbtCrashContext ??
-        (await CrashReportService.getLastVBTScreenContext());
+      previousVbtCrashContext ??
+      (await CrashReportService.getLastVBTScreenContext());
     if (!snapshot) {
       Alert.alert(
         "クラッシュ記録なし",
@@ -2656,7 +2878,9 @@ export default function SessionScreen() {
       }
 
       Alert.alert(
-        canShare ? "クラッシュ報告を共有しました" : "クラッシュ報告をコピーしました",
+        canShare
+          ? "クラッシュ報告を共有しました"
+          : "クラッシュ報告をコピーしました",
         canShare
           ? "共有先でGmailを選ぶと、Codexへ貼りやすいクラッシュ状況レポートを送れます。本文もクリップボードにコピー済みです。記録はクリアするまで残します。"
           : "共有シートが使えないため、本文をクリップボードにコピーしました。",
@@ -2687,7 +2911,10 @@ export default function SessionScreen() {
         "Gmailを選ぶと本文として送れます。記録はクリアするまで残します。",
       );
     } catch (error) {
-      console.error("[SessionScreen] Failed to share VBT crash report text:", error);
+      console.error(
+        "[SessionScreen] Failed to share VBT crash report text:",
+        error,
+      );
       Alert.alert(
         "本文共有失敗",
         "クラッシュ報告本文の共有に失敗しました。現在の診断コピーを試してください。",
@@ -2726,7 +2953,10 @@ export default function SessionScreen() {
         }`,
       );
     } catch (error) {
-      console.error("[SessionScreen] Failed to upload VBT crash report:", error);
+      console.error(
+        "[SessionScreen] Failed to upload VBT crash report:",
+        error,
+      );
       Alert.alert(
         "Drive送信失敗",
         "クラッシュ報告をDriveへ送信できませんでした。",
@@ -2953,6 +3183,17 @@ export default function SessionScreen() {
               <View style={styles.focusModeInfoCell}>
                 <Text style={styles.focusModeInfoLabel}>POWER</Text>
                 <Text style={styles.focusModeInfoValue}>{focusPowerText}</Text>
+              </View>
+              <View style={styles.focusModeInfoCell}>
+                <Text style={styles.focusModeInfoLabel}>BEST AV</Text>
+                <Text style={styles.focusModeInfoValue}>
+                  {sameLoadFastestText}
+                </Text>
+                <Text style={styles.focusModeInfoMeta} numberOfLines={1}>
+                  {sameLoadFastestDeltaText
+                    ? `now ${sameLoadFastestDeltaText}`
+                    : sameLoadFastestMeta}
+                </Text>
               </View>
             </View>
           )}
@@ -3268,13 +3509,75 @@ export default function SessionScreen() {
             </View>
           )}
 
+          {accessoryRMTarget.enabled && (
+            <View style={styles.accessoryTargetCard}>
+              <View style={styles.accessoryTargetHeader}>
+                <View>
+                  <Text style={styles.accessoryTargetEyebrow}>
+                    ACCESSORY RM TARGET
+                  </Text>
+                  <Text style={styles.accessoryTargetTitle}>
+                    5〜15rep 換算表
+                  </Text>
+                </View>
+                <Text style={styles.accessoryTargetBadge}>
+                  {accessoryRMTarget.targetSource === "previous_best"
+                    ? "更新狙い"
+                    : "初回基準"}
+                </Text>
+              </View>
+              <View style={styles.accessoryTargetGrid}>
+                <View style={styles.accessoryTargetMetric}>
+                  <Text style={styles.accessoryTargetLabel}>今回e1RM</Text>
+                  <Text style={styles.accessoryTargetValue}>
+                    {formatNumber(accessoryRMTarget.currentE1RMKg, 1, "kg")}
+                  </Text>
+                </View>
+                <View style={styles.accessoryTargetMetric}>
+                  <Text style={styles.accessoryTargetLabel}>過去Best</Text>
+                  <Text style={styles.accessoryTargetValue}>
+                    {formatNumber(accessoryRMTarget.previousBestE1RMKg, 1, "kg")}
+                  </Text>
+                </View>
+                <View style={styles.accessoryTargetMetric}>
+                  <Text style={styles.accessoryTargetLabel}>目標e1RM</Text>
+                  <Text style={styles.accessoryTargetValue}>
+                    {formatNumber(accessoryRMTarget.targetE1RMKg, 1, "kg")}
+                  </Text>
+                </View>
+              </View>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.accessoryTargetTable}
+              >
+                {accessoryRMTarget.conversionTable.map((row) => (
+                  <View key={`accessory-rm-${row.reps}`} style={styles.accessoryTargetCell}>
+                    <Text style={styles.accessoryTargetRep}>{row.reps}rep</Text>
+                    <Text style={styles.accessoryTargetLoad}>
+                      {formatAccessoryTargetLoad(row.targetLoadKg)}
+                    </Text>
+                    <Text style={styles.accessoryTargetCellMeta}>
+                      e1RM {formatNumber(row.targetE1RMKg, 1, "kg")}
+                    </Text>
+                  </View>
+                ))}
+              </ScrollView>
+              <Text style={styles.accessoryTargetNote}>
+                各補助種目1セットだけRM換算セットマックス狙い。RPE9.5以上・痛み・ROM15%以上急変・主役リフトに響く疲労で終了。
+              </Text>
+            </View>
+          )}
+
           <View style={styles.readinessCard}>
             <View style={styles.readinessHeader}>
               <View>
                 <Text style={styles.readinessKicker}>SUPERVISOR CONTEXT</Text>
                 <Text style={styles.readinessTitle}>監督チェック</Text>
               </View>
-              <Text style={styles.readinessRoleBadge}>{currentDayRoleLabel}</Text>
+              <Text style={styles.readinessRoleBadge}>
+                {currentDayRoleLabel}
+              </Text>
             </View>
             <View style={styles.readinessGrid}>
               <View style={styles.readinessField}>
@@ -3288,6 +3591,9 @@ export default function SessionScreen() {
                   </Text>
                   <Text style={styles.readinessSelectArrow}>▼</Text>
                 </TouchableOpacity>
+                <Text style={styles.readinessHintSmall}>
+                  {programLocationHint}
+                </Text>
               </View>
               <View style={styles.readinessField}>
                 <Text style={styles.readinessLabel}>痛み 0-10</Text>
@@ -3419,7 +3725,9 @@ export default function SessionScreen() {
                           styles.weekDayOptionActive,
                       ]}
                       onPress={() => {
+                        readinessWeekDayTouchedRef.current = true;
                         setReadinessWeekDay(option.value);
+                        setProgramLocationHint("手動選択");
                         setWeekDayPickerVisible(false);
                       }}
                     >
@@ -3538,8 +3846,8 @@ export default function SessionScreen() {
                   "form_video_overlay_open_attempt"
                     ? "前回クラッシュ疑いのため一時停止中"
                     : settings.enable_video_recording
-                    ? "セッション画面に録画ボタンを表示中"
-                    : "セッション画面から録画ボタンを出す"}
+                      ? "セッション画面に録画ボタンを表示中"
+                      : "セッション画面から録画ボタンを出す"}
                 </Text>
               </View>
               <View style={styles.vlToggleRow}>
@@ -3611,7 +3919,8 @@ export default function SessionScreen() {
                 <View style={styles.protocolGrid}>
                   <View style={styles.protocolMetric}>
                     <Text style={styles.protocolMetricLabel}>
-                      Week {blockWeekPlan.week}
+                      {currentProgramLocation?.value ??
+                        `Week${blockWeekPlan.week}`}
                     </Text>
                     <Text style={styles.protocolMetricValue}>
                       {blockWeekPlan.phaseLabel}
@@ -4406,7 +4715,9 @@ export default function SessionScreen() {
                 <>
                   {/* 速度ゾーンバッジ */}
                   {(() => {
-                    const zone = VBTGuideService.getZone(liveData.mean_velocity);
+                    const zone = VBTGuideService.getZone(
+                      liveData.mean_velocity,
+                    );
                     return (
                       <View
                         style={[styles.zoneBadge, { borderColor: zone.color }]}
@@ -4891,9 +5202,7 @@ export default function SessionScreen() {
                           <Text style={styles.setMetricChipText}>
                             HR→120{" "}
                             {set.hr_recovery_to_120_s != null
-                              ? formatDurationSeconds(
-                                  set.hr_recovery_to_120_s,
-                                )
+                              ? formatDurationSeconds(set.hr_recovery_to_120_s)
                               : "-"}
                           </Text>
                           <Text style={styles.setMetricChipText}>
@@ -5189,8 +5498,13 @@ function ensureLatestSetInTrendRows(
   baselineROM: number | null,
 ) {
   if (!latestSet) return rows;
-  const withoutLatest = rows.filter((row) => !isSameSetTrendRow(row, latestSet));
-  return [...withoutLatest, setToTrendRow(latestSet, bestWorkingAV, baselineROM)];
+  const withoutLatest = rows.filter(
+    (row) => !isSameSetTrendRow(row, latestSet),
+  );
+  return [
+    ...withoutLatest,
+    setToTrendRow(latestSet, bestWorkingAV, baselineROM),
+  ];
 }
 
 function getFixedObservationLoads(lift: string) {
@@ -5222,7 +5536,9 @@ function buildFixedObservationSnapshot(
   if (!latestSet?.avg_velocity) return null;
 
   const ladder = getFixedObservationLoads(latestSet.lift);
-  const stepLoad = ladder.find((load) => Math.abs(load - latestSet.load_kg) < 0.26);
+  const stepLoad = ladder.find(
+    (load) => Math.abs(load - latestSet.load_kg) < 0.26,
+  );
   if (stepLoad == null) return null;
 
   const canonical = getCanonicalExerciseName(latestSet.lift);
@@ -5267,7 +5583,9 @@ function buildAccessoryAndRomSnapshot(
 ) {
   if (!latestSet) return null;
   const canonical = getCanonicalExerciseName(latestSet.lift);
-  const isAccessory = currentExercise ? !isBig3(currentExercise.category) : true;
+  const isAccessory = currentExercise
+    ? !isBig3(currentExercise.category)
+    : true;
   const sameLiftHistory = recentHistory.filter(
     (set) => getCanonicalExerciseName(set.lift) === canonical,
   );
@@ -5443,8 +5761,8 @@ const styles = StyleSheet.create({
   },
   screenFrameRecording: {
     borderWidth: 2,
-    borderColor: "#ff3b30",
-    shadowColor: "#ff3b30",
+    borderColor: "#ef4444",
+    shadowColor: "#ef4444",
     shadowOpacity: 0.5,
     shadowRadius: 6,
     elevation: 5,
@@ -5467,13 +5785,13 @@ const styles = StyleSheet.create({
   backButtonText: {
     color: GarageTheme.accent,
     fontSize: 24,
-    fontWeight: "700",
+    fontWeight: "500",
   },
   title: {
     fontSize: 24,
-    fontWeight: "800",
+    fontWeight: "600",
     color: GarageTheme.textStrong,
-    letterSpacing: 1.4,
+    letterSpacing: 0,
   },
   setNumber: {
     fontSize: 16,
@@ -5483,7 +5801,7 @@ const styles = StyleSheet.create({
     margin: 16,
     padding: 14,
     backgroundColor: GarageTheme.surface,
-    borderRadius: 16,
+    borderRadius: 12,
     borderWidth: 2,
     borderColor: GarageTheme.borderStrong,
     shadowColor: GarageTheme.accent,
@@ -5514,13 +5832,13 @@ const styles = StyleSheet.create({
   simulatorTitle: {
     color: GarageTheme.textStrong,
     fontSize: 13,
-    fontWeight: "800",
-    letterSpacing: 1,
+    fontWeight: "600",
+    letterSpacing: 0,
   },
   simulatorMeta: {
     color: GarageTheme.textSubtle,
     fontSize: 10,
-    fontWeight: "700",
+    fontWeight: "500",
     marginTop: 2,
   },
   simulatorActions: {
@@ -5543,7 +5861,7 @@ const styles = StyleSheet.create({
   simulatorButtonText: {
     color: GarageTheme.accentSoft,
     fontSize: 11,
-    fontWeight: "800",
+    fontWeight: "600",
   },
   hrBadge: {
     alignSelf: "flex-end",
@@ -5570,9 +5888,9 @@ const styles = StyleSheet.create({
   signalLabel: {
     fontSize: 9,
     fontWeight: "bold",
-    color: "#FFF",
+    color: "#f7f8f8",
     textTransform: "uppercase",
-    letterSpacing: 0.5,
+    letterSpacing: 0,
   },
   statusDot: {
     width: 10,
@@ -5583,15 +5901,15 @@ const styles = StyleSheet.create({
   statusText: {
     fontSize: 14,
     color: GarageTheme.textStrong,
-    fontWeight: "700",
-    letterSpacing: 0.6,
+    fontWeight: "500",
+    letterSpacing: 0,
   },
   exerciseCard: {
     marginHorizontal: 16,
     marginBottom: 16,
     padding: 16,
     backgroundColor: GarageTheme.surface,
-    borderRadius: 16,
+    borderRadius: 12,
     borderWidth: 2,
     borderColor: GarageTheme.border,
     shadowColor: GarageTheme.textStrong,
@@ -5604,8 +5922,8 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: GarageTheme.textSubtle,
     marginBottom: 10,
-    letterSpacing: 1.8,
-    fontWeight: "800",
+    letterSpacing: 0,
+    fontWeight: "600",
   },
   exerciseSelector: {
     flexDirection: "row",
@@ -5630,7 +5948,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     padding: 14,
     backgroundColor: GarageTheme.accentSoft + "15",
-    borderRadius: 14,
+    borderRadius: 12,
     borderWidth: 2,
     borderColor: GarageTheme.accentSoft + "40",
   },
@@ -5642,7 +5960,7 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     color: GarageTheme.accentSoft,
     textTransform: "uppercase",
-    letterSpacing: 0.5,
+    letterSpacing: 0,
     marginBottom: 4,
   },
   noteText: {
@@ -5655,7 +5973,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     padding: 14,
     backgroundColor: GarageTheme.surfaceAlt,
-    borderRadius: 14,
+    borderRadius: 12,
     borderWidth: 2,
     borderColor: GarageTheme.border,
   },
@@ -5670,7 +5988,7 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     color: GarageTheme.textMuted,
     textTransform: "uppercase",
-    letterSpacing: 0.5,
+    letterSpacing: 0,
   },
   sessionNoteEditButton: {
     paddingHorizontal: 8,
@@ -5726,6 +6044,105 @@ const styles = StyleSheet.create({
     color: GarageTheme.accent,
     fontSize: 16,
   },
+  accessoryTargetCard: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+    padding: 14,
+    borderRadius: 12,
+    backgroundColor: "#16131f",
+    borderWidth: 2,
+    borderColor: "#6f4cff",
+  },
+  accessoryTargetHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 12,
+    marginBottom: 12,
+  },
+  accessoryTargetEyebrow: {
+    color: "#b7a8ff",
+    fontSize: 10,
+    fontWeight: "600",
+    letterSpacing: 0,
+    marginBottom: 4,
+  },
+  accessoryTargetTitle: {
+    color: GarageTheme.textStrong,
+    fontSize: 18,
+    fontWeight: "600",
+  },
+  accessoryTargetBadge: {
+    color: "#130f20",
+    backgroundColor: "#b7a8ff",
+    overflow: "hidden",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  accessoryTargetGrid: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 12,
+  },
+  accessoryTargetMetric: {
+    flex: 1,
+    minHeight: 62,
+    padding: 10,
+    borderRadius: 10,
+    backgroundColor: "#221b35",
+    borderWidth: 1,
+    borderColor: "#3d3165",
+  },
+  accessoryTargetLabel: {
+    color: "#a395d8",
+    fontSize: 10,
+    fontWeight: "600",
+    marginBottom: 5,
+  },
+  accessoryTargetValue: {
+    color: GarageTheme.textStrong,
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  accessoryTargetTable: {
+    gap: 8,
+    paddingRight: 8,
+  },
+  accessoryTargetCell: {
+    width: 86,
+    padding: 9,
+    borderRadius: 10,
+    backgroundColor: "#0f0d16",
+    borderWidth: 1,
+    borderColor: "#3d3165",
+  },
+  accessoryTargetRep: {
+    color: "#b7a8ff",
+    fontSize: 11,
+    fontWeight: "600",
+    marginBottom: 4,
+  },
+  accessoryTargetLoad: {
+    color: GarageTheme.textStrong,
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  accessoryTargetCellMeta: {
+    color: GarageTheme.textMuted,
+    fontSize: 9,
+    fontWeight: "500",
+    marginTop: 4,
+  },
+  accessoryTargetNote: {
+    color: "#c6bddf",
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 10,
+    fontWeight: "500",
+  },
   section: {
     paddingHorizontal: 16,
     paddingBottom: 16,
@@ -5745,7 +6162,7 @@ const styles = StyleSheet.create({
   },
   recentHistoryCard: {
     backgroundColor: GarageTheme.surface,
-    borderRadius: 16,
+    borderRadius: 12,
     borderWidth: 2,
     padding: 14,
     minWidth: 140,
@@ -5758,9 +6175,9 @@ const styles = StyleSheet.create({
   recentHistoryDate: {
     fontSize: 12,
     color: GarageTheme.textMuted,
-    fontWeight: "700",
+    fontWeight: "500",
     marginBottom: 10,
-    letterSpacing: 0.5,
+    letterSpacing: 0,
   },
   recentHistoryStats: {
     gap: 8,
@@ -5777,20 +6194,20 @@ const styles = StyleSheet.create({
   recentHistoryStatLabel: {
     fontSize: 10,
     color: GarageTheme.textSubtle,
-    fontWeight: "700",
-    letterSpacing: 0.4,
+    fontWeight: "500",
+    letterSpacing: 0,
   },
   recentHistoryStatValue: {
     fontSize: 14,
     color: GarageTheme.textStrong,
-    fontWeight: "800",
+    fontWeight: "600",
   },
   recentHistoryE1RM: {
     fontSize: 12,
     color: GarageTheme.accent,
-    fontWeight: "800",
+    fontWeight: "600",
     marginTop: 10,
-    letterSpacing: 0.3,
+    letterSpacing: 0,
   },
   inputRow: {
     flexDirection: "row",
@@ -5830,7 +6247,7 @@ const styles = StyleSheet.create({
     backgroundColor: GarageTheme.border,
     width: 44,
     height: 44,
-    borderRadius: 22,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
@@ -5868,7 +6285,7 @@ const styles = StyleSheet.create({
     color: GarageTheme.textStrong,
     textAlign: "center",
     fontSize: 18,
-    fontWeight: "700",
+    fontWeight: "500",
   },
   plannedInputsGrid: {
     marginTop: 14,
@@ -5886,14 +6303,14 @@ const styles = StyleSheet.create({
   plannedInputLabel: {
     color: GarageTheme.textMuted,
     fontSize: 11,
-    fontWeight: "800",
+    fontWeight: "600",
     marginBottom: 6,
   },
   plannedInput: {
     minHeight: 38,
     color: GarageTheme.textStrong,
     fontSize: 17,
-    fontWeight: "800",
+    fontWeight: "600",
     textAlign: "center",
     paddingVertical: 4,
   },
@@ -5908,7 +6325,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     padding: 16,
     backgroundColor: GarageTheme.surface,
-    borderRadius: 16,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: GarageTheme.border,
   },
@@ -5922,19 +6339,19 @@ const styles = StyleSheet.create({
   readinessKicker: {
     color: GarageTheme.textSubtle,
     fontSize: 10,
-    fontWeight: "900",
-    letterSpacing: 1.4,
+    fontWeight: "600",
+    letterSpacing: 0,
     marginBottom: 4,
   },
   readinessTitle: {
     color: GarageTheme.textStrong,
     fontSize: 18,
-    fontWeight: "900",
+    fontWeight: "600",
   },
   readinessRoleBadge: {
     color: GarageTheme.info,
     fontSize: 12,
-    fontWeight: "900",
+    fontWeight: "600",
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,
@@ -5952,7 +6369,7 @@ const styles = StyleSheet.create({
   readinessLabel: {
     color: GarageTheme.textMuted,
     fontSize: 11,
-    fontWeight: "800",
+    fontWeight: "600",
     marginBottom: 7,
   },
   readinessInput: {
@@ -5965,7 +6382,7 @@ const styles = StyleSheet.create({
     backgroundColor: GarageTheme.background,
     color: GarageTheme.textStrong,
     fontSize: 15,
-    fontWeight: "700",
+    fontWeight: "500",
   },
   readinessSelect: {
     minHeight: 42,
@@ -5983,12 +6400,18 @@ const styles = StyleSheet.create({
   readinessSelectText: {
     color: GarageTheme.textStrong,
     fontSize: 15,
-    fontWeight: "800",
+    fontWeight: "600",
   },
   readinessSelectArrow: {
     color: GarageTheme.info,
     fontSize: 11,
-    fontWeight: "900",
+    fontWeight: "600",
+  },
+  readinessHintSmall: {
+    marginTop: 6,
+    color: GarageTheme.textSubtle,
+    fontSize: 10,
+    lineHeight: 14,
   },
   modalBackdrop: {
     flex: 1,
@@ -5998,7 +6421,7 @@ const styles = StyleSheet.create({
   },
   weekDayPickerCard: {
     padding: 18,
-    borderRadius: 18,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: GarageTheme.borderStrong,
     backgroundColor: GarageTheme.surface,
@@ -6006,7 +6429,7 @@ const styles = StyleSheet.create({
   weekDayPickerTitle: {
     color: GarageTheme.textStrong,
     fontSize: 18,
-    fontWeight: "900",
+    fontWeight: "600",
     marginBottom: 14,
   },
   weekDayPickerGrid: {
@@ -6031,7 +6454,7 @@ const styles = StyleSheet.create({
   weekDayOptionText: {
     color: GarageTheme.textMuted,
     fontSize: 12,
-    fontWeight: "800",
+    fontWeight: "600",
   },
   weekDayOptionTextActive: {
     color: GarageTheme.textStrong,
@@ -6047,7 +6470,7 @@ const styles = StyleSheet.create({
   weekDayCancelText: {
     color: GarageTheme.textStrong,
     fontSize: 14,
-    fontWeight: "800",
+    fontWeight: "600",
   },
   readinessChipRow: {
     flexDirection: "row",
@@ -6070,7 +6493,7 @@ const styles = StyleSheet.create({
   readinessChipText: {
     color: GarageTheme.textMuted,
     fontSize: 13,
-    fontWeight: "800",
+    fontWeight: "600",
   },
   readinessChipTextActive: {
     color: GarageTheme.textStrong,
@@ -6084,7 +6507,7 @@ const styles = StyleSheet.create({
     margin: 16,
     padding: 18,
     backgroundColor: GarageTheme.surface,
-    borderRadius: 16,
+    borderRadius: 12,
     borderWidth: 2,
     borderColor: GarageTheme.success,
     minHeight: 120,
@@ -6097,11 +6520,11 @@ const styles = StyleSheet.create({
   },
   dataTitle: {
     fontSize: 18,
-    fontWeight: "800",
+    fontWeight: "600",
     color: GarageTheme.success,
     marginBottom: 12,
     textAlign: "left",
-    letterSpacing: 1.1,
+    letterSpacing: 0,
   },
   dataRow: {
     flexDirection: "row",
@@ -6115,12 +6538,12 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: GarageTheme.textMuted,
     flex: 1,
-    letterSpacing: 1.4,
-    fontWeight: "700",
+    letterSpacing: 0,
+    fontWeight: "500",
   },
   dataValue: {
     fontSize: 20,
-    fontWeight: "800",
+    fontWeight: "600",
     color: GarageTheme.textStrong,
   },
   helpIcon: {
@@ -6140,7 +6563,7 @@ const styles = StyleSheet.create({
     color: GarageTheme.textSubtle,
     textAlign: "center",
     fontSize: 13,
-    letterSpacing: 1.2,
+    letterSpacing: 0,
   },
   buttonContainer: {
     paddingHorizontal: 16,
@@ -6149,7 +6572,7 @@ const styles = StyleSheet.create({
   },
   button: {
     padding: 18,
-    borderRadius: 14,
+    borderRadius: 12,
     alignItems: "center",
     shadowColor: GarageTheme.textStrong,
     shadowOpacity: 0.15,
@@ -6180,13 +6603,13 @@ const styles = StyleSheet.create({
   buttonText: {
     color: GarageTheme.textStrong,
     fontSize: 17,
-    fontWeight: "800",
-    letterSpacing: 0.6,
+    fontWeight: "600",
+    letterSpacing: 0,
   },
   warmupButton: {
     flex: 1,
     padding: 16,
-    borderRadius: 14,
+    borderRadius: 12,
     alignItems: "center",
     backgroundColor: GarageTheme.surfaceAlt,
     borderWidth: 2,
@@ -6205,13 +6628,13 @@ const styles = StyleSheet.create({
   warmupButtonText: {
     color: GarageTheme.textStrong,
     fontSize: 14,
-    fontWeight: "800",
-    letterSpacing: 0.4,
+    fontWeight: "600",
+    letterSpacing: 0,
   },
   setCard: {
     backgroundColor: GarageTheme.surfaceAlt,
     padding: 16,
-    borderRadius: 16,
+    borderRadius: 12,
     marginBottom: 12,
     borderWidth: 2,
     borderColor: GarageTheme.border,
@@ -6230,10 +6653,10 @@ const styles = StyleSheet.create({
   setExerciseName: {
     flex: 1,
     fontSize: 18,
-    fontWeight: "800",
+    fontWeight: "600",
     color: GarageTheme.textStrong,
     marginRight: 8,
-    letterSpacing: 0.3,
+    letterSpacing: 0,
   },
   setMetaRow: {
     flexDirection: "row",
@@ -6248,14 +6671,14 @@ const styles = StyleSheet.create({
   },
   setNumberText: {
     fontSize: 14,
-    fontWeight: "800",
+    fontWeight: "600",
     color: GarageTheme.textMuted,
-    letterSpacing: 0.6,
+    letterSpacing: 0,
   },
   setLoad: {
     fontSize: 16,
     color: GarageTheme.accent,
-    fontWeight: "700",
+    fontWeight: "500",
   },
   setRowDetail: {
     flexDirection: "row",
@@ -6267,8 +6690,8 @@ const styles = StyleSheet.create({
   setMetricChipText: {
     fontSize: 11,
     color: GarageTheme.textMuted,
-    fontWeight: "700",
-    letterSpacing: 0.3,
+    fontWeight: "500",
+    letterSpacing: 0,
     backgroundColor: GarageTheme.background,
     paddingHorizontal: 8,
     paddingVertical: 4,
@@ -6333,27 +6756,27 @@ const styles = StyleSheet.create({
     backgroundColor: GarageTheme.chip,
   },
   setDeleteActionButton: {
-    borderColor: "#ff4d4f",
+    borderColor: "#ef4444",
     backgroundColor: "rgba(255, 77, 79, 0.08)",
   },
   setActionButtonText: {
     color: GarageTheme.textStrong,
     fontSize: 13,
-    fontWeight: "800",
-    letterSpacing: 0.4,
+    fontWeight: "600",
+    letterSpacing: 0,
   },
   setDeleteActionButtonText: {
-    color: "#ff6b6b",
+    color: "#ef4444",
   },
   setVelocity: {
     fontSize: 14,
     color: GarageTheme.success,
-    fontWeight: "700",
+    fontWeight: "500",
   },
   setVelocityLoss: {
     fontSize: 13,
     color: GarageTheme.warning,
-    fontWeight: "700",
+    fontWeight: "500",
   },
   // セッション開始/アクティブバナー
   sessionStartBanner: {
@@ -6361,7 +6784,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     padding: 18,
     backgroundColor: GarageTheme.surface,
-    borderRadius: 16,
+    borderRadius: 12,
     borderWidth: 2,
     borderColor: GarageTheme.accentSoft + "60",
     shadowColor: GarageTheme.accentSoft,
@@ -6387,7 +6810,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     padding: 14,
     backgroundColor: GarageTheme.surface,
-    borderRadius: 14,
+    borderRadius: 12,
     borderWidth: 2,
     borderColor: GarageTheme.success + "40",
     shadowColor: GarageTheme.success,
@@ -6405,7 +6828,7 @@ const styles = StyleSheet.create({
     backgroundColor: GarageTheme.surfaceAlt,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    borderRadius: 22,
+    borderRadius: 12,
     borderWidth: 2,
     borderColor: GarageTheme.borderStrong,
   },
@@ -6416,8 +6839,8 @@ const styles = StyleSheet.create({
   sensorMuteButtonText: {
     color: GarageTheme.textMuted,
     fontSize: 12,
-    fontWeight: "800",
-    letterSpacing: 0.3,
+    fontWeight: "600",
+    letterSpacing: 0,
   },
   sensorMuteButtonTextActive: {
     color: GarageTheme.textStrong,
@@ -6426,7 +6849,7 @@ const styles = StyleSheet.create({
     backgroundColor: GarageTheme.panel,
     paddingHorizontal: 18,
     paddingVertical: 10,
-    borderRadius: 24,
+    borderRadius: 12,
     borderWidth: 2,
     borderColor: GarageTheme.borderStrong,
     shadowColor: GarageTheme.textStrong,
@@ -6452,13 +6875,13 @@ const styles = StyleSheet.create({
   pauseBtnIcon: {
     color: GarageTheme.textStrong,
     fontSize: 16,
-    fontWeight: "700",
+    fontWeight: "500",
   },
   pauseBtnText: {
     color: GarageTheme.textStrong,
     fontSize: 14,
-    fontWeight: "800",
-    letterSpacing: 0.3,
+    fontWeight: "600",
+    letterSpacing: 0,
   },
   // レストバナー
   restBanner: {
@@ -6466,7 +6889,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     padding: 18,
     backgroundColor: GarageTheme.surface,
-    borderRadius: 16,
+    borderRadius: 12,
     borderWidth: 2,
     borderColor: GarageTheme.info + "40",
     shadowColor: GarageTheme.info,
@@ -6484,8 +6907,8 @@ const styles = StyleSheet.create({
   restLabel: {
     fontSize: 13,
     color: GarageTheme.info,
-    fontWeight: "800",
-    letterSpacing: 1.2,
+    fontWeight: "600",
+    letterSpacing: 0,
     textTransform: "uppercase",
   },
   timerRow: {
@@ -6495,10 +6918,10 @@ const styles = StyleSheet.create({
   },
   timerText: {
     fontSize: 32,
-    fontWeight: "900",
+    fontWeight: "600",
     color: GarageTheme.textStrong,
     fontVariant: ["tabular-nums"],
-    letterSpacing: 2,
+    letterSpacing: 0,
   },
   timerHrBadge: {
     flexDirection: "row",
@@ -6514,14 +6937,14 @@ const styles = StyleSheet.create({
   timerHrLabel: {
     color: GarageTheme.danger,
     fontSize: 10,
-    fontWeight: "800",
-    letterSpacing: 0.5,
+    fontWeight: "600",
+    letterSpacing: 0,
     textTransform: "uppercase",
   },
   timerHrText: {
     color: GarageTheme.danger,
     fontSize: 18,
-    fontWeight: "900",
+    fontWeight: "600",
   },
   readyBadge: {
     backgroundColor: GarageTheme.success,
@@ -6534,8 +6957,8 @@ const styles = StyleSheet.create({
   readyText: {
     color: GarageTheme.textStrong,
     fontSize: 13,
-    fontWeight: "800",
-    letterSpacing: 0.8,
+    fontWeight: "600",
+    letterSpacing: 0,
   },
   startNextSetButton: {
     backgroundColor: GarageTheme.success,
@@ -6552,8 +6975,8 @@ const styles = StyleSheet.create({
   startNextSetText: {
     color: GarageTheme.textStrong,
     fontSize: 17,
-    fontWeight: "800",
-    letterSpacing: 0.5,
+    fontWeight: "600",
+    letterSpacing: 0,
   },
   // 速度ゾーンバッジ
   zoneBadge: {
@@ -6568,7 +6991,7 @@ const styles = StyleSheet.create({
   },
   zoneTag: {
     fontSize: 12,
-    fontWeight: "800",
+    fontWeight: "600",
     borderWidth: 1,
     borderRadius: 999,
     paddingHorizontal: 8,
@@ -6580,15 +7003,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     backgroundColor: GarageTheme.panel,
-    borderRadius: 16,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: GarageTheme.accent,
   },
   coachNavButtonText: {
     color: GarageTheme.accent,
     fontSize: 14,
-    fontWeight: "700",
-    letterSpacing: 0.8,
+    fontWeight: "500",
+    letterSpacing: 0,
   },
   diagnosticBar: {
     marginHorizontal: 16,
@@ -6615,12 +7038,12 @@ const styles = StyleSheet.create({
   diagnosticBarText: {
     color: GarageTheme.textSubtle,
     fontSize: 12,
-    fontWeight: "700",
+    fontWeight: "500",
   },
   diagnosticBarSubText: {
     color: GarageTheme.warning,
     fontSize: 11,
-    fontWeight: "700",
+    fontWeight: "500",
     lineHeight: 15,
     flex: 1,
   },
@@ -6639,12 +7062,12 @@ const styles = StyleSheet.create({
   diagnosticButtonText: {
     color: GarageTheme.warning,
     fontSize: 12,
-    fontWeight: "800",
+    fontWeight: "600",
   },
   diagnosticShareButtonText: {
     color: GarageTheme.accent,
     fontSize: 12,
-    fontWeight: "800",
+    fontWeight: "600",
   },
   // Target Weight & Warmup UI
   targetWeightCard: {
@@ -6652,7 +7075,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     padding: 16,
     backgroundColor: GarageTheme.surfaceAlt,
-    borderRadius: 14,
+    borderRadius: 12,
     borderWidth: 2,
     borderColor: GarageTheme.border,
   },
@@ -6661,7 +7084,7 @@ const styles = StyleSheet.create({
     color: GarageTheme.accent,
     fontWeight: "bold",
     marginBottom: 10,
-    letterSpacing: 0.8,
+    letterSpacing: 0,
   },
   targetInputRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   targetInput: {
@@ -6793,8 +7216,8 @@ const styles = StyleSheet.create({
   optimizeMvtButtonText: {
     color: GarageTheme.accentSoft,
     fontSize: 13,
-    fontWeight: "800",
-    letterSpacing: 0.4,
+    fontWeight: "600",
+    letterSpacing: 0,
   },
   suggestionBanner: {
     flexDirection: "row",
@@ -6820,7 +7243,7 @@ const styles = StyleSheet.create({
     color: GarageTheme.accent,
     fontSize: 12,
     fontWeight: "bold",
-    letterSpacing: 0.6,
+    letterSpacing: 0,
   },
   setHR: {
     fontSize: 13,
@@ -6830,7 +7253,7 @@ const styles = StyleSheet.create({
   },
   setZoneTag: {
     fontSize: 11,
-    fontWeight: "800",
+    fontWeight: "600",
     borderWidth: 1,
     borderRadius: 999,
     paddingHorizontal: 8,
@@ -6847,7 +7270,7 @@ const styles = StyleSheet.create({
   sessionStartBadge: {
     width: 48,
     height: 48,
-    borderRadius: 24,
+    borderRadius: 12,
     backgroundColor: GarageTheme.accentSoft + "20",
     alignItems: "center",
     justifyContent: "center",
@@ -6862,16 +7285,16 @@ const styles = StyleSheet.create({
   },
   sessionStartTitle: {
     fontSize: 18,
-    fontWeight: "800",
+    fontWeight: "600",
     color: GarageTheme.textStrong,
-    letterSpacing: 0.5,
+    letterSpacing: 0,
     marginBottom: 4,
   },
   sessionStartSubtitle: {
     fontSize: 13,
     fontWeight: "600",
     color: GarageTheme.success,
-    letterSpacing: 0.3,
+    letterSpacing: 0,
   },
   sessionActiveBannerLeft: {
     flexDirection: "row",
@@ -6907,16 +7330,16 @@ const styles = StyleSheet.create({
   },
   sessionActiveTitle: {
     fontSize: 16,
-    fontWeight: "800",
+    fontWeight: "600",
     color: GarageTheme.textStrong,
-    letterSpacing: 0.5,
+    letterSpacing: 0,
     marginBottom: 2,
   },
   sessionActiveSubtitle: {
     fontSize: 11,
-    fontWeight: "700",
+    fontWeight: "500",
     color: GarageTheme.textMuted,
-    letterSpacing: 0.4,
+    letterSpacing: 0,
     textTransform: "uppercase",
   },
   // VL設定カード
@@ -6939,13 +7362,13 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "bold",
     color: GarageTheme.textMuted,
-    letterSpacing: 0.6,
+    letterSpacing: 0,
   },
   vlSettingsMeta: {
     marginTop: 4,
     fontSize: 11,
     color: GarageTheme.accent,
-    fontWeight: "700",
+    fontWeight: "500",
   },
   vlToggleRow: {
     flexDirection: "row",
@@ -6961,7 +7384,7 @@ const styles = StyleSheet.create({
   vlToggleButton: {
     width: 48,
     height: 26,
-    borderRadius: 13,
+    borderRadius: 12,
     backgroundColor: GarageTheme.border,
     padding: 2,
   },
@@ -7014,7 +7437,7 @@ const styles = StyleSheet.create({
   vlThresholdButtonText: {
     fontSize: 12,
     color: GarageTheme.textMuted,
-    fontWeight: "700",
+    fontWeight: "500",
   },
   vlThresholdButtonTextSelected: {
     color: GarageTheme.accent,
@@ -7040,20 +7463,20 @@ const styles = StyleSheet.create({
   },
   protocolKicker: {
     fontSize: 11,
-    fontWeight: "800",
+    fontWeight: "600",
     color: GarageTheme.textMuted,
-    letterSpacing: 1.2,
+    letterSpacing: 0,
   },
   protocolPhase: {
     flexShrink: 1,
     fontSize: 12,
-    fontWeight: "800",
+    fontWeight: "600",
     color: GarageTheme.accent,
     textAlign: "right",
   },
   protocolTitle: {
     fontSize: 16,
-    fontWeight: "800",
+    fontWeight: "600",
     color: GarageTheme.textStrong,
     lineHeight: 22,
   },
@@ -7076,13 +7499,13 @@ const styles = StyleSheet.create({
   protocolMetricLabel: {
     fontSize: 11,
     color: GarageTheme.textMuted,
-    fontWeight: "700",
+    fontWeight: "500",
     marginBottom: 4,
   },
   protocolMetricValue: {
     fontSize: 14,
     color: GarageTheme.textStrong,
-    fontWeight: "800",
+    fontWeight: "600",
   },
   protocolBody: {
     fontSize: 12,
@@ -7106,7 +7529,7 @@ const styles = StyleSheet.create({
     width: 74,
     fontSize: 13,
     color: GarageTheme.textStrong,
-    fontWeight: "800",
+    fontWeight: "600",
   },
   lvpCheckpointText: {
     flex: 1,
@@ -7156,7 +7579,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 18,
     color: GarageTheme.textStrong,
-    fontWeight: "800",
+    fontWeight: "600",
   },
   purposeChipRow: {
     flexDirection: "row",
@@ -7177,11 +7600,11 @@ const styles = StyleSheet.create({
   },
   purposeChipText: {
     fontSize: 11,
-    fontWeight: "800",
+    fontWeight: "600",
     color: GarageTheme.textMuted,
   },
   purposeChipTextActive: {
-    color: "#fff4ec",
+    color: "#f7f8f8",
   },
   nextSetSummaryRow: {
     flexDirection: "row",
@@ -7225,14 +7648,14 @@ const styles = StyleSheet.create({
   },
   focusModeTitle: {
     fontSize: 24,
-    fontWeight: "800",
+    fontWeight: "600",
     color: GarageTheme.textStrong,
-    letterSpacing: 2,
+    letterSpacing: 0,
   },
   focusModeSensorButton: {
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 18,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: GarageTheme.borderStrong,
     backgroundColor: GarageTheme.surface,
@@ -7240,20 +7663,20 @@ const styles = StyleSheet.create({
   focusModeSensorButtonText: {
     color: GarageTheme.textMuted,
     fontSize: 12,
-    fontWeight: "800",
-    letterSpacing: 0.4,
+    fontWeight: "600",
+    letterSpacing: 0,
   },
   focusModeCompleteButton: {
     paddingHorizontal: 20,
     paddingVertical: 10,
     backgroundColor: GarageTheme.success,
-    borderRadius: 24,
+    borderRadius: 12,
   },
   focusModeCompleteButtonText: {
     fontSize: 16,
-    fontWeight: "800",
+    fontWeight: "600",
     color: GarageTheme.textStrong,
-    letterSpacing: 0.5,
+    letterSpacing: 0,
   },
   focusModeSimulatorPanel: {
     marginTop: 12,
@@ -7282,8 +7705,8 @@ const styles = StyleSheet.create({
   sensorMutedTitle: {
     color: GarageTheme.textStrong,
     fontSize: 13,
-    fontWeight: "900",
-    letterSpacing: 0.5,
+    fontWeight: "600",
+    letterSpacing: 0,
     marginBottom: 3,
   },
   sensorMutedBody: {
@@ -7294,15 +7717,15 @@ const styles = StyleSheet.create({
   },
   focusModeSimulatorTitle: {
     fontSize: 13,
-    fontWeight: "900",
-    letterSpacing: 1.2,
+    fontWeight: "600",
+    letterSpacing: 0,
     color: GarageTheme.textStrong,
   },
   focusModeSimulatorMeta: {
     marginTop: 2,
     fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 0.8,
+    fontWeight: "600",
+    letterSpacing: 0,
     color: GarageTheme.textMuted,
   },
   focusModeSimulatorActions: {
@@ -7327,8 +7750,8 @@ const styles = StyleSheet.create({
   focusModeSimulatorButtonText: {
     color: GarageTheme.accent,
     fontSize: 12,
-    fontWeight: "900",
-    letterSpacing: 0.6,
+    fontWeight: "600",
+    letterSpacing: 0,
   },
   focusModeInfoGrid: {
     marginTop: 10,
@@ -7361,15 +7784,21 @@ const styles = StyleSheet.create({
   focusModeInfoLabel: {
     color: GarageTheme.textMuted,
     fontSize: 9,
-    fontWeight: "900",
-    letterSpacing: 1,
+    fontWeight: "600",
+    letterSpacing: 0,
     marginBottom: 4,
   },
   focusModeInfoValue: {
     color: GarageTheme.textStrong,
     fontSize: 15,
-    fontWeight: "800",
+    fontWeight: "600",
     fontVariant: ["tabular-nums"],
+  },
+  focusModeInfoMeta: {
+    color: GarageTheme.textSubtle,
+    fontSize: 9,
+    fontWeight: "600",
+    marginTop: 2,
   },
   focusModeVelocityArea: {
     flex: 1,
@@ -7379,22 +7808,22 @@ const styles = StyleSheet.create({
   },
   focusModeVelocityValue: {
     fontSize: 120,
-    fontWeight: "900",
+    fontWeight: "600",
     color: GarageTheme.success,
-    letterSpacing: 4,
+    letterSpacing: 0,
     fontVariant: ["tabular-nums"],
   },
   focusModeVelocityUnit: {
     fontSize: 32,
-    fontWeight: "700",
+    fontWeight: "500",
     color: GarageTheme.textMuted,
-    letterSpacing: 2,
+    letterSpacing: 0,
   },
   focusModeWaitingText: {
     fontSize: 24,
-    fontWeight: "700",
+    fontWeight: "500",
     color: GarageTheme.textMuted,
-    letterSpacing: 1,
+    letterSpacing: 0,
   },
   focusModeMetricStrip: {
     position: "absolute",
@@ -7416,7 +7845,7 @@ const styles = StyleSheet.create({
   focusModeMetricValue: {
     color: GarageTheme.textStrong,
     fontSize: 14,
-    fontWeight: "800",
+    fontWeight: "600",
     fontVariant: ["tabular-nums"],
   },
   focusModeRepCounter: {
@@ -7427,15 +7856,15 @@ const styles = StyleSheet.create({
   },
   focusModeRepCount: {
     fontSize: 72,
-    fontWeight: "900",
+    fontWeight: "600",
     color: GarageTheme.accent,
     fontVariant: ["tabular-nums"],
   },
   focusModeRepLabel: {
     fontSize: 16,
-    fontWeight: "700",
+    fontWeight: "500",
     color: GarageTheme.textMuted,
-    letterSpacing: 2,
+    letterSpacing: 0,
   },
   focusModeZoneIndicator: {
     position: "absolute",
@@ -7448,7 +7877,7 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingHorizontal: 20,
     paddingVertical: 12,
-    borderRadius: 24,
+    borderRadius: 12,
     backgroundColor: GarageTheme.surface,
     borderWidth: 3,
   },
@@ -7457,7 +7886,7 @@ const styles = StyleSheet.create({
   },
   focusModeZoneName: {
     fontSize: 18,
-    fontWeight: "800",
+    fontWeight: "600",
   },
   focusModeVlBox: {
     position: "absolute",
@@ -7466,7 +7895,7 @@ const styles = StyleSheet.create({
     minWidth: 220,
     paddingHorizontal: 18,
     paddingVertical: 12,
-    borderRadius: 16,
+    borderRadius: 12,
     backgroundColor: GarageTheme.surfaceAlt,
     borderWidth: 1,
     borderColor: GarageTheme.borderStrong,
@@ -7478,12 +7907,12 @@ const styles = StyleSheet.create({
   },
   focusModeVlLabel: {
     fontSize: 26,
-    fontWeight: "900",
+    fontWeight: "600",
     color: GarageTheme.textStrong,
   },
   focusModeVlText: {
     fontSize: 13,
-    fontWeight: "800",
+    fontWeight: "600",
     color: GarageTheme.textMuted,
   },
   focusModeHrDisplay: {
@@ -7499,7 +7928,7 @@ const styles = StyleSheet.create({
   },
   focusModeHrValue: {
     fontSize: 32,
-    fontWeight: "800",
+    fontWeight: "600",
     color: GarageTheme.danger,
     fontVariant: ["tabular-nums"],
   },
@@ -7511,13 +7940,13 @@ const styles = StyleSheet.create({
   },
   focusModeLoadValue: {
     fontSize: 48,
-    fontWeight: "900",
+    fontWeight: "600",
     color: GarageTheme.textStrong,
     fontVariant: ["tabular-nums"],
   },
   focusModeLoadUnit: {
     fontSize: 20,
-    fontWeight: "700",
+    fontWeight: "500",
     color: GarageTheme.textMuted,
   },
 });

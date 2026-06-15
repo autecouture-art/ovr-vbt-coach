@@ -77,16 +77,26 @@ export default function SessionDetailScreen() {
     <>
       <ScrollView style={styles.container}>
         <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-          <TouchableOpacity
-            hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
-            onPress={() =>
-              navigationState.canGoBack()
-                ? router.back()
-                : router.replace("/(tabs)/history")
-            }
-          >
-            <Text style={styles.backButton}>← 戻る</Text>
-          </TouchableOpacity>
+          <View style={styles.headerActions}>
+            <TouchableOpacity
+              style={styles.headerActionButton}
+              hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
+              onPress={() =>
+                navigationState.canGoBack()
+                  ? router.back()
+                  : router.replace("/(tabs)/history")
+              }
+            >
+              <Text style={styles.backButton}>← 戻る</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.headerActionButton}
+              hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
+              onPress={() => router.replace("/(tabs)")}
+            >
+              <Text style={styles.backButton}>ホーム</Text>
+            </TouchableOpacity>
+          </View>
           <View style={styles.headerCopy}>
             <Text style={styles.title}>セッション詳細</Text>
             <Text style={styles.subtitle}>
@@ -146,38 +156,50 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: GarageTheme.border,
   },
-  backButton: {
-    color: GarageTheme.accentSoft,
-    fontSize: 16,
-    fontWeight: "700",
+  headerActions: {
+    flexDirection: "row",
+    gap: 8,
     marginBottom: 12,
   },
+  headerActionButton: {
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: GarageTheme.border,
+    backgroundColor: GarageTheme.chip,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  backButton: {
+    color: GarageTheme.accentSoft,
+    fontSize: 13,
+    fontWeight: "500",
+  },
   headerCopy: { gap: 4 },
-  title: { color: GarageTheme.textStrong, fontSize: 28, fontWeight: "800" },
+  title: { color: GarageTheme.textStrong, fontSize: 28, fontWeight: "500" },
   subtitle: { color: GarageTheme.textMuted, fontSize: 14 },
   summaryCard: {
     margin: 16,
     padding: 16,
-    borderRadius: 16,
+    borderRadius: 8,
     backgroundColor: GarageTheme.surface,
     borderWidth: 1,
     borderColor: GarageTheme.borderStrong,
   },
-  summaryTitle: { color: GarageTheme.textStrong, fontSize: 18, fontWeight: "800", marginBottom: 12 },
+  summaryTitle: { color: GarageTheme.textStrong, fontSize: 18, fontWeight: "500", marginBottom: 12 },
   summaryLine: { color: GarageTheme.text, fontSize: 14, marginBottom: 6 },
   coachButton: {
     marginTop: 14,
     backgroundColor: GarageTheme.accent,
-    borderRadius: 12,
+    borderRadius: 6,
     paddingVertical: 12,
     alignItems: "center",
   },
-  coachButtonText: { color: GarageTheme.textStrong, fontSize: 15, fontWeight: "800" },
+  coachButtonText: { color: GarageTheme.textStrong, fontSize: 15, fontWeight: "500" },
   listSection: { paddingHorizontal: 16, paddingBottom: 24 },
-  sectionTitle: { color: GarageTheme.textStrong, fontSize: 18, fontWeight: "800", marginBottom: 12 },
+  sectionTitle: { color: GarageTheme.textStrong, fontSize: 18, fontWeight: "500", marginBottom: 12 },
   setCard: {
     backgroundColor: GarageTheme.surface,
-    borderRadius: 14,
+    borderRadius: 8,
     padding: 14,
     marginBottom: 10,
     borderWidth: 1,
@@ -190,7 +212,7 @@ const styles = StyleSheet.create({
     gap: 12,
     marginBottom: 6,
   },
-  setTitle: { color: GarageTheme.textStrong, fontSize: 15, fontWeight: "700", flex: 1 },
+  setTitle: { color: GarageTheme.textStrong, fontSize: 15, fontWeight: "500", flex: 1 },
   setMeta: { color: GarageTheme.textMuted, fontSize: 13, marginBottom: 4 },
   notes: { color: GarageTheme.info, fontSize: 12, marginTop: 6 },
   editButton: {
@@ -204,6 +226,6 @@ const styles = StyleSheet.create({
   editButtonText: {
     color: GarageTheme.accentSoft,
     fontSize: 12,
-    fontWeight: "800",
+    fontWeight: "500",
   },
 });

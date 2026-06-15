@@ -148,7 +148,7 @@ const styles = StyleSheet.create({
   closeButton: {
     width: 32,
     height: 32,
-    borderRadius: 16,
+    borderRadius: 12,
     backgroundColor: GarageTheme.chip,
     justifyContent: 'center',
     alignItems: 'center',
@@ -156,7 +156,7 @@ const styles = StyleSheet.create({
   closeButtonText: {
     color: GarageTheme.textStrong,
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '500',
   },
   content: {
     flex: 1,
@@ -216,8 +216,8 @@ const styles = StyleSheet.create({
     marginTop: 0,
   },
   closeButtonBottomText: {
-    color: '#fff4ec',
+    color: '#f7f8f8',
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '500',
   },
 });

@@ -18,6 +18,7 @@ import * as Linking from "expo-linking";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import DatabaseService from "../services/DatabaseService";
 import ExerciseService from "../services/ExerciseService";
+import HealthService from "../services/HealthService";
 import { loadAppSettings } from "../services/AppSettingsService";
 import VBTCalculations from "../utils/VBTCalculations";
 import DeterministicVBTCoach from "../services/DeterministicVBTCoach";
@@ -32,6 +33,10 @@ import {
   getPowerliftingProtocol,
   getTopSingleTargetText,
 } from "../utils/PowerliftingVBTProtocol";
+import {
+  buildAccessoryRMTargetContext,
+  formatAccessoryTargetLoad,
+} from "../utils/AccessoryRMTarget";
 
 interface ManualEntryScreenProps {
   navigation: any;
@@ -84,6 +89,21 @@ const formatRelativeTime = (timestamp?: string | null): string => {
   return `${months}ヶ月前`;
 };
 
+const formatElapsedTime = (seconds: number): string => {
+  const safeSeconds = Math.max(0, Math.floor(seconds));
+  const hours = Math.floor(safeSeconds / 3600);
+  const minutes = Math.floor((safeSeconds % 3600) / 60);
+  const restSeconds = safeSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours}:${minutes.toString().padStart(2, "0")}:${restSeconds
+      .toString()
+      .padStart(2, "0")}`;
+  }
+
+  return `${minutes}:${restSeconds.toString().padStart(2, "0")}`;
+};
+
 const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({
   navigation,
 }) => {
@@ -113,6 +133,12 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({
     useState<SupersetSlot>("active");
   const [showExerciseModal, setShowExerciseModal] = useState(false);
   const [blockWeek, setBlockWeek] = useState(5);
+  const [manualStartedAt] = useState(() => Date.now());
+  const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const [currentHeartRate, setCurrentHeartRate] = useState<number | null>(null);
+  const [heartRateStatus, setHeartRateStatus] =
+    useState<"checking" | "active" | "unavailable">("checking");
 
   const setTypes: { value: SetType; label: string }[] = [
     { value: "normal", label: "通常" },
@@ -129,6 +155,9 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({
   const parsedAvgVelocity = avgVelocity ? parseFloat(avgVelocity) : null;
   const parsedVelocityLoss = velocityLoss ? parseFloat(velocityLoss) : null;
   const parsedRomCm = romCm ? parseFloat(romCm) : null;
+  const manualElapsedSeconds = Math.floor((nowMs - manualStartedAt) / 1000);
+  const restElapsedSeconds =
+    lastSavedAt == null ? null : Math.floor((nowMs - lastSavedAt) / 1000);
   const hasValidManualVbtMetrics =
     (parsedAvgVelocity == null ||
       (!isNaN(parsedAvgVelocity) &&
@@ -206,9 +235,13 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({
         rpeValue,
       ),
       timestamp: new Date().toISOString(),
+      rest_duration_s: restElapsedSeconds ?? undefined,
+      avg_hr: currentHeartRate ?? undefined,
+      peak_hr: currentHeartRate ?? undefined,
       notes: notes || undefined,
     };
   }, [
+    currentHeartRate,
     lift,
     notes,
     parsedAvgVelocity,
@@ -217,6 +250,7 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({
     parsedRomCm,
     parsedVelocityLoss,
     rpe,
+    restElapsedSeconds,
     sessionId,
     setIndex,
     setType,
@@ -242,6 +276,27 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({
   ]);
 
   const latestManualConsultationSet = draftSet ?? savedSets[savedSets.length - 1] ?? null;
+  const accessoryRMTarget = useMemo(
+    () =>
+      buildAccessoryRMTargetContext({
+        lift,
+        currentLoadKg: latestManualConsultationSet?.load_kg ?? parsedLoadKg,
+        currentReps: latestManualConsultationSet?.reps ?? parsedReps,
+        currentE1RMKg: latestManualConsultationSet?.e1rm ?? null,
+        exercise: selectedExercise,
+        historySets: [...savedSets, ...recentLiftSets],
+        currentSet: latestManualConsultationSet,
+      }),
+    [
+      latestManualConsultationSet,
+      lift,
+      parsedLoadKg,
+      parsedReps,
+      recentLiftSets,
+      savedSets,
+      selectedExercise,
+    ],
+  );
 
   const handleCopyManualSupervisorPacket = async () => {
     if (!latestManualConsultationSet) {
@@ -265,6 +320,53 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({
       )
       .slice(0, 5);
     const currentSetSource = draftSet ? "入力中ドラフト" : "保存済み最新セット";
+    const sessionContextSets = [...savedSets, ...(draftSet ? [draftSet] : [])]
+      .slice()
+      .sort((a, b) => {
+        if (a.set_index !== b.set_index) return a.set_index - b.set_index;
+        return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+      })
+      .slice(-12);
+    const sessionContextRows =
+      sessionContextSets
+        .map(
+          (set) =>
+            `| ${set.set_index} | ${set.lift} | ${getSetTypeLabel(set.set_type)} | ${formatNumber(set.load_kg, 1)} | ${set.reps} | ${formatNumber(set.rpe, 1)} | ${formatNumber(set.avg_velocity, 2)} | ${formatNumber(set.velocity_loss_last ?? set.velocity_loss, 1, "%")} | ${formatNumber(set.avg_rom_cm, 1, "cm")} | ${formatNumber(set.rest_duration_s, 0, "s")} | ${formatNumber(set.avg_hr, 0, "bpm")} | ${set.notes ?? ""} |`,
+        )
+        .join("\n") || "| - | - | - | - | - | - | - | - | - | - | - | - |";
+    const supersetRounds = sessionContextSets.reduce<
+      Record<string, { lift: string; type: SetType; load: number; reps: number }[]>
+    >((acc, set) => {
+      if (set.set_type !== "superset_A" && set.set_type !== "superset_B") {
+        return acc;
+      }
+      const key = `${set.set_index}`;
+      acc[key] = acc[key] ?? [];
+      acc[key].push({
+        lift: set.lift,
+        type: set.set_type,
+        load: set.load_kg,
+        reps: set.reps,
+      });
+      return acc;
+    }, {});
+    const packetAccessoryRMTarget = buildAccessoryRMTargetContext({
+      lift: latestManualConsultationSet.lift,
+      currentLoadKg: latestManualConsultationSet.load_kg,
+      currentReps: latestManualConsultationSet.reps,
+      currentE1RMKg: latestManualConsultationSet.e1rm ?? null,
+      exercise: selectedExercise,
+      historySets: sameLiftHistory,
+      currentSet: latestManualConsultationSet,
+    });
+    const accessoryTargetRows = packetAccessoryRMTarget.enabled
+      ? packetAccessoryRMTarget.conversionTable
+          .map(
+            (row) =>
+              `| ${row.reps} | ${formatAccessoryTargetLoad(row.targetLoadKg)} | ${formatNumber(row.targetE1RMKg, 1, "kg")} | ${formatNumber(row.currentLoadE1RMKg, 1, "kg")} | ${row.currentLoadHitsTarget == null ? "-" : row.currentLoadHitsTarget ? "yes" : "no"} |`,
+          )
+          .join("\n")
+      : "";
     const historyRows =
       sameLiftHistory
         .map(
@@ -273,6 +375,7 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({
         )
         .join("\n") || "| - | - | - | - | - | - | - |";
     const packetJson = {
+      packet_version: "manual_supervisor_v4_accessory_rm",
       source: "RepVeloCoach manual entry",
       generated_at: new Date().toISOString(),
       session_id: sessionId,
@@ -301,6 +404,28 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({
         notes: latestManualConsultationSet.notes ?? (notes || null),
       },
       today_summary: sessionSummary,
+      manual_timing: {
+        elapsed_s: manualElapsedSeconds,
+        rest_elapsed_s: restElapsedSeconds,
+        current_heart_rate: currentHeartRate,
+        heart_rate_status: heartRateStatus,
+      },
+      session_context_sets: sessionContextSets.map((set) => ({
+        set_index: set.set_index,
+        lift: set.lift,
+        set_type: set.set_type,
+        load_kg: set.load_kg,
+        reps: set.reps,
+        rpe: set.rpe ?? null,
+        avg_velocity: set.avg_velocity ?? null,
+        vl_last: set.velocity_loss_last ?? set.velocity_loss ?? null,
+        rom_cm: set.avg_rom_cm ?? null,
+        e1rm: set.e1rm ?? null,
+        rest_duration_s: set.rest_duration_s ?? null,
+        avg_hr: set.avg_hr ?? null,
+        notes: set.notes ?? null,
+      })),
+      superset_rounds: supersetRounds,
       deterministic_preview: manualCoachDecision
         ? {
             action: manualCoachDecision.action,
@@ -308,6 +433,7 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({
             suggestedAction: manualCoachDecision.suggestedAction ?? null,
           }
         : null,
+      accessory_rm_target: packetAccessoryRMTarget,
       recent_same_lift_sets: sameLiftHistory.map((set) => ({
         timestamp: set.timestamp,
         load_kg: set.load_kg,
@@ -337,14 +463,28 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({
       `VL avg/last/min: ${formatNumber(latestManualConsultationSet.velocity_loss_avg ?? latestManualConsultationSet.velocity_loss, 1, "%")} / ${formatNumber(latestManualConsultationSet.velocity_loss_last, 1, "%")} / ${formatNumber(latestManualConsultationSet.velocity_loss_min, 1, "%")}`,
       `ROM: ${formatNumber(latestManualConsultationSet.avg_rom_cm, 1, "cm")}`,
       `e1RM: ${formatNumber(latestManualConsultationSet.e1rm, 1, "kg")}`,
+      `手動入力タイマー: 経過 ${formatElapsedTime(manualElapsedSeconds)} / レスト ${restElapsedSeconds == null ? "-" : formatElapsedTime(restElapsedSeconds)} / 心拍 ${currentHeartRate ?? "-"} bpm`,
+      packetAccessoryRMTarget.enabled
+        ? `補助RM目標: 5〜15rep / 目標e1RM ${formatNumber(packetAccessoryRMTarget.targetE1RMKg, 1, "kg")} / ${packetAccessoryRMTarget.targetSource === "previous_best" ? "過去Best更新狙い" : "初回基準作成"}`
+        : "補助RM目標: 対象外",
       manualCoachDecision
         ? `アプリ暫定判定: ${manualCoachDecision.action} / ${manualCoachDecision.message}`
         : "アプリ暫定判定: 速度未入力または判定なし",
+      "",
+      "## 今回セッション文脈（複数セット/スーパーセット用）",
+      "| set | lift | type | load | reps | RPE | AV | VL_last | ROM | rest | HR | notes |",
+      "|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|",
+      sessionContextRows,
       "",
       "## 直近同種目履歴",
       "| time | load | reps | AV | VL_last | ROM | RPE |",
       "|---|---:|---:|---:|---:|---:|---:|",
       historyRows,
+      "",
+      "## 補助種目 5〜15rep換算表",
+      "| reps | 目標重量 | 目標e1RM | 現在重量ならe1RM | 現在重量で達成 |",
+      "|---:|---:|---:|---:|---|",
+      accessoryTargetRows || "| - | - | - | - | - |",
       "",
       "## 相談したいこと",
       "この手動入力データだけを根拠に、次セットの重量・回数・休憩・継続可否を実用的に判断してください。速度が未入力の場合はRPE/履歴/メモを中心に、断定しすぎず条件つきで提案してください。",
@@ -498,7 +638,7 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({
     try {
       const sets = await DatabaseService.getRecentSetsForLift(
         lift,
-        3,
+        30,
         sessionId,
       );
       setRecentLiftSets(sets);
@@ -535,6 +675,40 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({
     const timeout = setTimeout(() => setSaveStatus(null), 2500);
     return () => clearTimeout(timeout);
   }, [saveStatus]);
+
+  useEffect(() => {
+    const timer = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    let hrTimerId: any = null;
+
+    const startHeartRate = async () => {
+      const authorized = await HealthService.authorize();
+      if (cancelled) return;
+
+      if (!authorized) {
+        setHeartRateStatus("unavailable");
+      }
+
+      hrTimerId = HealthService.startHeartRateMonitoring((bpm) => {
+        if (cancelled) return;
+        setCurrentHeartRate(bpm);
+        setHeartRateStatus(bpm == null ? "unavailable" : "active");
+      });
+    };
+
+    void startHeartRate();
+
+    return () => {
+      cancelled = true;
+      if (hrTimerId) {
+        HealthService.stopHeartRateMonitoring(hrTimerId);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -637,6 +811,11 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({
 
     try {
       await DatabaseService.ensureSession(sessionId, notes);
+      const completedAt = new Date();
+      const restDurationS =
+        lastSavedAt == null
+          ? undefined
+          : Math.max(0, Math.round((completedAt.getTime() - lastSavedAt) / 1000));
 
       const e1rm = VBTCalculations.estimate1RMFromReps(
         loadValue,
@@ -660,7 +839,11 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({
         avg_rom_cm: parsedRomCm,
         rpe: rpeValue,
         e1rm,
-        timestamp: new Date().toISOString(),
+        timestamp: completedAt.toISOString(),
+        end_timestamp: completedAt.toISOString(),
+        rest_duration_s: restDurationS,
+        avg_hr: currentHeartRate ?? undefined,
+        peak_hr: currentHeartRate ?? undefined,
         notes: notes || undefined,
       };
 
@@ -692,6 +875,7 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({
       await loadRecentLiftSets();
 
       setSavedSets((prev) => [...prev, setData]);
+      setLastSavedAt(completedAt.getTime());
       setLoadKg("");
       setReps("");
       setRpe("");
@@ -792,6 +976,44 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({
           </View>
         </View>
 
+        <View style={styles.manualMonitorCard}>
+          <View style={styles.manualMonitorHeader}>
+            <Text style={styles.manualMonitorEyebrow}>LIVE MANUAL MONITOR</Text>
+            <Text style={styles.manualMonitorStatus}>
+              {heartRateStatus === "active"
+                ? "心拍取得中"
+                : heartRateStatus === "checking"
+                  ? "確認中"
+                  : "心拍未取得"}
+            </Text>
+          </View>
+          <View style={styles.manualMonitorGrid}>
+            <View style={styles.manualMonitorMetric}>
+              <Text style={styles.manualMonitorValue}>
+                {formatElapsedTime(manualElapsedSeconds)}
+              </Text>
+              <Text style={styles.manualMonitorLabel}>入力経過</Text>
+            </View>
+            <View style={styles.manualMonitorMetric}>
+              <Text style={styles.manualMonitorValue}>
+                {restElapsedSeconds == null
+                  ? "--:--"
+                  : formatElapsedTime(restElapsedSeconds)}
+              </Text>
+              <Text style={styles.manualMonitorLabel}>レスト</Text>
+            </View>
+            <View style={styles.manualMonitorMetric}>
+              <Text style={styles.manualMonitorValue}>
+                {currentHeartRate == null ? "--" : Math.round(currentHeartRate)}
+              </Text>
+              <Text style={styles.manualMonitorLabel}>bpm</Text>
+            </View>
+          </View>
+          <Text style={styles.manualMonitorHint}>
+            セット保存後にレストを自動開始。保存時の心拍と休憩秒数も記録します。
+          </Text>
+        </View>
+
         <TouchableOpacity
           style={[
             styles.coachButton,
@@ -802,9 +1024,72 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({
         >
           <Text style={styles.coachButtonText}>チャッピー監督へ相談</Text>
           <Text style={styles.coachButtonSubtext}>
-            入力中または保存済み最新セットをコピーしてChatGPTへ渡す
+            入力中/保存済みセットと直近複数セットをコピーしてChatGPTへ渡す
           </Text>
         </TouchableOpacity>
+
+        {accessoryRMTarget.enabled ? (
+          <View style={styles.accessoryTargetCard}>
+            <View style={styles.accessoryTargetHeader}>
+              <View>
+                <Text style={styles.accessoryTargetEyebrow}>
+                  ACCESSORY RM TARGET
+                </Text>
+                <Text style={styles.accessoryTargetTitle}>
+                  5〜15rep 換算表
+                </Text>
+              </View>
+              <Text style={styles.accessoryTargetBadge}>
+                {accessoryRMTarget.targetSource === "previous_best"
+                  ? "更新狙い"
+                  : "初回基準"}
+              </Text>
+            </View>
+            <View style={styles.accessoryTargetGrid}>
+              <View style={styles.accessoryTargetMetric}>
+                <Text style={styles.accessoryTargetLabel}>今回e1RM</Text>
+                <Text style={styles.accessoryTargetValue}>
+                  {formatNumber(accessoryRMTarget.currentE1RMKg, 1, "kg")}
+                </Text>
+              </View>
+              <View style={styles.accessoryTargetMetric}>
+                <Text style={styles.accessoryTargetLabel}>過去Best</Text>
+                <Text style={styles.accessoryTargetValue}>
+                  {formatNumber(accessoryRMTarget.previousBestE1RMKg, 1, "kg")}
+                </Text>
+              </View>
+              <View style={styles.accessoryTargetMetric}>
+                <Text style={styles.accessoryTargetLabel}>目標e1RM</Text>
+                <Text style={styles.accessoryTargetValue}>
+                  {formatNumber(accessoryRMTarget.targetE1RMKg, 1, "kg")}
+                </Text>
+              </View>
+            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.accessoryTargetTable}
+            >
+              {accessoryRMTarget.conversionTable.map((row) => (
+                <View
+                  key={`manual-accessory-rm-${row.reps}`}
+                  style={styles.accessoryTargetCell}
+                >
+                  <Text style={styles.accessoryTargetRep}>{row.reps}rep</Text>
+                  <Text style={styles.accessoryTargetLoad}>
+                    {formatAccessoryTargetLoad(row.targetLoadKg)}
+                  </Text>
+                  <Text style={styles.accessoryTargetCellMeta}>
+                    e1RM {formatNumber(row.targetE1RMKg, 1, "kg")}
+                  </Text>
+                </View>
+              ))}
+            </ScrollView>
+            <Text style={styles.accessoryTargetNote}>
+              各補助種目1セットだけRM換算セットマックス狙い。RPE9.5以上・痛み・ROM15%以上急変・主役リフトに響く疲労で終了。
+            </Text>
+          </View>
+        ) : null}
 
         <Text style={styles.label}>種目</Text>
         <TouchableOpacity
@@ -1217,6 +1502,16 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({
                     {getSetTypeLabel(set.set_type)} / {set.load_kg} kg ×{" "}
                     {set.reps} reps
                   </Text>
+                  {set.rest_duration_s != null || set.avg_hr != null ? (
+                    <Text style={styles.summaryTimingMeta}>
+                      {set.rest_duration_s != null
+                        ? `Rest ${formatElapsedTime(set.rest_duration_s)}`
+                        : "Rest -"}
+                      {set.avg_hr != null
+                        ? ` / HR ${Math.round(set.avg_hr)}bpm`
+                        : ""}
+                    </Text>
+                  ) : null}
                   {set.avg_velocity != null ||
                   set.velocity_loss != null ||
                   set.avg_rom_cm != null ? (
@@ -1300,14 +1595,14 @@ const styles = StyleSheet.create({
     backgroundColor: "#1f1512",
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#ff6a2a",
+    borderColor: "#7170ff",
     padding: 14,
     marginBottom: 8,
   },
   coachButtonText: {
-    color: "#fff4ec",
+    color: "#f7f8f8",
     fontSize: 16,
-    fontWeight: "700",
+    fontWeight: "500",
     marginBottom: 4,
   },
   coachButtonSubtext: {
@@ -1319,7 +1614,7 @@ const styles = StyleSheet.create({
   },
   todaySummaryCard: {
     padding: 14,
-    borderRadius: 16,
+    borderRadius: 12,
     backgroundColor: "#151515",
     borderWidth: 1,
     borderColor: GarageTheme.borderStrong,
@@ -1335,14 +1630,14 @@ const styles = StyleSheet.create({
   todaySummaryEyebrow: {
     color: GarageTheme.accentSoft,
     fontSize: 11,
-    fontWeight: "900",
-    letterSpacing: 1,
+    fontWeight: "600",
+    letterSpacing: 0,
   },
   todaySummaryLift: {
     flex: 1,
     color: GarageTheme.textStrong,
     fontSize: 13,
-    fontWeight: "800",
+    fontWeight: "600",
     textAlign: "right",
   },
   todaySummaryGrid: {
@@ -1360,15 +1655,72 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   todaySummaryValue: {
-    color: "#ffffff",
+    color: "#f7f8f8",
     fontSize: 18,
-    fontWeight: "900",
+    fontWeight: "600",
     marginBottom: 3,
   },
   todaySummaryLabel: {
     color: GarageTheme.textMuted,
     fontSize: 10,
-    fontWeight: "800",
+    fontWeight: "600",
+  },
+  manualMonitorCard: {
+    padding: 14,
+    borderRadius: 12,
+    backgroundColor: "#101827",
+    borderWidth: 1,
+    borderColor: "#243654",
+    marginBottom: 12,
+  },
+  manualMonitorHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 10,
+  },
+  manualMonitorEyebrow: {
+    color: "#93c5fd",
+    fontSize: 11,
+    fontWeight: "600",
+    letterSpacing: 0,
+  },
+  manualMonitorStatus: {
+    color: "#dbeafe",
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  manualMonitorGrid: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 10,
+  },
+  manualMonitorMetric: {
+    flex: 1,
+    minHeight: 64,
+    padding: 10,
+    borderRadius: 10,
+    backgroundColor: "#172033",
+    borderWidth: 1,
+    borderColor: "#263852",
+    justifyContent: "center",
+  },
+  manualMonitorValue: {
+    color: "#f8fafc",
+    fontSize: 20,
+    fontWeight: "700",
+    marginBottom: 3,
+  },
+  manualMonitorLabel: {
+    color: "#93a4bc",
+    fontSize: 10,
+    fontWeight: "600",
+  },
+  manualMonitorHint: {
+    color: "#aabbd1",
+    fontSize: 12,
+    lineHeight: 17,
   },
   recentCard: {
     marginTop: 16,
@@ -1388,7 +1740,7 @@ const styles = StyleSheet.create({
   recentTitle: {
     color: "#f1f1f1",
     fontSize: 15,
-    fontWeight: "700",
+    fontWeight: "500",
     marginBottom: 3,
   },
   recentSubtitle: {
@@ -1405,7 +1757,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 999,
     fontSize: 10,
-    fontWeight: "900",
+    fontWeight: "600",
     textAlign: "center",
   },
   recentEmpty: {
@@ -1430,7 +1782,7 @@ const styles = StyleSheet.create({
     marginBottom: 3,
   },
   recentItemMain: {
-    color: "#fff",
+    color: "#f7f8f8",
     fontSize: 14,
     fontWeight: "600",
   },
@@ -1447,12 +1799,12 @@ const styles = StyleSheet.create({
   recentItemMeta: {
     color: "#a9d6a1",
     fontSize: 12,
-    fontWeight: "700",
+    fontWeight: "500",
   },
   recentItemHint: {
-    color: "#ffb347",
+    color: "#828fff",
     fontSize: 11,
-    fontWeight: "700",
+    fontWeight: "500",
   },
   recentCoachMiniButton: {
     paddingHorizontal: 8,
@@ -1471,7 +1823,7 @@ const styles = StyleSheet.create({
   },
   exerciseSelectorCard: {
     backgroundColor: GarageTheme.surface,
-    borderRadius: 14,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: GarageTheme.borderStrong,
     paddingHorizontal: 14,
@@ -1484,7 +1836,7 @@ const styles = StyleSheet.create({
   exerciseSelectorName: {
     color: GarageTheme.textStrong,
     fontSize: 16,
-    fontWeight: "800",
+    fontWeight: "600",
   },
   exerciseSelectorMeta: {
     color: GarageTheme.textMuted,
@@ -1494,14 +1846,14 @@ const styles = StyleSheet.create({
   exerciseSelectorAction: {
     color: GarageTheme.accentSoft,
     fontSize: 12,
-    fontWeight: "800",
-    letterSpacing: 1,
+    fontWeight: "600",
+    letterSpacing: 0,
   },
   supersetCard: {
     marginTop: 8,
     marginBottom: 8,
     padding: 12,
-    borderRadius: 14,
+    borderRadius: 12,
     backgroundColor: GarageTheme.surface,
     borderWidth: 1,
     borderColor: GarageTheme.borderStrong,
@@ -1516,12 +1868,12 @@ const styles = StyleSheet.create({
   supersetTitle: {
     color: GarageTheme.textStrong,
     fontSize: 14,
-    fontWeight: "800",
+    fontWeight: "600",
   },
   supersetMeta: {
     color: GarageTheme.textMuted,
     fontSize: 12,
-    fontWeight: "700",
+    fontWeight: "500",
   },
   supersetPairRow: {
     flexDirection: "row",
@@ -1543,20 +1895,119 @@ const styles = StyleSheet.create({
   supersetSlotLabel: {
     color: GarageTheme.accent,
     fontSize: 12,
-    fontWeight: "900",
+    fontWeight: "600",
     marginBottom: 6,
   },
   supersetExerciseName: {
     color: GarageTheme.textStrong,
     fontSize: 14,
-    fontWeight: "800",
+    fontWeight: "600",
     lineHeight: 18,
   },
   supersetExerciseMeta: {
     color: GarageTheme.textMuted,
     fontSize: 11,
-    fontWeight: "700",
+    fontWeight: "500",
     marginTop: 6,
+  },
+  accessoryTargetCard: {
+    marginTop: 10,
+    marginBottom: 10,
+    padding: 14,
+    borderRadius: 12,
+    backgroundColor: "#16131f",
+    borderWidth: 1,
+    borderColor: "#6f4cff",
+  },
+  accessoryTargetHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 10,
+    marginBottom: 12,
+  },
+  accessoryTargetEyebrow: {
+    color: "#b7a8ff",
+    fontSize: 10,
+    fontWeight: "600",
+    letterSpacing: 0,
+    marginBottom: 3,
+  },
+  accessoryTargetTitle: {
+    color: GarageTheme.textStrong,
+    fontSize: 17,
+    fontWeight: "600",
+  },
+  accessoryTargetBadge: {
+    color: "#130f20",
+    backgroundColor: "#b7a8ff",
+    overflow: "hidden",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  accessoryTargetGrid: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 12,
+  },
+  accessoryTargetMetric: {
+    flex: 1,
+    minHeight: 60,
+    padding: 9,
+    borderRadius: 10,
+    backgroundColor: "#221b35",
+    borderWidth: 1,
+    borderColor: "#3d3165",
+  },
+  accessoryTargetLabel: {
+    color: "#a395d8",
+    fontSize: 10,
+    fontWeight: "600",
+    marginBottom: 5,
+  },
+  accessoryTargetValue: {
+    color: GarageTheme.textStrong,
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  accessoryTargetTable: {
+    gap: 8,
+    paddingRight: 8,
+  },
+  accessoryTargetCell: {
+    width: 86,
+    padding: 9,
+    borderRadius: 10,
+    backgroundColor: "#0f0d16",
+    borderWidth: 1,
+    borderColor: "#3d3165",
+  },
+  accessoryTargetRep: {
+    color: "#b7a8ff",
+    fontSize: 11,
+    fontWeight: "600",
+    marginBottom: 4,
+  },
+  accessoryTargetLoad: {
+    color: GarageTheme.textStrong,
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  accessoryTargetCellMeta: {
+    color: GarageTheme.textMuted,
+    fontSize: 9,
+    fontWeight: "500",
+    marginTop: 4,
+  },
+  accessoryTargetNote: {
+    color: "#c6bddf",
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 10,
+    fontWeight: "500",
   },
   vbtGuideCard: {
     marginTop: 14,
@@ -1577,14 +2028,14 @@ const styles = StyleSheet.create({
   vbtGuideEyebrow: {
     color: "#58d89d",
     fontSize: 11,
-    fontWeight: "900",
-    letterSpacing: 1,
+    fontWeight: "600",
+    letterSpacing: 0,
     marginBottom: 3,
   },
   vbtGuideTitle: {
     color: "#f4fff8",
     fontSize: 17,
-    fontWeight: "800",
+    fontWeight: "600",
   },
   vbtGuidePhase: {
     color: "#111b18",
@@ -1594,7 +2045,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 999,
     fontSize: 12,
-    fontWeight: "900",
+    fontWeight: "600",
   },
   vbtGuideBody: {
     color: "#c9dfd4",
@@ -1617,19 +2068,19 @@ const styles = StyleSheet.create({
   vbtGuideLabel: {
     color: "#8fb9a7",
     fontSize: 11,
-    fontWeight: "800",
+    fontWeight: "600",
     marginBottom: 5,
   },
   vbtGuideValue: {
-    color: "#ffffff",
+    color: "#f7f8f8",
     fontSize: 13,
-    fontWeight: "800",
+    fontWeight: "600",
     lineHeight: 18,
   },
   vbtGuideNote: {
     color: "#9fbbae",
     fontSize: 12,
-    fontWeight: "700",
+    fontWeight: "500",
   },
   manualVbtCard: {
     marginTop: 16,
@@ -1649,12 +2100,12 @@ const styles = StyleSheet.create({
   manualVbtTitle: {
     color: GarageTheme.textStrong,
     fontSize: 15,
-    fontWeight: "800",
+    fontWeight: "600",
   },
   manualVbtMeta: {
     color: GarageTheme.textMuted,
     fontSize: 11,
-    fontWeight: "800",
+    fontWeight: "600",
   },
   manualVbtBody: {
     color: GarageTheme.textMuted,
@@ -1673,12 +2124,12 @@ const styles = StyleSheet.create({
   manualVbtLabel: {
     color: "#9fbbae",
     fontSize: 10,
-    fontWeight: "800",
+    fontWeight: "600",
     marginBottom: 5,
   },
   manualVbtInput: {
     backgroundColor: "#242424",
-    color: "#fff",
+    color: "#f7f8f8",
     paddingHorizontal: 10,
     paddingVertical: 10,
     borderRadius: 8,
@@ -1697,14 +2148,14 @@ const styles = StyleSheet.create({
   manualCoachKicker: {
     color: "#58d89d",
     fontSize: 10,
-    fontWeight: "900",
-    letterSpacing: 1,
+    fontWeight: "600",
+    letterSpacing: 0,
     marginBottom: 5,
   },
   manualCoachMessage: {
     color: "#f4fff8",
     fontSize: 13,
-    fontWeight: "800",
+    fontWeight: "600",
     lineHeight: 18,
   },
   manualCoachAction: {
@@ -1734,7 +2185,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   exerciseButtonTextActive: {
-    color: "#fff",
+    color: "#f7f8f8",
     fontWeight: "600",
   },
   setTypeContainer: {
@@ -1751,19 +2202,19 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   setTypeButtonActive: {
-    backgroundColor: "#FF9800",
+    backgroundColor: "#7170ff",
   },
   setTypeButtonText: {
     color: "#999",
     fontSize: 14,
   },
   setTypeButtonTextActive: {
-    color: "#fff",
+    color: "#f7f8f8",
     fontWeight: "600",
   },
   input: {
     backgroundColor: "#2a2a2a",
-    color: "#fff",
+    color: "#f7f8f8",
     padding: 12,
     borderRadius: 8,
     fontSize: 16,
@@ -1782,14 +2233,14 @@ const styles = StyleSheet.create({
     marginTop: 24,
   },
   saveButtonText: {
-    color: "#fff",
+    color: "#f7f8f8",
     fontSize: 18,
     fontWeight: "600",
   },
   saveStatusText: {
     color: GarageTheme.success,
     fontSize: 13,
-    fontWeight: "700",
+    fontWeight: "500",
     marginTop: 8,
     textAlign: "center",
   },
@@ -1801,7 +2252,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   finishButtonText: {
-    color: "#fff",
+    color: "#f7f8f8",
     fontSize: 18,
     fontWeight: "600",
   },
@@ -1819,7 +2270,7 @@ const styles = StyleSheet.create({
   summaryTitle: {
     fontSize: 18,
     fontWeight: "bold",
-    color: "#fff",
+    color: "#f7f8f8",
     marginBottom: 12,
   },
   summaryEmpty: {
@@ -1848,18 +2299,24 @@ const styles = StyleSheet.create({
   },
   summaryText: {
     fontSize: 14,
-    color: "#fff",
+    color: "#f7f8f8",
     marginBottom: 2,
   },
   summaryMeta: {
     fontSize: 12,
     color: "#999",
   },
+  summaryTimingMeta: {
+    fontSize: 11,
+    color: "#93c5fd",
+    marginTop: 3,
+    fontWeight: "500",
+  },
   summaryVbtMeta: {
     fontSize: 11,
     color: "#9fbbae",
     marginTop: 3,
-    fontWeight: "700",
+    fontWeight: "500",
   },
   summaryE1rm: {
     fontSize: 14,
@@ -1883,7 +2340,7 @@ const styles = StyleSheet.create({
     borderColor: "#444",
   },
   adjustButtonText: {
-    color: "#fff",
+    color: "#f7f8f8",
     fontSize: 24,
     fontWeight: "600",
   },
@@ -1916,7 +2373,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   presetButtonTextActive: {
-    color: "#fff",
+    color: "#f7f8f8",
   },
   recentWeightContainer: {
     flexDirection: "row",
@@ -1933,8 +2390,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   recentWeightButtonActive: {
-    backgroundColor: "#FF9800",
-    borderColor: "#FF9800",
+    backgroundColor: "#7170ff",
+    borderColor: "#7170ff",
   },
   recentWeightButtonText: {
     color: "#999",
@@ -1942,7 +2399,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   recentWeightButtonTextActive: {
-    color: "#fff",
+    color: "#f7f8f8",
   },
   recentWeightButtonSub: {
     color: "#666",

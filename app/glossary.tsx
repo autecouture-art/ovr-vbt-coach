@@ -9,7 +9,7 @@ import GlossaryScreen from '@/src/screens/GlossaryScreen';
 export default function GlossaryRoute() {
   return (
     <>
-      <StatusBar style="dark" />
+      <StatusBar style="light" />
       <View style={{ flex: 1 }}>
         <GlossaryScreen />
       </View>

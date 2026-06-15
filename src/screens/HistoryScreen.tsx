@@ -528,16 +528,16 @@ const styles = StyleSheet.create({
   },
   eyebrow: {
     fontSize: 10,
-    fontWeight: '800',
+    fontWeight: '600',
     color: GarageTheme.accent,
-    letterSpacing: 2,
+    letterSpacing: 0,
     marginBottom: 8,
   },
   title: {
     fontSize: 28,
-    fontWeight: '800',
+    fontWeight: '600',
     color: GarageTheme.textStrong,
-    letterSpacing: 0.4,
+    letterSpacing: 0,
   },
   subtitle: {
     fontSize: 12,
@@ -558,9 +558,9 @@ const styles = StyleSheet.create({
     borderColor: GarageTheme.accent,
   },
   headerExerciseButtonText: {
-    color: '#ffffff',
+    color: '#f7f8f8',
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '500',
   },
   modeTabs: {
     flexDirection: 'row',
@@ -583,10 +583,10 @@ const styles = StyleSheet.create({
   modeTabText: {
     color: GarageTheme.textMuted,
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: '600',
   },
   modeTabTextActive: {
-    color: '#ffffff',
+    color: '#f7f8f8',
   },
   modeBody: {
     paddingBottom: 4,
@@ -611,12 +611,12 @@ const styles = StyleSheet.create({
   },
   monthHeader: {
     fontSize: 11,
-    fontWeight: '800',
+    fontWeight: '600',
     color: GarageTheme.accent,
     paddingHorizontal: 16,
     paddingVertical: 12,
     backgroundColor: GarageTheme.surfaceAlt,
-    letterSpacing: 1.8,
+    letterSpacing: 0,
   },
   calendarHeader: {
     marginHorizontal: 16,
@@ -629,7 +629,7 @@ const styles = StyleSheet.create({
   calendarNavButton: {
     width: 42,
     height: 42,
-    borderRadius: 21,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: GarageTheme.surface,
@@ -639,13 +639,13 @@ const styles = StyleSheet.create({
   calendarNavText: {
     color: GarageTheme.textStrong,
     fontSize: 26,
-    fontWeight: '700',
+    fontWeight: '500',
     lineHeight: 30,
   },
   calendarTitle: {
     color: GarageTheme.textStrong,
     fontSize: 18,
-    fontWeight: '800',
+    fontWeight: '600',
   },
   weekdayRow: {
     flexDirection: 'row',
@@ -656,14 +656,14 @@ const styles = StyleSheet.create({
     flex: 1,
     color: GarageTheme.textMuted,
     fontSize: 11,
-    fontWeight: '800',
+    fontWeight: '600',
     textAlign: 'center',
   },
   calendarGrid: {
     marginHorizontal: 16,
     flexDirection: 'row',
     flexWrap: 'wrap',
-    borderRadius: 16,
+    borderRadius: 12,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: GarageTheme.border,
@@ -691,7 +691,7 @@ const styles = StyleSheet.create({
   dayNumber: {
     color: GarageTheme.textMuted,
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '500',
   },
   dayNumberOutside: {
     color: GarageTheme.textSubtle,
@@ -703,12 +703,12 @@ const styles = StyleSheet.create({
     marginTop: 8,
     color: GarageTheme.accent,
     fontSize: 11,
-    fontWeight: '800',
+    fontWeight: '600',
   },
   dayVolume: {
     color: GarageTheme.textMuted,
     fontSize: 10,
-    fontWeight: '700',
+    fontWeight: '500',
     marginTop: 2,
   },
   selectedDayPanel: {
@@ -717,7 +717,7 @@ const styles = StyleSheet.create({
   selectedDayTitle: {
     color: GarageTheme.textStrong,
     fontSize: 16,
-    fontWeight: '800',
+    fontWeight: '600',
     marginHorizontal: 16,
     marginBottom: 8,
   },
@@ -727,7 +727,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginHorizontal: 16,
     padding: 16,
-    borderRadius: 14,
+    borderRadius: 12,
     backgroundColor: GarageTheme.surface,
     borderWidth: 1,
     borderColor: GarageTheme.border,
@@ -744,7 +744,7 @@ const styles = StyleSheet.create({
   graphTitle: {
     color: GarageTheme.textStrong,
     fontSize: 18,
-    fontWeight: '800',
+    fontWeight: '600',
   },
   graphSubtitle: {
     color: GarageTheme.textMuted,
@@ -770,16 +770,16 @@ const styles = StyleSheet.create({
   metricTabText: {
     color: GarageTheme.textMuted,
     fontSize: 11,
-    fontWeight: '800',
+    fontWeight: '600',
   },
   metricTabTextActive: {
-    color: '#ffffff',
+    color: '#f7f8f8',
   },
   tooltipCard: {
     marginHorizontal: 16,
     marginBottom: 12,
     padding: 14,
-    borderRadius: 16,
+    borderRadius: 12,
     backgroundColor: GarageTheme.surface,
     borderWidth: 1,
     borderColor: GarageTheme.borderStrong,
@@ -787,12 +787,12 @@ const styles = StyleSheet.create({
   tooltipDate: {
     color: GarageTheme.textMuted,
     fontSize: 11,
-    fontWeight: '700',
+    fontWeight: '500',
   },
   tooltipMain: {
     color: GarageTheme.textStrong,
     fontSize: 24,
-    fontWeight: '900',
+    fontWeight: '600',
     marginTop: 4,
   },
   tooltipSub: {
@@ -807,7 +807,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-end',
     gap: 6,
-    borderRadius: 18,
+    borderRadius: 12,
     backgroundColor: GarageTheme.surface,
     borderWidth: 1,
     borderColor: GarageTheme.border,
@@ -837,14 +837,14 @@ const styles = StyleSheet.create({
   barLabel: {
     color: GarageTheme.textMuted,
     fontSize: 10,
-    fontWeight: '700',
+    fontWeight: '500',
   },
   sessionCard: {
     backgroundColor: GarageTheme.surface,
     marginHorizontal: 16,
     marginTop: 8,
     padding: 16,
-    borderRadius: 16,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: GarageTheme.border,
     borderLeftWidth: 4,
@@ -905,14 +905,14 @@ const styles = StyleSheet.create({
   detailLink: {
     fontSize: 12,
     color: GarageTheme.info,
-    fontWeight: '700',
-    letterSpacing: 1,
+    fontWeight: '500',
+    letterSpacing: 0,
   },
   summaryCard: {
     margin: 16,
     padding: 20,
     backgroundColor: GarageTheme.surface,
-    borderRadius: 16,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: GarageTheme.borderStrong,
   },

@@ -226,7 +226,7 @@ const styles = StyleSheet.create({
   schemeToggle: {
     flex: 1,
     borderWidth: 1,
-    borderRadius: 16,
+    borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 12,
     gap: 4,

@@ -60,7 +60,7 @@ export const ExerciseTrendChart: React.FC<ExerciseTrendChartProps> = ({ history 
     color: (opacity = 1) => `rgba(59, 130, 246, ${opacity})`,
     labelColor: (opacity = 1) => `rgba(156, 163, 175, ${opacity})`,
     style: {
-      borderRadius: 16,
+      borderRadius: 12,
     },
     propsForDots: {
       r: '4',
@@ -85,7 +85,7 @@ export const ExerciseTrendChart: React.FC<ExerciseTrendChartProps> = ({ history 
     propsForDots: {
       r: '4',
       strokeWidth: '2',
-      stroke: '#f97316',
+      stroke: '#7170ff',
     },
   };
 
@@ -185,7 +185,7 @@ const styles = StyleSheet.create({
   },
   chartContainer: {
     backgroundColor: GarageTheme.surface,
-    borderRadius: 16,
+    borderRadius: 12,
     padding: 16,
     marginBottom: 16,
     borderWidth: 1,
@@ -198,13 +198,13 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   chart: {
-    borderRadius: 16,
+    borderRadius: 12,
   },
   emptyContainer: {
     padding: 40,
     alignItems: 'center',
     backgroundColor: GarageTheme.surface,
-    borderRadius: 16,
+    borderRadius: 12,
   },
   emptyText: {
     fontSize: 14,

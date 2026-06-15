@@ -63,7 +63,7 @@ export function E1RMCard({ currentE1RM, mvt }: E1RMCardProps) {
 const styles = StyleSheet.create({
   card: {
     backgroundColor: GarageTheme.panel,
-    borderRadius: 16,
+    borderRadius: 12,
     padding: 20,
     margin: 16,
     shadowColor: '#000',
@@ -87,10 +87,10 @@ const styles = StyleSheet.create({
     backgroundColor: GarageTheme.accent,
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 16,
+    borderRadius: 12,
   },
   badgeText: {
-    color: '#FFF',
+    color: '#f7f8f8',
     fontSize: 12,
     fontWeight: 'bold',
   },

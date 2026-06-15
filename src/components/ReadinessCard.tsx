@@ -36,7 +36,7 @@ export function ReadinessCard({
       case 'down':
         return '#F44336';
       default:
-        return '#FFC107';
+        return '#f59e0b';
     }
   };
 
@@ -86,7 +86,7 @@ export function ReadinessCard({
 const styles = StyleSheet.create({
   card: {
     backgroundColor: GarageTheme.panel,
-    borderRadius: 16,
+    borderRadius: 12,
     padding: 20,
     margin: 16,
     shadowColor: '#000',
@@ -109,7 +109,7 @@ const styles = StyleSheet.create({
   trendBadge: {
     width: 40,
     height: 40,
-    borderRadius: 20,
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
   },

@@ -34,11 +34,11 @@ export default function TabLayout() {
         },
         tabBarLabelStyle: {
           fontSize: 11,
-          fontWeight: "700",
-          letterSpacing: 0.6,
+          fontWeight: "500",
+          letterSpacing: 0,
         },
         tabBarItemStyle: {
-          borderRadius: 12,
+          borderRadius: 8,
         },
       }}
     >

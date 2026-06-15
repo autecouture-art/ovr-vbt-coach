@@ -317,14 +317,14 @@ export function getVelocityZone(velocity: number): VelocityZone | null {
       min_velocity: 1.0,
       max_velocity: 999,
       load_range: '<30% 1RM',
-      color: '#FFD700', // Gold
+      color: '#828fff', // Gold
     },
     {
       name: 'strength_speed',
       min_velocity: 0.75,
       max_velocity: 1.0,
       load_range: '30-60% 1RM',
-      color: '#FF8C00', // Dark Orange
+      color: '#828fff', // Dark Orange
     },
     {
       name: 'hypertrophy',

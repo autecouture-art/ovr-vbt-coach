@@ -3,12 +3,12 @@ import { getProtocolVelocityLossThreshold } from "../utils/PowerliftingVBTProtoc
 import { getDynamicVelocityZones } from "../utils/VelocityZones";
 
 const VELOCITY_ZONES = {
-  power: { min: 1.0, name: "POWER", emoji: "PWR", color: "#FFD700" },
+  power: { min: 1.0, name: "POWER", emoji: "PWR", color: "#828fff" },
   strengthSpeed: {
     min: 0.75,
     name: "SPEED STRENGTH",
     emoji: "SPD",
-    color: "#FF8C00",
+    color: "#828fff",
   },
   hypertrophy: {
     min: 0.5,

@@ -186,7 +186,7 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   card: {
-    borderRadius: 20,
+    borderRadius: 12,
     backgroundColor: GarageTheme.surface,
     borderWidth: 1,
     borderColor: GarageTheme.borderStrong,
@@ -196,13 +196,13 @@ const styles = StyleSheet.create({
   eyebrow: {
     color: GarageTheme.accent,
     fontSize: 12,
-    fontWeight: "800",
-    letterSpacing: 3,
+    fontWeight: "600",
+    letterSpacing: 0,
   },
   title: {
     color: GarageTheme.textStrong,
     fontSize: 28,
-    fontWeight: "800",
+    fontWeight: "600",
   },
   subtitle: {
     color: GarageTheme.textMuted,
@@ -214,7 +214,7 @@ const styles = StyleSheet.create({
   label: {
     color: GarageTheme.textStrong,
     fontSize: 14,
-    fontWeight: "700",
+    fontWeight: "500",
   },
   input: {
     borderRadius: 12,
@@ -237,7 +237,7 @@ const styles = StyleSheet.create({
   error: {
     color: GarageTheme.danger,
     fontSize: 13,
-    fontWeight: "700",
+    fontWeight: "500",
   },
   actions: {
     flexDirection: "row",
@@ -257,7 +257,7 @@ const styles = StyleSheet.create({
   secondaryButtonText: {
     color: GarageTheme.textMuted,
     fontSize: 15,
-    fontWeight: "700",
+    fontWeight: "500",
   },
   primaryButton: {
     flex: 1,
@@ -271,6 +271,6 @@ const styles = StyleSheet.create({
   primaryButtonText: {
     color: GarageTheme.textStrong,
     fontSize: 15,
-    fontWeight: "800",
+    fontWeight: "600",
   },
 });

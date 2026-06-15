@@ -350,7 +350,7 @@ const styles = StyleSheet.create({
   recentTitle: {
     color: GarageTheme.textStrong,
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: '500',
     marginBottom: 10,
   },
   recentEmpty: {
@@ -383,12 +383,12 @@ const styles = StyleSheet.create({
   recentItemMeta: {
     color: GarageTheme.success,
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '500',
   },
   recentItemHint: {
     color: GarageTheme.accentSoft,
     fontSize: 11,
-    fontWeight: '700',
+    fontWeight: '500',
   },
 
   setInfo: {

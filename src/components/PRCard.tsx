@@ -83,7 +83,7 @@ export function PRCard({ currentLoad, bestVelocity }: PRCardProps) {
 const styles = StyleSheet.create({
   card: {
     backgroundColor: GarageTheme.panel,
-    borderRadius: 16,
+    borderRadius: 12,
     padding: 20,
     margin: 16,
     shadowColor: '#000',
@@ -107,10 +107,10 @@ const styles = StyleSheet.create({
     backgroundColor: GarageTheme.accent,
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 16,
+    borderRadius: 12,
   },
   prBadgeText: {
-    color: '#FFF',
+    color: '#f7f8f8',
     fontSize: 14,
     fontWeight: 'bold',
   },

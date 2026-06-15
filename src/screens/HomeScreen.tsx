@@ -148,7 +148,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 32,
     fontWeight: 'bold',
-    color: '#fff',
+    color: '#f7f8f8',
     marginBottom: 8,
   },
   subtitle: {
@@ -165,7 +165,7 @@ const styles = StyleSheet.create({
   },
   statusLabel: {
     fontSize: 16,
-    color: '#fff',
+    color: '#f7f8f8',
     flex: 1,
   },
   statusIndicator: {
@@ -176,7 +176,7 @@ const styles = StyleSheet.create({
   },
   statusText: {
     fontSize: 14,
-    color: '#fff',
+    color: '#f7f8f8',
   },
   buttonContainer: {
     padding: 16,
@@ -192,13 +192,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#2196F3',
   },
   secondaryButton: {
-    backgroundColor: '#FF9800',
+    backgroundColor: '#7170ff',
   },
   tertiaryButton: {
     backgroundColor: '#9C27B0',
   },
   buttonText: {
-    color: '#fff',
+    color: '#f7f8f8',
     fontSize: 18,
     fontWeight: '600',
   },
@@ -208,7 +208,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#fff',
+    color: '#f7f8f8',
     marginBottom: 12,
   },
   emptyText: {
@@ -226,7 +226,7 @@ const styles = StyleSheet.create({
   sessionDate: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#fff',
+    color: '#f7f8f8',
     marginBottom: 4,
   },
   sessionInfo: {
