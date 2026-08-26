@@ -33,12 +33,13 @@
 		</dict>
 	</array>
 	<key>CFBundleVersion</key>
-	<string>105</string>
+	<string>125</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
 		<string>chatgpt</string>
+		<string>breathforge30</string>
 	</array>
 	<key>LSMinimumSystemVersion</key>
 	<string>12.0</string>
@@ -63,6 +64,8 @@
 	<string>RepVelo Coach writes workout sessions to Health so live heart rate from supported Apple devices can be used during training.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>This app may use location services for enhanced training features.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>ユーザーのMacへ読み取り専用のトレーニングスナップショットを送信するために、ローカルネットワークを使用します。</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Allow $(PRODUCT_NAME) to access your microphone.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

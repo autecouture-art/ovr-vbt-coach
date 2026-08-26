@@ -64,21 +64,14 @@ export default function TabLayout() {
           },
         }}
         options={{
-          title: "セッション",
+          title: "計測",
           tabBarIcon: ({ color }) => <IconSymbol size={24} name="bolt.fill" color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="graph"
-        options={{
-          title: "グラフ",
-          tabBarIcon: ({ color }) => <IconSymbol size={24} name="chart.xyaxis.line" color={color} />,
         }}
       />
       <Tabs.Screen
         name="manual"
         options={{
-          title: "手動入力",
+          title: "手入力",
           tabBarIcon: ({ color }) => <IconSymbol size={24} name="pencil" color={color} />,
         }}
       />
@@ -90,9 +83,17 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="graph"
+        options={{
+          title: "分析",
+          tabBarIcon: ({ color }) => <IconSymbol size={24} name="chart.xyaxis.line" color={color} />,
+        }}
+      />
+      <Tabs.Screen
         name="settings"
         options={{
           title: "設定",
+          href: null,
           tabBarIcon: ({ color }) => <IconSymbol size={24} name="gearshape.fill" color={color} />,
         }}
       />
@@ -100,9 +101,13 @@ export default function TabLayout() {
         name="import"
         options={{
           title: "データ",
+          href: null,
           tabBarIcon: ({ color }) => <IconSymbol size={24} name="tray.and.arrow.down.fill" color={color} />,
         }}
       />
+      <Tabs.Screen name="more" options={{ href: null }} />
+      <Tabs.Screen name="train" options={{ href: null }} />
+      <Tabs.Screen name="progress" options={{ href: null }} />
     </Tabs>
   );
 }

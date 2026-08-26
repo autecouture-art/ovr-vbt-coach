@@ -19,6 +19,7 @@ import VBTCalculations from '../utils/VBTCalculations';
 import { RepData, RepVeloData, SetData } from '../types/index';
 import { createSessionId, formatSessionLabel } from '../utils/session';
 import { GarageTheme } from '../constants/garageTheme';
+import { formatLoadKg } from '../constants/exerciseCatalog';
 
 interface MonitorScreenProps {
   navigation: any;
@@ -214,7 +215,7 @@ const MonitorScreen: React.FC<MonitorScreenProps> = ({ navigation }) => {
             >
               <View>
                 <Text style={styles.recentItemDate}>{formatSessionLabel(set.session_id)}</Text>
-                <Text style={styles.recentItemMain}>{set.load_kg} kg x {set.reps} reps</Text>
+                <Text style={styles.recentItemMain}>{formatLoadKg(set.load_kg)} kg x {set.reps} reps</Text>
               </View>
               <View style={styles.recentItemAction}>
                 <Text style={styles.recentItemMeta}>

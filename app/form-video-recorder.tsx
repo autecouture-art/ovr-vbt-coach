@@ -7,11 +7,12 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { CameraView, useCameraPermissions, useMicrophonePermissions } from "expo-camera";
+import { CameraView, useCameraPermissions } from "expo-camera";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { GarageTheme } from "@/src/constants/garageTheme";
+import AudioService from "@/src/services/AudioService";
 import LiveShareService from "@/src/services/LiveShareService";
 import VideoRecordingService from "@/src/services/VideoRecordingService";
 
@@ -24,6 +25,12 @@ type FormVideoRecordingPayload = {
   ended_at: string;
   local_uri: string;
 };
+
+const ZOOM_PRESETS = [
+  { label: "1x", value: 0 },
+  { label: "1.5x", value: 0.18 },
+  { label: "2x", value: 0.32 },
+] as const;
 
 const getParam = (value: string | string[] | undefined): string =>
   Array.isArray(value) ? value[0] ?? "" : value ?? "";
@@ -38,7 +45,6 @@ const saveFormVideoRecording = async (
     lift: record.lift,
     set_index: record.set_index,
     load_kg: record.load_kg,
-    local_uri: record.local_uri,
     duration_s: record.duration_s,
     started_at: record.started_at,
     ended_at: record.ended_at,
@@ -52,8 +58,6 @@ export default function FormVideoRecorderScreen() {
   const params = useLocalSearchParams();
   const cameraRef = useRef<CameraView | null>(null);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
-  const [microphonePermission, requestMicrophonePermission] =
-    useMicrophonePermissions();
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraAvailable, setCameraAvailable] = useState<boolean | null>(null);
   const [recording, setRecording] = useState(false);
@@ -61,6 +65,7 @@ export default function FormVideoRecorderScreen() {
   const [startedAt, setStartedAt] = useState<string | null>(null);
   const [capturedUri, setCapturedUri] = useState<string | null>(null);
   const [endedAt, setEndedAt] = useState<string | null>(null);
+  const [cameraZoom, setCameraZoom] = useState(0);
 
   const recordingContext = useMemo(() => {
     const setIndex = Number.parseInt(getParam(params.set_index), 10);
@@ -73,21 +78,26 @@ export default function FormVideoRecorderScreen() {
     };
   }, [params.lift, params.load_kg, params.session_id, params.set_index]);
 
-  const hasPermission =
-    cameraPermission?.granted === true && microphonePermission?.granted === true;
-  const permissionReady = cameraPermission != null && microphonePermission != null;
+  const hasPermission = cameraPermission?.granted === true;
+  const permissionReady = cameraPermission != null;
   const contextReady =
     recordingContext.sessionId.length > 0 &&
     recordingContext.lift.length > 0 &&
     recordingContext.setIndex > 0;
 
+  React.useEffect(() => {
+    void AudioService.keepExternalAudioAlive("form-video-screen-mounted");
+    return () => {
+      void AudioService.keepExternalAudioAlive("form-video-screen-unmounted");
+    };
+  }, []);
+
   const requestPermissions = async () => {
     const nextCamera = await requestCameraPermission();
-    const nextMicrophone = await requestMicrophonePermission();
-    if (!nextCamera.granted || !nextMicrophone.granted) {
+    if (!nextCamera.granted) {
       Alert.alert(
         "権限が必要です",
-        "フォーム動画を撮るにはカメラとマイクの権限を許可してください。",
+        "フォーム動画を撮るにはカメラ権限を許可してください。音声は録音しません。",
       );
     }
   };
@@ -102,6 +112,7 @@ export default function FormVideoRecorderScreen() {
     setRecording(true);
 
     try {
+      await AudioService.keepExternalAudioAlive("form-video-screen-before-record");
       const video = await cameraRef.current.recordAsync({
         maxDuration: 180,
       });
@@ -115,11 +126,13 @@ export default function FormVideoRecorderScreen() {
       Alert.alert("録画エラー", "フォーム動画の録画に失敗しました。");
     } finally {
       setRecording(false);
+      void AudioService.keepExternalAudioAlive("form-video-screen-after-record");
     }
   };
 
   const handleStop = () => {
     cameraRef.current?.stopRecording();
+    void AudioService.keepExternalAudioAlive("form-video-screen-stop");
   };
 
   const handleHome = () => {
@@ -145,9 +158,10 @@ export default function FormVideoRecorderScreen() {
         ended_at: endedAt,
         local_uri: capturedUri,
       });
+      void AudioService.keepExternalAudioAlive("form-video-screen-saved");
       Alert.alert(
         "保存完了",
-        "フォーム動画をセットに紐付けました。",
+        "フォーム動画をセットに紐付けました。セッション履歴の該当セットをタップして FORM VIDEOS から再生できます。",
         [{ text: "OK", onPress: () => router.back() }],
       );
     } catch (error) {
@@ -193,7 +207,7 @@ export default function FormVideoRecorderScreen() {
       <View style={[styles.container, styles.centered, { paddingTop: insets.top }]}>
         <Text style={styles.title}>フォーム動画</Text>
         <Text style={styles.message}>
-          カメラとマイクの権限を許可すると、セットに紐付けるフォーム動画を撮れます。
+          カメラ権限を許可すると、音楽を止めずにセットへ紐付くフォーム動画を撮れます。音声は録音しません。
         </Text>
         <TouchableOpacity
           style={[styles.primaryButton, styles.centeredActionButton]}
@@ -224,6 +238,8 @@ export default function FormVideoRecorderScreen() {
         style={styles.camera}
         facing="back"
         mode="video"
+        mute
+        zoom={cameraZoom}
         onCameraReady={() => {
           setCameraReady(true);
           setCameraAvailable(true);
@@ -272,6 +288,31 @@ export default function FormVideoRecorderScreen() {
       )}
 
       <View style={[styles.bottomPanel, { paddingBottom: insets.bottom + 18 }]}>
+        <View style={styles.zoomPanel}>
+          <Text style={styles.zoomLabel}>倍率</Text>
+          <View style={styles.zoomControls}>
+            {ZOOM_PRESETS.map((preset) => {
+              const active = cameraZoom === preset.value;
+              return (
+                <TouchableOpacity
+                  key={preset.label}
+                  style={[styles.zoomChip, active && styles.zoomChipActive]}
+                  onPress={() => setCameraZoom(preset.value)}
+                  disabled={recording}
+                >
+                  <Text
+                    style={[
+                      styles.zoomChipText,
+                      active && styles.zoomChipTextActive,
+                    ]}
+                  >
+                    {preset.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
         {capturedUri ? (
           <>
             <Text style={styles.statusText}>録画済み: 保存または破棄を選んでください。</Text>
@@ -414,6 +455,42 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.58)",
     paddingHorizontal: 18,
     paddingTop: 18,
+  },
+  zoomPanel: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 14,
+  },
+  zoomLabel: {
+    color: GarageTheme.textMuted,
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  zoomControls: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  zoomChip: {
+    borderColor: "rgba(255,255,255,0.24)",
+    borderRadius: 999,
+    borderWidth: 1,
+    minWidth: 54,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  zoomChipActive: {
+    backgroundColor: GarageTheme.accent,
+    borderColor: GarageTheme.accent,
+  },
+  zoomChipText: {
+    color: GarageTheme.textMuted,
+    fontSize: 12,
+    fontWeight: "600",
+    textAlign: "center",
+  },
+  zoomChipTextActive: {
+    color: "#f7f8f8",
   },
   statusText: {
     color: GarageTheme.text,

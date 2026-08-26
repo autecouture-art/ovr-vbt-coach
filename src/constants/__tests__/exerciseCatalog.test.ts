@@ -8,6 +8,7 @@ import {
   getExerciseSelectionGroups,
   getPrimarySelectionGroupForCategory,
   inferExercisePreset,
+  isDefaultExerciseCatalogItem,
   matchesExerciseSelectionGroup,
 } from "../exerciseCatalog";
 import type { Exercise } from "@/src/types/index";
@@ -26,6 +27,10 @@ const exercise = (
 
 describe("exercise selection grouping", () => {
   it("normalizes common Japanese exercise names to English canonical names", () => {
+    expect(getCanonicalExerciseName("Squat")).toBe("Low Bar Squat");
+    expect(getCanonicalExerciseName("Back Squat")).toBe("Low Bar Squat");
+    expect(getCanonicalExerciseName("squt")).toBe("Low Bar Squat");
+    expect(getCanonicalExerciseName("low ber squad")).toBe("Low Bar Squat");
     expect(getCanonicalExerciseName("ナローベンチプレス")).toBe(
       "Close Grip Bench Press",
     );
@@ -35,17 +40,40 @@ describe("exercise selection grouping", () => {
     expect(getCanonicalExerciseName("ハイバースクワット")).toBe(
       "High Bar Squat",
     );
-    expect(getCanonicalExerciseName("Back Squat")).toBe("Squat");
     expect(getCanonicalExerciseName("Speed Bench Press")).toBe("Bench Press");
     expect(getCanonicalExerciseName("スピードベンチ")).toBe("Bench Press");
+    expect(getCanonicalExerciseName("Tバーロウ")).toBe("T-Bar Row");
+    expect(getCanonicalExerciseName("Lat pull down delta.co")).toBe(
+      "Lat Pulldown",
+    );
+    expect(getCanonicalExerciseName("ダンベルシュラッグ")).toBe(
+      "Dumbbell Shrug",
+    );
+    expect(getCanonicalExerciseName("トライセプスエクステンション")).toBe(
+      "Cable French Press",
+    );
+    expect(getCanonicalExerciseName("テンポベンチプレス")).toBe(
+      "Larsen 4-2-0 Tempo Bench Press",
+    );
+    expect(getCanonicalExerciseName("Larsen Narrow Bench")).toBe(
+      "Larsen Narrow Bench",
+    );
+    expect(getCanonicalExerciseName("larsen narrow bench press")).toBe(
+      "Larsen Narrow Bench",
+    );
   });
 
   it("exposes canonical migration pairs for history data", () => {
     expect(getCanonicalExerciseMigrationPairs()).toEqual(
-      expect.arrayContaining([{ from: "back squat", to: "Squat" }]),
+      expect.arrayContaining([{ from: "back squat", to: "Low Bar Squat" }]),
     );
     expect(getCanonicalExerciseMigrationPairs()).toEqual(
-      expect.arrayContaining([{ from: "バックスクワット", to: "Squat" }]),
+      expect.arrayContaining([
+        { from: "バックスクワット", to: "Low Bar Squat" },
+      ]),
+    );
+    expect(getCanonicalExerciseMigrationPairs()).toEqual(
+      expect.arrayContaining([{ from: "low ber squad", to: "Low Bar Squat" }]),
     );
   });
 
@@ -71,6 +99,61 @@ describe("exercise selection grouping", () => {
     expect(getExerciseSelectionGroups(uprightRow as Exercise)).toContain(
       "shoulders",
     );
+  });
+
+  it("treats pec fly variants as chest exercises", () => {
+    const pecFly = inferExercisePreset("pec fly");
+    const pecDeck = inferExercisePreset("Pec Deck Fly");
+
+    expect(pecFly.category).toBe("bench");
+    expect(pecFly.subcategory).toBe("chest_fly");
+    expect(getExerciseSelectionGroups(pecFly as Exercise)).toContain("chest");
+    expect(pecDeck.category).toBe("bench");
+    expect(getDefaultCategoryForSelectionGroup("chest")).toBe("bench");
+
+    const reversePecDeck = inferExercisePreset("Reverse Pec Deck Fly");
+    expect(reversePecDeck.category).toBe("press");
+    expect(reversePecDeck.subcategory).toBe("rear_delt_fly");
+    expect(getExerciseSelectionGroups(reversePecDeck as Exercise)).toContain(
+      "shoulders",
+    );
+    expect(getCanonicalExerciseName("Short-Range Pec Fly")).toBe("Pec Fly");
+  });
+
+  it("normalizes visible app exercise duplicates into canonical English names", () => {
+    expect(getCanonicalExerciseName("Cable arm curl wide")).toBe("Arm Curl");
+    expect(getCanonicalExerciseName("Larsen Narrow Bench")).toBe(
+      "Larsen Narrow Bench",
+    );
+    expect(getCanonicalExerciseName("Close Grip Bench Press")).toBe(
+      "Close Grip Bench Press",
+    );
+    expect(getCanonicalExerciseName("Cable Side Raise")).toBe(
+      "Cable Side Raise",
+    );
+    expect(getCanonicalExerciseName("Porse deadlift sumo")).toBe(
+      "Sumo Deadlift",
+    );
+    expect(getCanonicalExerciseName("Porse squat")).toBe("Low Bar Squat");
+    expect(getCanonicalExerciseName("1/2/5 Tempo SumoDeadlift")).toBe(
+      "Sumo Deadlift",
+    );
+  });
+
+  it("does not treat user-added alias-like exercise names as catalog-managed rows", () => {
+    expect(
+      isDefaultExerciseCatalogItem({
+        id: "tempo_bench_press",
+        name: "Tempo Bench Press",
+      }),
+    ).toBe(false);
+
+    expect(
+      isDefaultExerciseCatalogItem({
+        id: "larsen_tempo_bench_press",
+        name: "Larsen 4-2-0 Tempo Bench Press",
+      }),
+    ).toBe(true);
   });
 
   it("groups bench assistance under the bench family", () => {

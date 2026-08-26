@@ -5,6 +5,7 @@ import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import DatabaseService from "@/src/services/DatabaseService";
 import { SetEditModal } from "@/src/components/SetEditModal";
 import { GarageTheme } from "@/src/constants/garageTheme";
+import { formatLoadKg } from "@/src/constants/exerciseCatalog";
 import { firstRouteParam } from "@/src/utils/routeParams";
 import { formatSessionLabel } from "@/src/utils/session";
 import { formatVelocityLossTriplet } from "@/src/utils/VBTCalculations";
@@ -125,7 +126,7 @@ export default function SessionDetailScreen() {
                   <Text style={styles.editButtonText}>編集</Text>
                 </TouchableOpacity>
               </View>
-              <Text style={styles.setMeta}>{set.load_kg} kg × {set.reps} reps</Text>
+              <Text style={styles.setMeta}>{formatLoadKg(set.load_kg)} kg × {set.reps} reps</Text>
               {set.rpe != null ? <Text style={styles.setMeta}>RPE {set.rpe}</Text> : null}
               {set.e1rm ? <Text style={styles.setMeta}>e1RM {set.e1rm.toFixed(1)} kg</Text> : null}
               {set.velocity_loss !== null ? (

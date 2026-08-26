@@ -1,4 +1,4 @@
-import React, { Suspense, useEffect, useState } from "react";
+import React, { Suspense, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -11,6 +11,7 @@ import {
   View,
 } from "react-native";
 import { useIsFocused } from "@react-navigation/native";
+import { useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Clipboard from "expo-clipboard";
 import * as Sharing from "expo-sharing";
@@ -22,7 +23,13 @@ import CrashReportService, {
   type VBTScreenCrashContext,
 } from "@/src/services/CrashReportService";
 
-type LoadedSessionScreen = React.ComponentType<Record<string, never>>;
+type SupervisorQuickLaunchParams = {
+  supervisorRowId?: string;
+  supervisorWeekDay?: string;
+  quickLaunchToken?: string;
+  autoOpen?: string;
+};
+type LoadedSessionScreen = React.ComponentType<SupervisorQuickLaunchParams>;
 type LoadedEmergencySessionLogScreen = React.ComponentType<{
   onClose: () => void;
 }>;
@@ -35,6 +42,7 @@ const LazyEmergencySessionLogScreen = React.lazy(
 );
 
 export default function SessionGateScreen() {
+  const quickLaunchParams = useLocalSearchParams<SupervisorQuickLaunchParams>();
   const insets = useSafeAreaInsets();
   const isFocused = useIsFocused();
   const [previousVbtCrashContext, setPreviousVbtCrashContext] =
@@ -43,6 +51,7 @@ export default function SessionGateScreen() {
     useState<LoadedSessionScreen | null>(null);
   const [isLoadingSession, setIsLoadingSession] = useState(false);
   const [showEmergencyLog, setShowEmergencyLog] = useState(false);
+  const autoOpenTokenRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!isFocused || LoadedSessionScreen) {
@@ -197,7 +206,7 @@ export default function SessionGateScreen() {
     setPreviousVbtCrashContext(null);
   };
 
-  const handleOpenSessionScreen = async () => {
+  const handleOpenSessionScreen = React.useCallback(async () => {
     setIsLoadingSession(true);
     try {
       const deviceInfo = BLEService.getLastDeviceInfo();
@@ -225,10 +234,30 @@ export default function SessionGateScreen() {
     } finally {
       setIsLoadingSession(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    const autoOpen = quickLaunchParams.autoOpen === "1";
+    const token = quickLaunchParams.quickLaunchToken?.trim();
+    if (!isFocused || !autoOpen || !token || LoadedSessionScreen || isLoadingSession) {
+      return;
+    }
+    if (autoOpenTokenRef.current === token) {
+      return;
+    }
+    autoOpenTokenRef.current = token;
+    void handleOpenSessionScreen();
+  }, [
+    LoadedSessionScreen,
+    isFocused,
+    isLoadingSession,
+    handleOpenSessionScreen,
+    quickLaunchParams.autoOpen,
+    quickLaunchParams.quickLaunchToken,
+  ]);
 
   if (LoadedSessionScreen) {
-    return <LoadedSessionScreen />;
+    return <LoadedSessionScreen {...quickLaunchParams} />;
   }
 
   if (showEmergencyLog) {

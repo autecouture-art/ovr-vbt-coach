@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { AppSettings } from "@/src/types/index";
+import { normalizeVelocityLossThreshold } from "@/src/utils/VelocityLossThreshold";
 
 export const SETTINGS_KEY = "@app_settings";
 
@@ -9,7 +10,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   enable_audio_feedback: true,
   enable_voice_commands: false,
   enable_video_recording: false,
-  enable_form_video_ble_safe_mode: true,
+  enable_form_video_ble_safe_mode: false,
   enable_google_drive_crash_report_upload: false,
   enable_google_drive_crash_report_auto_upload: false,
   google_drive_crash_report_url: "",
@@ -17,6 +18,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   enable_live_share: false,
   live_share_url: "",
   live_share_token: "",
+  enable_improvement_feedback_sync: false,
   target_training_phase: "strength",
   powerlifting_block_week: 5,
   audio_volume: 1.0,
@@ -64,6 +66,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   session_display_focus_vl: true,
   session_display_focus_heart_rate: true,
   session_display_focus_load: true,
+  enable_product_session_dashboard: false,
 };
 
 export async function loadAppSettings(): Promise<AppSettings> {
@@ -72,9 +75,16 @@ export async function loadAppSettings(): Promise<AppSettings> {
     if (!stored) {
       return DEFAULT_APP_SETTINGS;
     }
-    return {
+    const merged = {
       ...DEFAULT_APP_SETTINGS,
       ...(JSON.parse(stored) as Partial<AppSettings>),
+      enable_product_session_dashboard: false,
+    };
+    return {
+      ...merged,
+      velocity_loss_threshold: normalizeVelocityLossThreshold(
+        merged.velocity_loss_threshold,
+      ),
     };
   } catch (error) {
     console.error("Failed to load app settings:", error);
@@ -88,6 +98,9 @@ export async function saveAppSettings(
   const merged = {
     ...DEFAULT_APP_SETTINGS,
     ...nextSettings,
+    velocity_loss_threshold: normalizeVelocityLossThreshold(
+      nextSettings.velocity_loss_threshold,
+    ),
   };
   await AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify(merged));
   return merged;

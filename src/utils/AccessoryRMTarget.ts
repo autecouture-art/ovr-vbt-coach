@@ -1,9 +1,13 @@
 import type { Exercise, SetData } from "../types/index";
-import { isBig3 } from "./WarmupLogic";
 import {
   getCanonicalExerciseName,
-  roundToHalfKg,
+  isBig3Exercise,
 } from "../constants/exerciseCatalog";
+import {
+  formatLoadKgTwoDecimals,
+  isSameRecordedLoadKg,
+  normalizeLoadKg,
+} from "./LoadPrecision";
 
 export const ACCESSORY_RM_TARGET_REPS = Array.from(
   { length: 11 },
@@ -35,6 +39,7 @@ export type AccessoryRMTargetContext = {
   conversionTable: AccessoryRMTargetRow[];
   stopRules: string[];
   note: string;
+  excludedHistorySetCount: number;
 };
 
 type BuildAccessoryRMTargetContextArgs = {
@@ -57,6 +62,29 @@ const STOP_RULES = [
 const isFinitePositive = (value: number | null | undefined): value is number =>
   value != null && Number.isFinite(value) && value > 0;
 
+export const isAccessoryRmRepRange = (reps: number | null | undefined): boolean =>
+  isFinitePositive(reps) && reps >= 5 && reps <= 15;
+
+export function resolveSetE1RMForPersistence(input: {
+  rawE1RM: number | null;
+  reps: number;
+  isAccessory: boolean;
+}): {
+  e1rm: number | null;
+  eligibleForBaselineAndPR: boolean;
+  exclusionReason: string | null;
+} {
+  const eligible =
+    !input.isAccessory || isAccessoryRmRepRange(input.reps);
+  return {
+    e1rm: eligible ? input.rawE1RM : null,
+    eligibleForBaselineAndPR: eligible,
+    exclusionReason: eligible
+      ? null
+      : "e1rm_excluded: accessory reps outside 5-15",
+  };
+}
+
 export function calculateAccessoryE1RM(
   loadKg: number | null | undefined,
   reps: number | null | undefined,
@@ -66,8 +94,8 @@ export function calculateAccessoryE1RM(
   return Math.round(e1rm * 10) / 10;
 }
 
-function roundUpToHalfKg(loadKg: number): number {
-  return Math.ceil(loadKg * 2) / 2;
+function roundUpToLoadPrecision(loadKg: number): number {
+  return normalizeLoadKg(Math.ceil(loadKg * 100) / 100);
 }
 
 function getSetIdentity(set: SetData | null | undefined) {
@@ -105,7 +133,7 @@ function buildConversionTable(
     }
 
     const rawTargetLoad = targetE1RMKg / (1 + reps / 30);
-    const targetLoadKg = roundUpToHalfKg(rawTargetLoad);
+    const targetLoadKg = roundUpToLoadPrecision(rawTargetLoad);
     const targetE1RMFromLoad = calculateAccessoryE1RM(targetLoadKg, reps);
     const currentLoadE1RMKg = isFinitePositive(currentLoadKg)
       ? calculateAccessoryE1RM(currentLoadKg, reps)
@@ -132,7 +160,7 @@ export function buildAccessoryRMTargetContext({
   currentSet = null,
 }: BuildAccessoryRMTargetContextArgs): AccessoryRMTargetContext {
   const canonicalLift = getCanonicalExerciseName(lift);
-  const enabled = exercise ? !isBig3(exercise.category) : true;
+  const enabled = exercise ? !isBig3Exercise(exercise) : true;
   const currentSetIdentity = getSetIdentity(currentSet);
   const sameLiftHistory = historySets.filter((set) => {
     if (!sameCanonicalLift(set, canonicalLift)) return false;
@@ -141,16 +169,20 @@ export function buildAccessoryRMTargetContext({
     }
     return true;
   });
-  const sameLoadHistory = sameLiftHistory.filter(
+  const validBaselineHistory = sameLiftHistory.filter((set) =>
+    isAccessoryRmRepRange(set.reps),
+  );
+  const sameLoadHistory = validBaselineHistory.filter(
     (set) =>
       isFinitePositive(currentLoadKg) &&
-      Math.abs(set.load_kg - currentLoadKg) < 0.26,
+      isSameRecordedLoadKg(set.load_kg, currentLoadKg),
   );
-  const normalizedCurrentE1RM =
-    currentE1RMKg ??
-    calculateAccessoryE1RM(currentLoadKg ?? null, currentReps ?? null);
+  const normalizedCurrentE1RM = isAccessoryRmRepRange(currentReps)
+    ? currentE1RMKg ??
+      calculateAccessoryE1RM(currentLoadKg ?? null, currentReps ?? null)
+    : null;
   const previousBestE1RM = Math.max(
-    ...sameLiftHistory
+    ...validBaselineHistory
       .map((set) => set.e1rm ?? calculateAccessoryE1RM(set.load_kg, set.reps))
       .filter(isFinitePositive),
     0,
@@ -164,6 +196,9 @@ export function buildAccessoryRMTargetContext({
     0,
   );
   const previousBestE1RMKg = previousBestE1RM || null;
+  const currentRepCount = isAccessoryRmRepRange(currentReps)
+    ? Math.round(currentReps as number)
+    : null;
   const targetE1RMKg =
     previousBestE1RMKg ??
     (normalizedCurrentE1RM != null ? normalizedCurrentE1RM : null);
@@ -189,23 +224,26 @@ export function buildAccessoryRMTargetContext({
         ? normalizedCurrentE1RM > previousBestE1RMKg
         : null,
     sameLoadRepPR:
-      isFinitePositive(currentReps) && previousBestSameLoadReps > 0
-        ? currentReps > previousBestSameLoadReps
+      currentRepCount != null && previousBestSameLoadReps > 0
+        ? currentRepCount > previousBestSameLoadReps
         : null,
     sameLoadVolumePR:
       isFinitePositive(currentLoadKg) &&
-      isFinitePositive(currentReps) &&
+      currentRepCount != null &&
       previousBestSameLoadVolume > 0
-        ? currentLoadKg * currentReps > previousBestSameLoadVolume
+        ? currentLoadKg * currentRepCount > previousBestSameLoadVolume
         : null,
     conversionTable: buildConversionTable(targetE1RMKg, currentLoadKg ?? null),
     stopRules: STOP_RULES,
+    excludedHistorySetCount: sameLiftHistory.length - validBaselineHistory.length,
     note:
-      "アクセサリーは5〜15repの範囲で、毎回1セットだけRM換算セットマックスを狙う。主役リフトの質を落とさない範囲で実施。",
+      isAccessoryRmRepRange(currentReps)
+        ? "アクセサリーは5〜15repの範囲で、毎回1セットだけRM換算セットマックスを狙う。主役リフトの質を落とさない範囲で実施。"
+        : "今回のセットは5〜15rep範囲外のため、raw setとして保存するがe1RM基準・PR・換算目標には使わない。",
   };
 }
 
 export function formatAccessoryTargetLoad(value: number | null | undefined) {
   if (value == null || !Number.isFinite(value)) return "-";
-  return `${roundToHalfKg(value).toFixed(value % 1 === 0 ? 0 : 1)}kg`;
+  return `${formatLoadKgTwoDecimals(value)}kg`;
 }

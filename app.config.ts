@@ -31,7 +31,13 @@ const config: ExpoConfig = {
   ios: {
         supportsTablet: true,
     bundleIdentifier: env.iosBundleId,
-    buildNumber: "105",
+    buildNumber: "125",
+	entitlements: {
+	  "com.apple.developer.healthkit": true,
+	  "com.apple.security.application-groups": [
+		"group.com.autecouture.repvelocoach.breathforge30",
+	  ],
+	},
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
       NSBluetoothAlwaysUsageDescription:
@@ -41,7 +47,7 @@ const config: ExpoConfig = {
       NSCameraUsageDescription:
         "This app uses the camera to record your workout videos for form analysis.",
       NSMicrophoneUsageDescription:
-        "This app uses the microphone for workout video audio and voice commands during your workouts.",
+        "This app keeps form videos muted and does not require microphone audio for normal training recording.",
       NSHealthShareUsageDescription:
         "This app reads your heart rate during training and saves workout data so your rest timing and session analysis stay accurate.",
       NSHealthUpdateUsageDescription:
@@ -50,7 +56,9 @@ const config: ExpoConfig = {
         "This app saves workout videos to your photo library.",
       NSLocationWhenInUseUsageDescription:
         "This app may use location services for enhanced training features.",
-      LSApplicationQueriesSchemes: ["chatgpt"],
+      NSLocalNetworkUsageDescription:
+        "ユーザーのMacへ読み取り専用のトレーニングスナップショットを送信するために、ローカルネットワークを使用します。",
+      LSApplicationQueriesSchemes: ["chatgpt", "breathforge30"],
     },
   },
   android: {
@@ -95,20 +103,13 @@ const config: ExpoConfig = {
   plugins: [
     "expo-router",
     "expo-web-browser",
-    [
-      "expo-audio",
-      {
-        microphonePermission: "Allow $(PRODUCT_NAME) to access your microphone.",
-      },
-    ],
+    "expo-audio",
     [
       "expo-camera",
       {
         cameraPermission:
           "Allow $(PRODUCT_NAME) to record workout form videos.",
-        microphonePermission:
-          "Allow $(PRODUCT_NAME) to record audio with workout form videos.",
-        recordAudioAndroid: true,
+        recordAudioAndroid: false,
       },
     ],
     [

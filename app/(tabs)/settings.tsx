@@ -41,6 +41,7 @@ import {
   getPhaseForBlockWeek,
 } from "@/src/utils/PowerliftingVBTProtocol";
 import type { AppSettings, Exercise } from "@/src/types/index";
+import { VelocityLossThresholdPicker } from "@/src/components/VelocityLossThresholdPicker";
 
 const defaultSettings: AppSettings = DEFAULT_APP_SETTINGS;
 
@@ -275,8 +276,8 @@ const FOCUS_DISPLAY_TOGGLES: {
   },
   {
     key: "session_display_focus_velocity",
-    label: "速度メイン",
-    meta: "中央の大きいm/s表示",
+    label: "最新AV補助",
+    meta: "VL主表示をOFF時の中央m/s表示",
   },
   {
     key: "session_display_focus_metrics",
@@ -295,8 +296,8 @@ const FOCUS_DISPLAY_TOGGLES: {
   },
   {
     key: "session_display_focus_vl",
-    label: "VLボックス",
-    meta: "Velocity Loss警告",
+    label: "VL主表示",
+    meta: "VL_last主表示 / 最新AV補助 / 閾値と残量",
   },
   { key: "session_display_focus_heart_rate", label: "心拍", meta: "bpm表示" },
   { key: "session_display_focus_load", label: "重量", meta: "右下のkg表示" },
@@ -819,6 +820,21 @@ export default function SettingsTab() {
           <Text style={styles.phaseOptionDescription}>
             {blockWeekPlan.note}
           </Text>
+          <View style={styles.vlSettingsBlock}>
+            <Text style={styles.toggleLabel}>VLカット閾値</Text>
+            <Text style={styles.toggleMeta}>
+              5〜40%を1%刻みで設定。超えたレップはセット終了候補。
+            </Text>
+            <VelocityLossThresholdPicker
+              value={settings.velocity_loss_threshold}
+              onChange={(value) =>
+                void saveSettings({
+                  ...settings,
+                  velocity_loss_threshold: value,
+                })
+              }
+            />
+          </View>
         </View>
       )}
 
@@ -1033,13 +1049,19 @@ export default function SettingsTab() {
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Mac Live Share</Text>
           <Text style={styles.cardBody}>
-            セッション中の rep / set / 動画メタデータを、手入力したMac側URLへ送ります。ネットワーク探索はしません。
+            セッション中のイベントと、データ管理画面から送る読み取り専用スナップショットを、手入力したMac側URLへ送ります。ネットワーク探索はしません。
           </Text>
 
           {renderSettingSwitch(
             "enable_live_share",
             "Live Shareを有効化",
             "失敗時は端末内キューに残し、トレーニング操作は止めません",
+          )}
+
+          {renderSettingSwitch(
+            "enable_improvement_feedback_sync",
+            "改善メモをセッション終了時に同期",
+            "初回同意。動画本体、ローカルURI、トークンは送信しません",
           )}
 
           <Text style={styles.statusLabel}>MAC URL</Text>
@@ -1049,14 +1071,14 @@ export default function SettingsTab() {
             onChangeText={(value) =>
               void saveSettings({ ...settings, live_share_url: value })
             }
-            placeholder="http://MacのIPまたは.local:8788"
+            placeholder="http://MacのIPまたは.local:3001"
             placeholderTextColor={GarageTheme.textSubtle}
             autoCapitalize="none"
             autoCorrect={false}
             keyboardType="url"
           />
           <Text style={styles.toggleMeta}>
-            例: http://line93.local:8788 または http://192.168.x.x:8788
+            例: http://line93.local:3001 または http://192.168.x.x:3001
           </Text>
 
           <Text style={styles.statusLabel}>TOKEN 任意</Text>
@@ -1066,14 +1088,14 @@ export default function SettingsTab() {
             onChangeText={(value) =>
               void saveSettings({ ...settings, live_share_token: value })
             }
-            placeholder="Mac側サーバーに --token を付けた時だけ入力"
+            placeholder="Mac側のREPVELOCOACH_SYNC_TOKEN"
             placeholderTextColor={GarageTheme.textSubtle}
             autoCapitalize="none"
             autoCorrect={false}
             secureTextEntry
           />
           <Text style={styles.cardBody}>
-            Mac側: pnpm live-share:server -- --host 0.0.0.0 --port 8788
+            Personal MCPをMacで起動し、同じトークンを設定してください。データ管理の「SYNC TO CHATGPT APP」で履歴を同期できます。
           </Text>
         </View>
       )}
@@ -1739,6 +1761,12 @@ const styles = StyleSheet.create({
     color: GarageTheme.textMuted,
     fontSize: 12,
     marginTop: 4,
+  },
+  vlSettingsBlock: {
+    borderTopColor: GarageTheme.border,
+    borderTopWidth: 1,
+    marginTop: 14,
+    paddingTop: 14,
   },
   sectionTitle: {
     color: GarageTheme.text,

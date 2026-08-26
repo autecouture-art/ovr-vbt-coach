@@ -2,6 +2,7 @@ import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 
 import DatabaseService from "./DatabaseService";
+import SupervisorProgramPlanService from "./SupervisorProgramPlanService";
 import type {
   Exercise,
   FormVideoRecord,
@@ -11,6 +12,16 @@ import type {
   SessionReadinessData,
   SetData,
 } from "../types/index";
+import {
+  buildSupervisorPlanMetadataFromProgramPlan,
+  buildTrainingDayAggregates,
+  extractAiConsultationsFromSessions,
+  type AiConsultationExport,
+  type SupervisorPlanMetadata,
+  type TrainingDayAggregate,
+} from "../utils/SupervisorPlanGuards";
+import type { SupervisorProgramPlanV8 } from "../utils/SupervisorProgramPlan";
+import { assessSessionDataCompleteness, type SessionDataCompleteness } from "../utils/SessionDataCompleteness";
 
 export const CODEX_TRAINING_EXPORT_SCHEMA = "repvelocoach.codex-training-export.v1";
 
@@ -28,6 +39,27 @@ export type CodexTrainingExport = {
     exercises: number;
     lvp_profiles: number;
     form_videos: number;
+    training_days: number;
+    ai_consultations: number;
+  };
+  supervisor_plan: SupervisorPlanMetadata & {
+    latest_guard_status: "applied" | "stale_or_missing";
+  };
+  supervisor_program_plan: {
+    applied: Pick<
+      SupervisorProgramPlanV8,
+      | "schema"
+      | "plan_id"
+      | "version"
+      | "updated_at"
+      | "effective_from"
+      | "valid_until"
+      | "checksum"
+    > | null;
+    is_stale: boolean;
+    stale_reason: string | null;
+    executable: boolean;
+    rows: SupervisorProgramPlanV8["rows"];
   };
   sessions: SessionData[];
   sets: SetData[];
@@ -35,6 +67,9 @@ export type CodexTrainingExport = {
   exercises: Exercise[];
   lvp_profiles: LVPData[];
   form_videos: FormVideoRecord[];
+  training_days: TrainingDayAggregate[];
+  ai_consultations: AiConsultationExport[];
+  data_completeness: { session_id: string; assessment: SessionDataCompleteness }[];
 };
 
 export type CodexTrainingExportFile = {
@@ -94,6 +129,28 @@ function parseSessionReadinessFromNotes(
         Number.isFinite(parsed.pain_score)
           ? parsed.pain_score
           : null,
+      pain_reviewed: parsed.pain_reviewed === true,
+      pain_reviewed_at:
+        typeof parsed.pain_reviewed_at === "string"
+          ? parsed.pain_reviewed_at
+          : null,
+      recovery_status:
+        parsed.recovery_status === "recovered" ||
+        parsed.recovery_status === "partial" ||
+        parsed.recovery_status === "not_recovered"
+          ? parsed.recovery_status
+          : null,
+      recovery_muscles: Array.isArray(parsed.recovery_muscles)
+        ? parsed.recovery_muscles.filter(
+            (muscle): muscle is string =>
+              typeof muscle === "string" && muscle.trim().length > 0,
+          )
+        : [],
+      recovery_soreness_score:
+        typeof parsed.recovery_soreness_score === "number" &&
+        Number.isFinite(parsed.recovery_soreness_score)
+          ? Math.max(0, Math.min(10, parsed.recovery_soreness_score))
+          : null,
       week_day:
         typeof parsed.week_day === "string" && parsed.week_day.trim()
           ? parsed.week_day
@@ -110,6 +167,24 @@ function parseSessionReadinessFromNotes(
           : null,
       captured_at:
         typeof parsed.captured_at === "string" ? parsed.captured_at : undefined,
+      supervisor_plan_version:
+        typeof parsed.supervisor_plan_version === "string"
+          ? parsed.supervisor_plan_version
+          : undefined,
+      supervisor_plan_updated_at:
+        typeof parsed.supervisor_plan_updated_at === "string"
+          ? parsed.supervisor_plan_updated_at
+          : undefined,
+      supervisor_plan_source:
+        typeof parsed.supervisor_plan_source === "string"
+          ? parsed.supervisor_plan_source
+          : undefined,
+      supervisor_plan_checksum:
+        typeof parsed.supervisor_plan_checksum === "string"
+          ? parsed.supervisor_plan_checksum
+          : null,
+      planned_row_id:
+        typeof parsed.planned_row_id === "string" ? parsed.planned_row_id : null,
     };
   } catch {
     return null;
@@ -122,6 +197,7 @@ class CodexDataExportService {
 
     const sessions = await DatabaseService.getSessions();
     const correctedSessions: SessionData[] = [];
+    const dataCompleteness: { session_id: string; assessment: SessionDataCompleteness }[] = [];
     const sets: SetData[] = [];
     const reps: RepData[] = [];
 
@@ -139,7 +215,23 @@ class CodexDataExportService {
         ),
         readiness: parseSessionReadinessFromNotes(session.notes),
       });
+      dataCompleteness.push({
+        session_id: session.session_id,
+        assessment: assessSessionDataCompleteness(
+          { ...session, readiness: parseSessionReadinessFromNotes(session.notes) },
+          sessionSets,
+        ),
+      });
     }
+
+    const trainingDays = buildTrainingDayAggregates(correctedSessions, sets, {
+      timezone: "Asia/Tokyo",
+      accessorySetLimit: 3,
+      blockedCandidateNames: ["Upright Row", "Face Pull", "French Press"],
+    });
+    const aiConsultations = extractAiConsultationsFromSessions(correctedSessions);
+    const supervisorProgramPlanState =
+      await SupervisorProgramPlanService.getState();
 
     const exercises = await DatabaseService.getExercises();
     const lvpProfiles = await DatabaseService.getAllLVPProfiles();
@@ -166,6 +258,37 @@ class CodexDataExportService {
         exercises: exercises.length,
         lvp_profiles: lvpProfiles.length,
         form_videos: formVideos.length,
+        training_days: trainingDays.length,
+        ai_consultations: aiConsultations.length,
+      },
+      supervisor_plan: {
+        ...buildSupervisorPlanMetadataFromProgramPlan(
+          supervisorProgramPlanState.applied,
+          null,
+        ),
+        latest_guard_status:
+          supervisorProgramPlanState.applied && !supervisorProgramPlanState.is_stale
+            ? "applied"
+            : "stale_or_missing",
+      },
+      supervisor_program_plan: {
+        applied: supervisorProgramPlanState.applied
+          ? {
+              schema: supervisorProgramPlanState.applied.schema,
+              plan_id: supervisorProgramPlanState.applied.plan_id,
+              version: supervisorProgramPlanState.applied.version,
+              updated_at: supervisorProgramPlanState.applied.updated_at,
+              effective_from: supervisorProgramPlanState.applied.effective_from,
+              valid_until: supervisorProgramPlanState.applied.valid_until,
+              checksum: supervisorProgramPlanState.applied.checksum,
+            }
+          : null,
+        is_stale: supervisorProgramPlanState.is_stale,
+        stale_reason: supervisorProgramPlanState.stale_reason,
+        executable:
+          Boolean(supervisorProgramPlanState.applied) &&
+          !supervisorProgramPlanState.is_stale,
+        rows: supervisorProgramPlanState.applied?.rows ?? [],
       },
       sessions: correctedSessions,
       sets,
@@ -173,6 +296,9 @@ class CodexDataExportService {
       exercises,
       lvp_profiles: lvpProfiles,
       form_videos: formVideos,
+      training_days: trainingDays,
+      ai_consultations: aiConsultations,
+      data_completeness: dataCompleteness,
     };
   }
 

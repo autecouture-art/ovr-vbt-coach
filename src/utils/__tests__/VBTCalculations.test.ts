@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { calculateVelocityLossMetrics } from "../VBTCalculations";
+import {
+  calculateVelocityLossMetrics,
+  stabilizeDaily1RMEstimate,
+} from "../VBTCalculations";
 import type { RepData } from "../../types/index";
 
 const makeRep = (meanVelocity: number, repIndex: number): RepData => ({
@@ -55,6 +58,38 @@ describe("calculateVelocityLossMetrics", () => {
       vlAvg: null,
       vlLast: null,
       vlMin: null,
+    });
+  });
+});
+
+describe("stabilizeDaily1RMEstimate", () => {
+  it("uses historical floor when a light set badly underestimates today's 1RM", () => {
+    expect(
+      stabilizeDaily1RMEstimate({
+        rawEstimate: 66,
+        currentLoad: 60,
+        historicalBest1RM: 95,
+        confidence: "medium",
+      }),
+    ).toMatchObject({
+      estimated1RM: 90.3,
+      confidence: "low",
+      source: "history_floor",
+    });
+  });
+
+  it("keeps raw estimates when they are plausible against history", () => {
+    expect(
+      stabilizeDaily1RMEstimate({
+        rawEstimate: 93,
+        currentLoad: 85,
+        historicalBest1RM: 95,
+        confidence: "medium",
+      }),
+    ).toMatchObject({
+      estimated1RM: 93,
+      confidence: "medium",
+      source: "raw",
     });
   });
 });

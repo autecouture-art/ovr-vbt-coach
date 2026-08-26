@@ -25,6 +25,7 @@ interface Props {
   onEditSetLoad?: () => void;
   onOpenVideo?: (video: FormVideoRecord) => void;
   onShareVideo?: (video: FormVideoRecord) => void;
+  onTrimVideo?: (video: FormVideoRecord) => void;
   onDeleteVideo?: (video: FormVideoRecord) => void;
   onExcludeRep?: (repId: string, reason: string) => void;
   onMarkFailedRep?: (repId: string, isFailed: boolean) => void;
@@ -47,6 +48,7 @@ export function RepDetailModal({
   onEditSetLoad,
   onOpenVideo,
   onShareVideo,
+  onTrimVideo,
   onDeleteVideo,
   onExcludeRep,
   onMarkFailedRep,
@@ -364,6 +366,9 @@ export function RepDetailModal({
                     {formVideos.length} clips
                   </Text>
                 </View>
+                <Text style={styles.videoHint}>
+                  録画はこのセットに紐付いています。再生、共有、前後を切り出した新しい動画の作成ができます。
+                </Text>
                 {formVideos.map((video, index) => (
                   <View key={video.id} style={styles.videoRow}>
                     <View style={styles.videoInfo}>
@@ -373,6 +378,11 @@ export function RepDetailModal({
                       <Text style={styles.videoMeta}>
                         {formatVideoRange(video.started_at, video.ended_at)}
                       </Text>
+                      {formatVideoTrim(video.notes) ? (
+                        <Text style={styles.videoTrimMeta}>
+                          {formatVideoTrim(video.notes)}
+                        </Text>
+                      ) : null}
                     </View>
                     <View style={styles.videoActions}>
                       {onOpenVideo ? (
@@ -396,6 +406,18 @@ export function RepDetailModal({
                             name="share-outline"
                             size={17}
                             color="#828fff"
+                          />
+                        </TouchableOpacity>
+                      ) : null}
+                      {onTrimVideo ? (
+                        <TouchableOpacity
+                          style={styles.videoActionBtn}
+                          onPress={() => onTrimVideo(video)}
+                        >
+                          <Ionicons
+                            name="cut-outline"
+                            size={17}
+                            color="#fbbf24"
                           />
                         </TouchableOpacity>
                       ) : null}
@@ -710,6 +732,24 @@ const formatVideoRange = (startedAt: string, endedAt: string): string => {
   return `${startText} - ${endText}`;
 };
 
+const formatVideoTrim = (notes?: string | null): string | null => {
+  if (!notes) return null;
+  try {
+    const parsed = JSON.parse(notes) as {
+      trim_start_s?: unknown;
+      trim_end_s?: unknown;
+    };
+    const trimStart =
+      typeof parsed.trim_start_s === "number" ? parsed.trim_start_s : 0;
+    const trimEnd =
+      typeof parsed.trim_end_s === "number" ? parsed.trim_end_s : 0;
+    if (trimStart <= 0 && trimEnd <= 0) return null;
+    return `トリム済み: 前 ${trimStart.toFixed(1)}s / 後 ${trimEnd.toFixed(1)}s`;
+  } catch {
+    return null;
+  }
+};
+
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
@@ -892,6 +932,13 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: "rgba(94, 200, 255, 0.16)",
   },
+  videoHint: {
+    color: "#91a4b7",
+    fontSize: 12,
+    fontWeight: "500",
+    lineHeight: 17,
+    marginBottom: 8,
+  },
   videoInfo: {
     flex: 1,
   },
@@ -905,6 +952,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "500",
     marginTop: 3,
+  },
+  videoTrimMeta: {
+    color: "#fbbf24",
+    fontSize: 12,
+    fontWeight: "600",
+    marginTop: 4,
   },
   videoActions: {
     flexDirection: "row",

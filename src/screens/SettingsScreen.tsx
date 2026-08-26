@@ -25,6 +25,7 @@ import {
   saveAppSettings,
 } from "../services/AppSettingsService";
 import ExerciseService from "../services/ExerciseService";
+import { VelocityLossThresholdPicker } from "../components/VelocityLossThresholdPicker";
 
 interface SettingsScreenProps {
   navigation: any;
@@ -147,7 +148,6 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
     }
   };
 
-  const thresholdOptions = [10, 15, 20, 25, 30];
   const categoryOptions: Exercise["category"][] = [
     "squat",
     "bench",
@@ -352,29 +352,10 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
           <Text style={styles.settingDescription}>
             この値を超えたらセット終了を推奨
           </Text>
-          <View style={styles.optionsContainer}>
-            {thresholdOptions.map((value) => (
-              <TouchableOpacity
-                key={value}
-                style={[
-                  styles.optionButton,
-                  settings.velocity_loss_threshold === value &&
-                    styles.optionButtonActive,
-                ]}
-                onPress={() => handleThresholdChange(value)}
-              >
-                <Text
-                  style={[
-                    styles.optionButtonText,
-                    settings.velocity_loss_threshold === value &&
-                      styles.optionButtonTextActive,
-                  ]}
-                >
-                  {value}%
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+          <VelocityLossThresholdPicker
+            value={settings.velocity_loss_threshold}
+            onChange={handleThresholdChange}
+          />
         </View>
       </View>
 

@@ -14,6 +14,10 @@ import {
   Alert,
 } from 'react-native';
 import { GarageTheme } from '@/src/constants/garageTheme';
+import {
+  formatLoadKgTwoDecimals,
+  parseLoadKgInput,
+} from '@/src/utils/LoadPrecision';
 
 interface Props {
   visible: boolean;
@@ -24,21 +28,20 @@ interface Props {
 
 export function ManualRepModal({ visible, onClose, onAddRep, currentLoad }: Props) {
   const [velocity, setVelocity] = useState('');
-  const [load, setLoad] = useState(currentLoad.toString());
+  const [load, setLoad] = useState(formatLoadKgTwoDecimals(currentLoad));
 
   useEffect(() => {
     if (visible) {
-      setLoad(currentLoad.toString());
+      setLoad(formatLoadKgTwoDecimals(currentLoad));
     }
   }, [currentLoad, visible]);
 
   const handleAdd = () => {
     const normalizedVelocity = velocity.trim().replace(',', '.');
-    const normalizedLoad = load.trim().replace(',', '.');
     const velocityNum = normalizedVelocity
       ? Number.parseFloat(normalizedVelocity)
       : undefined;
-    const loadNum = Number.parseFloat(normalizedLoad);
+    const loadNum = parseLoadKgInput(load);
 
     if (
       velocityNum !== undefined &&
@@ -48,7 +51,7 @@ export function ManualRepModal({ visible, onClose, onAddRep, currentLoad }: Prop
       return;
     }
 
-    if (Number.isNaN(loadNum) || loadNum <= 0) {
+    if (loadNum == null || loadNum <= 0) {
       Alert.alert('入力エラー', '重量を正しく入力してください（0より大きい値）');
       return;
     }
@@ -59,7 +62,7 @@ export function ManualRepModal({ visible, onClose, onAddRep, currentLoad }: Prop
 
   const handleClose = () => {
     setVelocity('');
-    setLoad(currentLoad.toString());
+    setLoad(formatLoadKgTwoDecimals(currentLoad));
     onClose();
   };
 

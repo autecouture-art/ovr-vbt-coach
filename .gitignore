@@ -41,6 +41,14 @@ app-example
 # generated native folders
 /ios
 /android
+!/ios/
+ios/*
+!/ios/RepVeloCoach/
+ios/RepVeloCoach/*
+!/ios/RepVeloCoach/FormVideoTrimModule.swift
+!/ios/RepVeloCoach/FormVideoTrimModule.m
+!/ios/RepVeloCoach/BreathForgeAppGroupModule.swift
+!/ios/RepVeloCoach/BreathForgeAppGroupModule.m
 
 # IDE
 .vscode/
@@ -71,3 +79,12 @@ hermes-engine/
 # AIリーダー作業ディレクトリ
 .ai-leader/
 .ai-backups/
+
+# Local build and generated report artifacts
+outputs/
+*.xcresult
+docs/*.bak
+docs/CHAPPY_COACH_CUSTOM_PROMPT.md
+docs/COMPANY_*.md
+docs/repvelocoach_*.json
+docs/storage-patrol/

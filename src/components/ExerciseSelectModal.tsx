@@ -20,8 +20,10 @@ import { GarageTheme } from "@/src/constants/garageTheme";
 import {
   EXERCISE_SELECTION_GROUPS,
   formatLoadKg,
+  getDefaultCategoryForSelectionGroup,
   getExerciseCategoryLabel,
   getExerciseSelectionGroup,
+  getPrimarySelectionGroupForCategory,
   inferExercisePreset,
   matchesExerciseSelectionGroup,
   type ExerciseSelectionGroupId,
@@ -57,6 +59,12 @@ export function ExerciseSelectModal({
   const [searchQuery, setSearchQuery] = useState("");
   const [isAddMode, setIsAddMode] = useState(false);
   const [newExerciseName, setNewExerciseName] = useState("");
+  const [editingExerciseId, setEditingExerciseId] = useState<string | null>(
+    null,
+  );
+  const [editingExerciseName, setEditingExerciseName] = useState("");
+  const [editingExerciseGroup, setEditingExerciseGroup] =
+    useState<ExerciseSelectionGroupId>("other");
 
   useEffect(() => {
     if (visible) {
@@ -152,8 +160,43 @@ export function ExerciseSelectModal({
     }
   };
 
+  const startEditingExercise = (exercise: Exercise) => {
+    setEditingExerciseId(exercise.id);
+    setEditingExerciseName(exercise.name);
+    setEditingExerciseGroup(getPrimarySelectionGroupForCategory(exercise.category));
+  };
+
+  const cancelEditingExercise = () => {
+    setEditingExerciseId(null);
+    setEditingExerciseName("");
+    setEditingExerciseGroup("other");
+  };
+
+  const saveExerciseEdit = async (exercise: Exercise) => {
+    const name = editingExerciseName.trim();
+    if (!name) {
+      Alert.alert("エラー", "種目名を入力してください");
+      return;
+    }
+
+    try {
+      const category = getDefaultCategoryForSelectionGroup(editingExerciseGroup);
+      await ExerciseService.updateExercise(exercise.id, {
+        name,
+        category,
+      });
+      await loadExercises();
+      cancelEditingExercise();
+      Alert.alert("更新完了", `${name} を更新しました`);
+    } catch (error) {
+      console.error("Failed to update exercise:", error);
+      Alert.alert("エラー", "種目の更新に失敗しました");
+    }
+  };
+
   const renderExerciseCard = (exercise: Exercise) => {
     const isSelected = currentExerciseId === exercise.id;
+    const isEditing = editingExerciseId === exercise.id;
     const romRange =
       exercise.rom_range_min_cm != null && exercise.rom_range_max_cm != null
         ? `${formatLoadKg(exercise.rom_range_min_cm)}-${formatLoadKg(exercise.rom_range_max_cm)}cm`
@@ -162,10 +205,9 @@ export function ExerciseSelectModal({
           : "ROM未推定";
 
     return (
-      <TouchableOpacity
+      <View
         key={exercise.id}
         style={[styles.exerciseItem, isSelected && styles.exerciseItemSelected]}
-        onPress={() => handleSelect(exercise)}
       >
         <View style={styles.exerciseItemLeft}>
           <View style={styles.exerciseTitleRow}>
@@ -191,9 +233,81 @@ export function ExerciseSelectModal({
               {exercise.description}
             </Text>
           ) : null}
+
+          {isEditing ? (
+            <View style={styles.editPanel}>
+              <Text style={styles.editLabel}>種目名</Text>
+              <TextInput
+                style={styles.editNameInput}
+                value={editingExerciseName}
+                onChangeText={setEditingExerciseName}
+                placeholder="Exercise name"
+                placeholderTextColor={GarageTheme.textSubtle}
+              />
+              <Text style={styles.editLabel}>カテゴリ</Text>
+              <View style={styles.editGroupGrid}>
+                {EXERCISE_SELECTION_GROUPS.filter(
+                  (group) => group.id !== "all",
+                ).map((group) => {
+                  const active = editingExerciseGroup === group.id;
+                  return (
+                    <TouchableOpacity
+                      key={group.id}
+                      style={[
+                        styles.editGroupChip,
+                        active && styles.editGroupChipActive,
+                      ]}
+                      onPress={() => setEditingExerciseGroup(group.id)}
+                    >
+                      <Text
+                        style={[
+                          styles.editGroupChipText,
+                          active && styles.editGroupChipTextActive,
+                        ]}
+                      >
+                        {group.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              <View style={styles.editButtonRow}>
+                <TouchableOpacity
+                  style={[styles.editButton, styles.editCancelButton]}
+                  onPress={cancelEditingExercise}
+                >
+                  <Text style={styles.editButtonText}>キャンセル</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.editButton, styles.editSaveButton]}
+                  onPress={() => void saveExerciseEdit(exercise)}
+                >
+                  <Text style={styles.editButtonText}>保存</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : null}
         </View>
-        {isSelected ? <Text style={styles.checkmark}>✓</Text> : null}
-      </TouchableOpacity>
+        <View style={styles.exerciseActions}>
+          {isSelected ? <Text style={styles.checkmark}>✓</Text> : null}
+          {!isEditing ? (
+            <>
+              <TouchableOpacity
+                style={styles.exerciseActionButton}
+                onPress={() => handleSelect(exercise)}
+              >
+                <Text style={styles.exerciseActionButtonText}>選択</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.exerciseActionButton}
+                onPress={() => startEditingExercise(exercise)}
+              >
+                <Text style={styles.exerciseActionButtonText}>編集</Text>
+              </TouchableOpacity>
+            </>
+          ) : null}
+        </View>
+      </View>
     );
   };
 
@@ -542,6 +656,25 @@ const styles = StyleSheet.create({
   exerciseItemLeft: {
     flex: 1,
   },
+  exerciseActions: {
+    alignItems: "flex-end",
+    gap: 8,
+    marginLeft: 12,
+  },
+  exerciseActionButton: {
+    alignItems: "center",
+    borderColor: GarageTheme.borderStrong,
+    borderRadius: 8,
+    borderWidth: 1,
+    minWidth: 54,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  exerciseActionButtonText: {
+    color: GarageTheme.textStrong,
+    fontSize: 12,
+    fontWeight: "600",
+  },
   exerciseTitleRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -617,6 +750,79 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.4,
     shadowRadius: 3,
     elevation: 3,
+  },
+  editPanel: {
+    backgroundColor: "rgba(0,0,0,0.22)",
+    borderColor: GarageTheme.borderStrong,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginTop: 12,
+    padding: 12,
+  },
+  editLabel: {
+    color: GarageTheme.textMuted,
+    fontSize: 12,
+    fontWeight: "600",
+    marginBottom: 7,
+  },
+  editNameInput: {
+    backgroundColor: GarageTheme.chip,
+    borderColor: GarageTheme.borderStrong,
+    borderRadius: 8,
+    borderWidth: 1,
+    color: GarageTheme.textStrong,
+    fontSize: 14,
+    marginBottom: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  editGroupGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 12,
+  },
+  editGroupChip: {
+    borderColor: GarageTheme.borderStrong,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  editGroupChipActive: {
+    backgroundColor: GarageTheme.accent,
+    borderColor: GarageTheme.accent,
+  },
+  editGroupChipText: {
+    color: GarageTheme.textMuted,
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  editGroupChipTextActive: {
+    color: "#f7f8f8",
+  },
+  editButtonRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  editButton: {
+    alignItems: "center",
+    borderRadius: 8,
+    flex: 1,
+    paddingVertical: 10,
+  },
+  editCancelButton: {
+    backgroundColor: GarageTheme.chip,
+    borderColor: GarageTheme.borderStrong,
+    borderWidth: 1,
+  },
+  editSaveButton: {
+    backgroundColor: GarageTheme.accent,
+  },
+  editButtonText: {
+    color: "#f7f8f8",
+    fontSize: 13,
+    fontWeight: "600",
   },
   addExerciseButton: {
     borderRadius: 12,

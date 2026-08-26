@@ -32,6 +32,7 @@ import { GarageTheme } from '../constants/garageTheme';
 
 interface HistoryScreenProps {
   navigation: any;
+  focus?: string;
 }
 
 type HistorySession = SessionData & {
@@ -44,10 +45,29 @@ type HistorySession = SessionData & {
 type HistoryViewMode = 'list' | 'calendar' | 'graph';
 type GraphMetric = 'volume' | 'sets' | 'duration';
 
-const HistoryScreen: React.FC<HistoryScreenProps> = ({ navigation }) => {
+/**
+ * focusパラメータからHistoryの表示モードを決定する純粋関数
+ * @param focus - focusパラメータ（"recovery" | "videos" | undefined | 未知値）
+ * @returns 対応するビューモード（recovery→graph, videos→list, その他→list）
+ */
+const getHistoryViewModeFromFocus = (focus?: string): HistoryViewMode => {
+  if (focus === 'recovery') {
+    return 'graph';
+  }
+  if (focus === 'videos') {
+    return 'list';
+  }
+  return 'list'; // default: focusなし/未知値の場合は既定値へ
+};
+
+const HistoryScreen: React.FC<HistoryScreenProps> = ({ navigation, focus }) => {
   const [sessions, setSessions] = useState<HistorySession[]>([]);
   const [refreshing, setRefreshing] = useState(false);
-  const [viewMode, setViewMode] = useState<HistoryViewMode>('list');
+
+  // Determine initial view mode based on focus parameter
+  const initialViewMode = useMemo(() => getHistoryViewModeFromFocus(focus), [focus]);
+
+  const [viewMode, setViewMode] = useState<HistoryViewMode>(initialViewMode);
   const [calendarMonth, setCalendarMonth] = useState(() => startOfMonth(new Date()));
   const [selectedDateKey, setSelectedDateKey] = useState<string | null>(null);
   const [graphMetric, setGraphMetric] = useState<GraphMetric>('volume');
@@ -85,6 +105,11 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ navigation }) => {
       void loadSessions();
     }
   }, [isFocused, loadSessions]);
+
+  // Update viewMode when focus parameter changes
+  useEffect(() => {
+    setViewMode(getHistoryViewModeFromFocus(focus));
+  }, [focus]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -195,6 +220,29 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ navigation }) => {
     dailySummaries[dailySummaries.length - 1];
 
   const metricLabel = graphMetric === 'sets' ? 'セット' : graphMetric === 'duration' ? '分' : 'kg';
+
+  // Determine header text based on focus
+  const headerText = useMemo(() => {
+    if (focus === 'recovery') {
+      return {
+        eyebrow: 'RECOVERY TRACKING',
+        title: '回復状況',
+        subtitle: 'セッション履歴からトレーニングの回復状況を確認'
+      };
+    }
+    if (focus === 'videos') {
+      return {
+        eyebrow: 'FORM VIDEOS',
+        title: 'フォーム動画',
+        subtitle: 'セット紐付け動画はセッション詳細から確認'
+      };
+    }
+    return {
+      eyebrow: 'RUN LOG / HISTORY',
+      title: 'セッション履歴',
+      subtitle: 'セッション詳細とコーチ分析をここから確認'
+    };
+  }, [focus]);
 
   const renderSessionCard = (session: HistorySession) => (
     <TouchableOpacity
@@ -438,9 +486,9 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ navigation }) => {
     >
       <View style={styles.header}>
         <View>
-          <Text style={styles.eyebrow}>RUN LOG / HISTORY</Text>
-          <Text style={styles.title}>セッション履歴</Text>
-          <Text style={styles.subtitle}>セッション詳細とコーチ分析をここから確認</Text>
+          <Text style={styles.eyebrow}>{headerText.eyebrow}</Text>
+          <Text style={styles.title}>{headerText.title}</Text>
+          <Text style={styles.subtitle}>{headerText.subtitle}</Text>
         </View>
         <View style={styles.headerButtons}>
           <TouchableOpacity

@@ -13,6 +13,7 @@ import {
   Animated,
 } from 'react-native';
 import { PRRecord } from '../types/index';
+import { formatLoadKg } from '../constants/exerciseCatalog';
 
 interface PRNotificationProps {
   visible: boolean;
@@ -129,7 +130,7 @@ const PRNotification: React.FC<PRNotificationProps> = ({
             {prRecord.load_kg != null && (
               <View style={styles.detailsContainer}>
                 <Text style={styles.detailsText}>
-                  {prRecord.load_kg} kg × {prRecord.reps || 1} reps
+                  {formatLoadKg(prRecord.load_kg)} kg × {prRecord.reps || 1} reps
                 </Text>
               </View>
             )}

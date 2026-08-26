@@ -134,7 +134,8 @@ const compactSet = (
 
 function formatValue(value: unknown): string {
   if (value == null) return "-";
-  if (typeof value === "number") return Number.isFinite(value) ? `${value}` : "invalid";
+  if (typeof value === "number")
+    return Number.isFinite(value) ? `${value}` : "invalid";
   return `${value}`;
 }
 
@@ -154,6 +155,57 @@ function buildDriveReportId(snapshot: VBTScreenCrashContext): string {
   ]
     .join("_")
     .replace(/[^a-zA-Z0-9_-]+/g, "_");
+}
+
+function hasMeaningfulLiveData(
+  liveData: Partial<RepVeloData> | null | undefined,
+): boolean {
+  if (!liveData) return false;
+  return [
+    liveData.mean_velocity,
+    liveData.peak_velocity,
+    liveData.rom_cm,
+    liveData.mean_power_w,
+    liveData.peak_power_w,
+    liveData.rep_duration_ms,
+  ].some((value) => typeof value === "number" && Number.isFinite(value));
+}
+
+function buildInitialTriage(snapshot: VBTScreenCrashContext): string[] {
+  const notes: string[] = [];
+  const hasLive = hasMeaningfulLiveData(snapshot.live_data);
+
+  if (!snapshot.is_connected && !hasLive) {
+    notes.push(
+      "VBT未接続かつ直前Liveデータなし。BLE live packet処理より、Session画面の表示/状態保存/復旧系を優先して確認。",
+    );
+  } else if (snapshot.is_connected && hasLive) {
+    notes.push(
+      "VBT接続あり、Liveデータあり。BLE/native payload、NaN/極端値、rep buffer処理を優先して確認。",
+    );
+  } else if (snapshot.is_connected) {
+    notes.push(
+      "VBT接続ありだがLiveデータなし。接続直後またはcallback登録直後の例外を優先して確認。",
+    );
+  }
+
+  if (!snapshot.settings_snapshot.form_video) {
+    notes.push(
+      "フォーム動画OFF。今回の一次切り分けではカメラ/録画起因の可能性は低め。",
+    );
+  }
+
+  if (
+    snapshot.is_session_active &&
+    snapshot.latest_completed_set &&
+    snapshot.current_rep_count === 0
+  ) {
+    notes.push(
+      "次セット開始前または休憩中の状態。直前完了セット、store/setHistory、復旧snapshotの整合性を確認。",
+    );
+  }
+
+  return notes;
 }
 
 function settingsAllowDriveUpload(settings: AppSettings): boolean {
@@ -209,11 +261,13 @@ class CrashReportService {
       current_lift: input.current_lift ?? null,
       current_exercise_name: input.current_exercise_name ?? null,
       current_load:
-        typeof input.current_load === "number" && Number.isFinite(input.current_load)
+        typeof input.current_load === "number" &&
+        Number.isFinite(input.current_load)
           ? input.current_load
           : 0,
       current_reps:
-        typeof input.current_reps === "number" && Number.isFinite(input.current_reps)
+        typeof input.current_reps === "number" &&
+        Number.isFinite(input.current_reps)
           ? input.current_reps
           : 0,
       current_set_index: 0,
@@ -237,7 +291,10 @@ class CrashReportService {
   async saveVBTSessionMountAttempt(
     input: SaveVBTSessionOpenAttemptInput = {},
   ): Promise<void> {
-    await this.saveVBTSessionStageAttempt("session_screen_mount_attempt", input);
+    await this.saveVBTSessionStageAttempt(
+      "session_screen_mount_attempt",
+      input,
+    );
   }
 
   async saveVBTSessionStageAttempt(
@@ -258,11 +315,13 @@ class CrashReportService {
       current_lift: input.current_lift ?? null,
       current_exercise_name: input.current_exercise_name ?? null,
       current_load:
-        typeof input.current_load === "number" && Number.isFinite(input.current_load)
+        typeof input.current_load === "number" &&
+        Number.isFinite(input.current_load)
           ? input.current_load
           : 0,
       current_reps:
-        typeof input.current_reps === "number" && Number.isFinite(input.current_reps)
+        typeof input.current_reps === "number" &&
+        Number.isFinite(input.current_reps)
           ? input.current_reps
           : 0,
       current_set_index: 0,
@@ -293,7 +352,9 @@ class CrashReportService {
       ...input,
       reason: input.reason ?? "vbt_session_screen_active",
       live_data: compactLiveData(input.live_data as RepVeloData | null),
-      latest_completed_set: compactSet(input.latest_completed_set as SetData | null),
+      latest_completed_set: compactSet(
+        input.latest_completed_set as SetData | null,
+      ),
     };
     await AsyncStorage.setItem(VBT_SCREEN_CONTEXT_KEY, JSON.stringify(payload));
   }
@@ -309,7 +370,10 @@ class CrashReportService {
       }
 
       const savedAt = new Date(parsed.saved_at).getTime();
-      if (!Number.isFinite(savedAt) || Date.now() - savedAt > VBT_CONTEXT_MAX_AGE_MS) {
+      if (
+        !Number.isFinite(savedAt) ||
+        Date.now() - savedAt > VBT_CONTEXT_MAX_AGE_MS
+      ) {
         await this.clearVBTScreenContext();
         return null;
       }
@@ -330,6 +394,7 @@ class CrashReportService {
   ): string {
     const liveData = snapshot.live_data;
     const latestSet = snapshot.latest_completed_set;
+    const initialTriage = buildInitialTriage(snapshot);
 
     return [
       "# RepVeloCoach VBT接続クラッシュ状況報告",
@@ -352,6 +417,11 @@ class CrashReportService {
       `- 完了セット数: ${snapshot.completed_set_count}`,
       `- 現在セットrep数: ${snapshot.current_rep_count}`,
       `- 現在心拍: ${snapshot.current_heart_rate ?? "-"} bpm`,
+      "",
+      "## 初期切り分け",
+      ...(initialTriage.length > 0
+        ? initialTriage.map((note) => `- ${note}`)
+        : ["- 追加の自動切り分けなし。"]),
       "",
       "## 直前Live VBTデータ",
       `- mean_velocity: ${formatValue(liveData?.mean_velocity)}`,
@@ -500,7 +570,11 @@ class CrashReportService {
       }
 
       try {
-        await this.uploadDriveCrashReportEntry(endpoint, getDriveToken(settings), entry);
+        await this.uploadDriveCrashReportEntry(
+          endpoint,
+          getDriveToken(settings),
+          entry,
+        );
         uploaded += 1;
         uploadedIdSet.add(entry.id);
       } catch (error) {
@@ -561,7 +635,9 @@ class CrashReportService {
     const withoutDuplicate = queue.filter((entry) => entry.id !== id);
     await AsyncStorage.setItem(
       DRIVE_UPLOAD_QUEUE_KEY,
-      JSON.stringify([...withoutDuplicate, nextEntry].slice(-DRIVE_QUEUE_LIMIT)),
+      JSON.stringify(
+        [...withoutDuplicate, nextEntry].slice(-DRIVE_QUEUE_LIMIT),
+      ),
     );
   }
 
@@ -570,10 +646,9 @@ class CrashReportService {
     token: string,
     entry: DriveCrashReportUploadEntry,
   ): Promise<void> {
-    const fileBaseName = buildFileName(new Date(entry.snapshot.saved_at)).replace(
-      /\.md$/,
-      "",
-    );
+    const fileBaseName = buildFileName(
+      new Date(entry.snapshot.saved_at),
+    ).replace(/\.md$/, "");
     const response = await fetch(endpoint, {
       method: "POST",
       headers: {
@@ -604,7 +679,10 @@ class CrashReportService {
 
     if (responseText) {
       try {
-        const parsed = JSON.parse(responseText) as { ok?: boolean; error?: string };
+        const parsed = JSON.parse(responseText) as {
+          ok?: boolean;
+          error?: string;
+        };
         if (parsed.ok === false) {
           throw new Error(parsed.error ?? "Google Drive upload rejected.");
         }

@@ -67,6 +67,7 @@ export interface SetData {
   peak_hr?: number; // 最大心拍数
   hr_recovery_to_120_s?: number | null; // セット後ピーク心拍から120bpm以下へ戻るまでの秒数
   notes?: string;
+  gear_json?: string | null;
   avg_power_w?: number | null;
   is_warmup?: boolean; // ウォームアップセットフラグ
 }
@@ -91,10 +92,25 @@ export interface SessionReadinessData {
   sleep_quality: "good" | "ok" | "bad" | null;
   pain_area: string | null;
   pain_score: number | null;
+  pain_reviewed?: boolean;
+  pain_reviewed_at?: string | null;
+  recovery_status?: "recovered" | "partial" | "not_recovered" | null;
+  recovery_muscles?: string[];
+  recovery_soreness_score?: number | null;
   week_day: string | null;
   main_lift: "SQ" | "BP" | "DL" | null;
   day_role: string | null;
   captured_at?: string;
+  supervisor_plan_version?: string;
+  supervisor_plan_updated_at?: string;
+  supervisor_plan_source?: string;
+  supervisor_plan_checksum?: string | null;
+  planned_row_id?: string | null;
+  supervisor_plan_is_stale?: boolean;
+  supervisor_plan_stale_reason?: string | null;
+  supervisor_plan_effective_from?: string | null;
+  supervisor_plan_valid_until?: string | null;
+  supervisor_plan_executable?: boolean;
 }
 
 export interface FormVideoRecord {
@@ -110,7 +126,89 @@ export interface FormVideoRecord {
   duration_s: number;
   created_at: string;
   notes?: string | null;
+  capture_id?: string | null;
+  integrity_status?: "legacy_unknown" | "draft" | "verified" | "recoverable_draft" | "failed";
+  file_size_bytes?: number | null;
+  file_hash?: string | null;
 }
+
+export type FormVideoCaptureState =
+  | "preparing"
+  | "armed"
+  | "recording"
+  | "captured"
+  | "persisting"
+  | "verified"
+  | "recoverable_draft"
+  | "failed";
+
+export interface FormVideoCapture {
+  capture_id: string;
+  session_id: string;
+  lift: string;
+  set_attempt_id: string;
+  set_index: number;
+  load_kg: number;
+  state: FormVideoCaptureState;
+  local_uri?: string | null;
+  set_id?: string | null;
+  started_at: string;
+  ended_at?: string | null;
+  updated_at: string;
+  error_message?: string | null;
+}
+
+export type ImprovementFeedbackCategory =
+  | "bug"
+  | "usability"
+  | "feature"
+  | "data";
+
+export type ImprovementFeedback = {
+  schema: "repvelocoach.improvement-feedback.v1";
+  id: string;
+  created_at: string;
+  category: ImprovementFeedbackCategory;
+  note: string;
+  screen: "session" | "home" | "history" | "settings" | "unknown";
+  app_version: string;
+  session_context?: {
+    lift?: string;
+    load_kg?: number;
+    sensor_connected?: boolean;
+  };
+  consent_to_send: true;
+};
+
+export type ImprovementFeedbackStatus =
+  | "queued"
+  | "sent"
+  | "received"
+  | "needs_revision";
+
+export type QueuedImprovementFeedback = ImprovementFeedback & {
+  status: ImprovementFeedbackStatus;
+  sent_at?: string | null;
+  session_id?: string | null;
+};
+
+export type ImprovementIssueReceipt = {
+  feedback_id: string;
+  issue_id: string;
+  state:
+    | "received"
+    | "triaged"
+    | "accepted"
+    | "in_progress"
+    | "implemented"
+    | "test_verified"
+    | "awaiting_device_verification"
+    | "verified"
+    | "needs_revision"
+    | "blocked";
+  updated_at: string;
+  note?: string | null;
+};
 
 // ========================================
 // Load-Velocity Profile (LVP)
@@ -360,6 +458,7 @@ export interface AppSettings {
   enable_live_share: boolean;
   live_share_url: string;
   live_share_token: string;
+  enable_improvement_feedback_sync: boolean;
   target_training_phase: "power" | "hypertrophy" | "strength" | "peaking";
   powerlifting_block_week: number; // 1-12 week PL block guide
   audio_volume: number; // 0.0 to 1.0
@@ -407,6 +506,7 @@ export interface AppSettings {
   session_display_focus_vl: boolean;
   session_display_focus_heart_rate: boolean;
   session_display_focus_load: boolean;
+  enable_product_session_dashboard: boolean;
 }
 
 // ========================================

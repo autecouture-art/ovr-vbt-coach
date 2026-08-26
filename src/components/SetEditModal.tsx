@@ -11,7 +11,14 @@ import {
   View,
 } from "react-native";
 import { GarageTheme } from "../constants/garageTheme";
-import { formatLoadKg, roundToHalfKg } from "../constants/exerciseCatalog";
+import { Big3GearSelector } from "./Big3GearSelector";
+import { formatLoadKg } from "../constants/exerciseCatalog";
+import {
+  parseBig3GearSelection,
+  serializeBig3GearSelection,
+  type Big3GearSelection,
+} from "../utils/Big3Gear";
+import { parseLoadKgInput } from "../utils/LoadPrecision";
 import type { SetData } from "../types/index";
 
 export type SetEditValues = {
@@ -19,6 +26,7 @@ export type SetEditValues = {
   lift: string;
   rpe?: number;
   notes: string;
+  gearJson?: string | null;
 };
 
 type SetEditModalProps = {
@@ -38,6 +46,9 @@ export function SetEditModal({
   const [liftText, setLiftText] = useState("");
   const [rpeText, setRpeText] = useState("");
   const [notes, setNotes] = useState("");
+  const [gearSelection, setGearSelection] =
+    useState<Big3GearSelection | null>(null);
+  const [gearEdited, setGearEdited] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -47,6 +58,8 @@ export function SetEditModal({
     setLiftText(setItem.lift ?? "");
     setRpeText(setItem.rpe != null ? String(setItem.rpe) : "");
     setNotes(setItem.notes ?? "");
+    setGearSelection(parseBig3GearSelection(setItem.gear_json));
+    setGearEdited(false);
     setError(null);
     setSaving(false);
   }, [visible, setItem]);
@@ -54,10 +67,9 @@ export function SetEditModal({
   const handleSave = async () => {
     if (!setItem || saving) return;
 
-    const normalizedLoad = loadText.trim().replace(/,/g, ".");
-    const parsedLoad = Number.parseFloat(normalizedLoad);
+    const parsedLoad = parseLoadKgInput(loadText);
 
-    if (!normalizedLoad || Number.isNaN(parsedLoad) || parsedLoad < 0) {
+    if (parsedLoad == null || parsedLoad < 0) {
       setError("0以上の重量を入力してください。");
       return;
     }
@@ -82,10 +94,13 @@ export function SetEditModal({
     setSaving(true);
     try {
       await onSave({
-        loadKg: roundToHalfKg(parsedLoad),
+        loadKg: parsedLoad,
         lift: normalizedLift,
         rpe: parsedRpe,
         notes: notes.trim(),
+        gearJson: gearEdited
+          ? serializeBig3GearSelection(gearSelection ?? { gear: [] })
+          : undefined,
       });
     } finally {
       setSaving(false);
@@ -140,6 +155,16 @@ export function SetEditModal({
               placeholderTextColor={GarageTheme.textSubtle}
             />
           </View>
+
+          <Big3GearSelector
+            lift={liftText}
+            value={gearSelection}
+            onChange={(selection) => {
+              setGearSelection(selection);
+              setGearEdited(true);
+            }}
+            description="この保存済みセットに使用ギアを記録します。"
+          />
 
           <View style={styles.field}>
             <Text style={styles.label}>メモ</Text>

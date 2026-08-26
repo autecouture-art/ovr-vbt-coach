@@ -4,7 +4,9 @@ import { useIsFocused } from '@react-navigation/native';
 
 import DatabaseService from '@/src/services/DatabaseService';
 import CodexDataExportService, { type CodexTrainingExportShareResult } from '@/src/services/CodexDataExportService';
+import LiveShareService, { type RepVeloCoachSyncResult } from '@/src/services/LiveShareService';
 import ExerciseService from '@/src/services/ExerciseService';
+import SupervisorProgramPlanService, { type SupervisorProgramPlanState } from '@/src/services/SupervisorProgramPlanService';
 import { GarageTheme } from '@/src/constants/garageTheme';
 import type { SessionData } from '@/src/types/index';
 import { formatSessionLabel } from '@/src/utils/session';
@@ -28,6 +30,11 @@ export default function ImportTab() {
   const [inferringRom, setInferringRom] = useState(false);
   const [exportingCodexData, setExportingCodexData] = useState(false);
   const [lastCodexExport, setLastCodexExport] = useState<CodexTrainingExportShareResult | null>(null);
+  const [syncingRepVelo, setSyncingRepVelo] = useState(false);
+  const [lastRepVeloSync, setLastRepVeloSync] = useState<RepVeloCoachSyncResult | null>(null);
+  const [supervisorPlanState, setSupervisorPlanState] = useState<SupervisorProgramPlanState | null>(null);
+  const [fetchingSupervisorPlan, setFetchingSupervisorPlan] = useState(false);
+  const [applyingSupervisorPlan, setApplyingSupervisorPlan] = useState(false);
 
   const loadSummary = async () => {
     await DatabaseService.initialize();
@@ -51,6 +58,7 @@ export default function ImportTab() {
       repCount,
       lastSession: sessions[0] ?? null,
     });
+    setSupervisorPlanState(await SupervisorProgramPlanService.getState());
   };
 
   useEffect(() => {
@@ -104,6 +112,74 @@ export default function ImportTab() {
       Alert.alert('エクスポート失敗', error instanceof Error ? error.message : 'Codex用データの書き出しに失敗しました。');
     } finally {
       setExportingCodexData(false);
+    }
+  };
+
+  const handleRepVeloCoachSync = async () => {
+    setSyncingRepVelo(true);
+    try {
+      const result = await LiveShareService.syncTrainingExport();
+      if (!result) {
+        Alert.alert('同期設定が必要です', '設定 > 共有でLive ShareをONにし、Mac上のPersonal MCP URLと同期トークンを入力してください。');
+        return;
+      }
+      setLastRepVeloSync(result);
+      Alert.alert(
+        'RepVeloCoach同期完了',
+        `Mac側に保存しました。\nSessions ${result.counts.sessions} / Sets ${result.counts.sets} / Reps ${result.counts.reps}`,
+      );
+    } catch (error) {
+      console.error('Failed to sync RepVeloCoach data:', error);
+      Alert.alert('同期失敗', error instanceof Error ? error.message : 'Mac / MCPへの同期に失敗しました。');
+    } finally {
+      setSyncingRepVelo(false);
+    }
+  };
+
+  const handleFetchSupervisorPlan = async () => {
+    setFetchingSupervisorPlan(true);
+    try {
+      const result = await SupervisorProgramPlanService.fetchAndStage();
+      setSupervisorPlanState(await SupervisorProgramPlanService.getState());
+      if (!result.validation.ok || !result.validation.plan) {
+        Alert.alert('監督メニュー検証失敗', result.validation.errors.join('\n'));
+        return;
+      }
+      Alert.alert(
+        result.idempotent ? '同一版を取得済み' : '監督メニュー取得完了',
+        `${result.validation.plan.version}\n${result.diff?.summary ?? '差分なし'}\n\n問題なければ「取得済みを適用」を押してください。`,
+      );
+    } catch (error) {
+      console.error('Failed to fetch supervisor plan:', error);
+      Alert.alert('監督メニュー取得失敗', error instanceof Error ? error.message : 'Mac / MCPから監督メニューを取得できませんでした。');
+    } finally {
+      setFetchingSupervisorPlan(false);
+    }
+  };
+
+  const handleApplySupervisorPlan = async () => {
+    setApplyingSupervisorPlan(true);
+    try {
+      const applied = await SupervisorProgramPlanService.applyStagedPlan();
+      setSupervisorPlanState(await SupervisorProgramPlanService.getState());
+      Alert.alert('監督メニュー適用完了', `${applied.version}\nrow数 ${applied.rows.length}\nチェックサム ${applied.checksum}`);
+    } catch (error) {
+      Alert.alert('適用できません', error instanceof Error ? error.message : '取得済み監督メニューを適用できませんでした。');
+    } finally {
+      setApplyingSupervisorPlan(false);
+    }
+  };
+
+  const handleRollbackSupervisorPlan = async () => {
+    setApplyingSupervisorPlan(true);
+    try {
+      const applied = await SupervisorProgramPlanService.rollbackToPreviousPlan();
+      setSupervisorPlanState(await SupervisorProgramPlanService.getState());
+      Alert.alert('前版へ戻しました', `${applied.version}\nチェックサム ${applied.checksum}`);
+    } catch (error) {
+      Alert.alert('前版へ戻せません', error instanceof Error ? error.message : '戻せる前版がありません。');
+    } finally {
+      setApplyingSupervisorPlan(false);
     }
   };
 
@@ -168,6 +244,46 @@ export default function ImportTab() {
             Last export: {lastCodexExport.fileName} / {Math.max(1, Math.round(lastCodexExport.bytes / 1024))} KB
           </Text>
         ) : null}
+        <TouchableOpacity style={styles.syncButton} onPress={() => void handleRepVeloCoachSync()} disabled={syncingRepVelo}>
+          <Text style={styles.syncButtonText}>{syncingRepVelo ? 'SYNCING TO MAC...' : 'SYNC TO CHATGPT APP'}</Text>
+        </TouchableOpacity>
+        <Text style={styles.syncHint}>Mac側のPersonal MCPへ最新のローカルDBスナップショットを送ります。ChatGPTには動画本体や認証情報を渡しません。</Text>
+        {lastRepVeloSync ? (
+          <Text style={styles.exportMeta}>Last MCP sync: {new Date(lastRepVeloSync.synced_at).toLocaleString('ja-JP')}</Text>
+        ) : null}
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>SUPERVISOR PLAN</Text>
+        <Text style={styles.cardMain}>監督メニュー</Text>
+        <Text style={styles.cardBody}>
+          Googleスプレッドシートから生成された版付きJSONだけを取得します。共有MDは説明用で、アプリは解析元にしません。
+        </Text>
+        <View style={styles.planMetaBox}>
+          <Text style={styles.cardSub}>
+            適用中: {supervisorPlanState?.applied?.version ?? '未適用'}
+          </Text>
+          <Text style={styles.cardSub}>
+            更新: {supervisorPlanState?.applied?.updated_at ?? '-'}
+          </Text>
+          <Text style={[styles.cardSub, supervisorPlanState?.is_stale ? styles.warningText : null]}>
+            状態: {supervisorPlanState?.is_stale ? supervisorPlanState.stale_reason : '最新範囲'}
+          </Text>
+          <Text style={styles.cardSub}>
+            取得済み: {supervisorPlanState?.staged?.version ?? '-'} / 前版: {supervisorPlanState?.previous?.version ?? '-'}
+          </Text>
+        </View>
+        <View style={styles.planButtonRow}>
+          <TouchableOpacity style={styles.secondaryButton} onPress={() => void handleFetchSupervisorPlan()} disabled={fetchingSupervisorPlan}>
+            <Text style={styles.secondaryButtonText}>{fetchingSupervisorPlan ? '取得中...' : '監督メニュー取得'}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.refreshButton} onPress={() => void handleApplySupervisorPlan()} disabled={applyingSupervisorPlan || !supervisorPlanState?.staged}>
+            <Text style={styles.refreshButtonText}>取得済みを適用</Text>
+          </TouchableOpacity>
+        </View>
+        <TouchableOpacity style={styles.syncButton} onPress={() => void handleRollbackSupervisorPlan()} disabled={applyingSupervisorPlan || !supervisorPlanState?.previous}>
+          <Text style={styles.syncButtonText}>前版へ戻す</Text>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.card}>
@@ -409,5 +525,43 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     letterSpacing: 0,
+  },
+  syncButton: {
+    borderRadius: 12,
+    backgroundColor: GarageTheme.surfaceAlt,
+    borderWidth: 1,
+    borderColor: GarageTheme.accentSoft,
+    paddingVertical: 16,
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  syncButtonText: {
+    color: GarageTheme.textStrong,
+    fontSize: 13,
+    fontWeight: '600',
+    letterSpacing: 0,
+  },
+  syncHint: {
+    color: GarageTheme.textMuted,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 10,
+  },
+  planMetaBox: {
+    borderRadius: 10,
+    backgroundColor: GarageTheme.panel,
+    borderWidth: 1,
+    borderColor: GarageTheme.border,
+    padding: 12,
+    marginTop: 12,
+    gap: 4,
+  },
+  planButtonRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 12,
+  },
+  warningText: {
+    color: GarageTheme.warning,
   },
 });

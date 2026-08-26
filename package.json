@@ -17,6 +17,7 @@
     "codex:app-server:admin": "node scripts/codex-app-server-admin.mjs",
     "codex:training-export": "node scripts/read-codex-training-export.mjs",
     "live-share:server": "node scripts/repvelo_live_share_server.mjs",
+    "supervisor-plan:publish": "tsx tools/publish_supervisor_plan_v8.ts",
     "exercise:gui": "/usr/bin/python3 scripts/exercise_catalog_gui.py",
     "db:push": "drizzle-kit generate && drizzle-kit migrate",
     "android": "expo run:android",

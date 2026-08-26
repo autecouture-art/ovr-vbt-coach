@@ -3,16 +3,17 @@
  * 種目マスターデータの管理と ROM 推定
  */
 
-import DatabaseService from "@/src/services/DatabaseService";
-import type { Exercise } from "@/src/types/index";
+import DatabaseService from "./DatabaseService";
+import type { Exercise } from "../types/index";
 import {
   DEFAULT_EXERCISES,
   getCanonicalExerciseMigrationPairs,
   getCanonicalExerciseSeed,
   inferExercisePreset,
+  isDefaultExerciseCatalogItem,
   mergeExerciseWithPreset,
   roundToHalfKg,
-} from "@/src/constants/exerciseCatalog";
+} from "../constants/exerciseCatalog";
 
 const DEFAULT_MIN_ROM_THRESHOLD = 10;
 
@@ -21,6 +22,9 @@ const toStableExerciseId = (name: string) =>
     .toLowerCase()
     .replace(/[^a-z0-9ぁ-んァ-ヶ一-龯]+/g, "_")
     .replace(/^_+|_+$/g, "") || `exercise_${Date.now()}`;
+
+const normalizeExerciseNameKey = (name: string) =>
+  name.trim().toLowerCase().replace(/\s+/g, " ");
 
 const nearlyEqual = (a?: number | null, b?: number | null) => {
   if (a == null && b == null) return true;
@@ -159,7 +163,10 @@ class ExerciseService {
     const current = this.exercises.find((exercise) => exercise.id === id);
     if (!current) return false;
 
-    const next = mergeExerciseWithPreset({ ...current, ...updates });
+    const next = {
+      ...mergeExerciseWithPreset({ ...current, ...updates }),
+      ...updates,
+    };
     await DatabaseService.saveExercise(next);
     await this.refresh();
     return true;
@@ -222,6 +229,8 @@ class ExerciseService {
               existing.name === defaultExercise.name
                 ? existing.name
                 : defaultExercise.name,
+            category: defaultExercise.category,
+            subcategory: defaultExercise.subcategory,
             has_lvp: existing.has_lvp ?? merged.has_lvp,
             machine_weight_steps:
               existing.machine_weight_steps ?? merged.machine_weight_steps,
@@ -239,7 +248,6 @@ class ExerciseService {
               existing.ignore_first_rep_as_setup ??
               merged.ignore_first_rep_as_setup ??
               false,
-            subcategory: existing.subcategory ?? merged.subcategory,
             rom_range_min_cm:
               existing.rom_range_min_cm ?? merged.rom_range_min_cm,
             rom_range_max_cm:
@@ -269,6 +277,7 @@ class ExerciseService {
     for (const exercise of current) {
       const canonical = getCanonicalExerciseSeed(exercise.name);
       if (!canonical || canonical.id === exercise.id) continue;
+      if (!isDefaultExerciseCatalogItem(exercise)) continue;
 
       const existingCanonical = byId.get(canonical.id);
       const source = existingCanonical ?? exercise;
@@ -290,7 +299,10 @@ class ExerciseService {
     }
   }
 
-  private async migrateLiftData(fromLift: string, toLift: string): Promise<void> {
+  private async migrateLiftData(
+    fromLift: string,
+    toLift: string,
+  ): Promise<void> {
     if (fromLift === toLift) return;
 
     const aliasLvp = await DatabaseService.getLVPProfile(fromLift);
@@ -307,7 +319,17 @@ class ExerciseService {
   }
 
   private async migrateHistoricalAliasLifts(): Promise<void> {
+    const current = await DatabaseService.getExercises();
+    const userAddedExerciseNames = new Set(
+      current
+        .filter((exercise) => !isDefaultExerciseCatalogItem(exercise))
+        .map((exercise) => normalizeExerciseNameKey(exercise.name)),
+    );
+
     for (const pair of getCanonicalExerciseMigrationPairs()) {
+      if (userAddedExerciseNames.has(normalizeExerciseNameKey(pair.from))) {
+        continue;
+      }
       await this.migrateLiftData(pair.from, pair.to);
     }
   }

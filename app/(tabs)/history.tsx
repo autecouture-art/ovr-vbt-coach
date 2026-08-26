@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useNavigation, useRouter } from 'expo-router';
+import { useNavigation, useRouter, useLocalSearchParams } from 'expo-router';
 
 import HistoryScreen from '@/src/screens/HistoryScreen';
 import DatabaseService from '@/src/services/DatabaseService';
@@ -7,6 +7,8 @@ import DatabaseService from '@/src/services/DatabaseService';
 export default function HistoryTabRoute() {
   const router = useRouter();
   const navigationState = useNavigation();
+  const params = useLocalSearchParams<{ focus?: string }>();
+  const focusParam = params.focus;
 
   useEffect(() => {
     void DatabaseService.initialize();
@@ -42,5 +44,5 @@ export default function HistoryTabRoute() {
     },
   };
 
-  return <HistoryScreen navigation={navigation} />;
+  return <HistoryScreen navigation={navigation} focus={focusParam} />;
 }

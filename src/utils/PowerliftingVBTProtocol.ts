@@ -1,4 +1,5 @@
-import type { AppSettings, Exercise } from "@/src/types/index";
+import { calculateVelocityLossMetrics } from "./VBTCalculations";
+import type { AppSettings, Exercise, RepData } from "@/src/types/index";
 
 export type PowerliftingPhase = AppSettings["target_training_phase"];
 type MainLiftCategory = "squat" | "bench" | "deadlift";
@@ -32,6 +33,14 @@ export interface LiveVelocityLossDecision {
   status: "fresh" | "watch" | "stop";
   message: string;
   nextSetMessage: string;
+}
+
+export interface FocusVelocityLossState {
+  repCount: number;
+  latestAverageVelocity: number | null;
+  velocityLossAverage: number | null;
+  velocityLossMinimum: number | null;
+  decision: LiveVelocityLossDecision | null;
 }
 
 export interface LvpCheckpoint {
@@ -179,6 +188,18 @@ export function getProtocolVelocityLossThreshold(
   return protocol.backoffVelocityLoss.max;
 }
 
+export function resolveVelocityLossThreshold(
+  exerciseThreshold: number | null | undefined,
+  settingsThreshold: number | null | undefined,
+  protocolThreshold: number,
+): number {
+  const firstValid = [exerciseThreshold, settingsThreshold, protocolThreshold].find(
+    (threshold): threshold is number =>
+      typeof threshold === "number" && Number.isFinite(threshold) && threshold >= 0,
+  );
+  return firstValid ?? protocolThreshold;
+}
+
 export function getPhaseForBlockWeek(week: number): PowerliftingPhase {
   const normalizedWeek = Math.min(12, Math.max(1, Math.round(week)));
   if (normalizedWeek <= 4) return "hypertrophy";
@@ -266,6 +287,26 @@ export function getLiveVelocityLossDecision(
 
   const velocityLoss =
     ((fastestVelocity - currentVelocity) / fastestVelocity) * 100;
+  return getLiveVelocityLossDecisionFromLoss(
+    Math.round(velocityLoss * 10) / 10,
+    threshold,
+  );
+}
+
+export function getLiveVelocityLossDecisionFromLoss(
+  roundedVelocityLoss: number,
+  threshold: number,
+): LiveVelocityLossDecision | null {
+  if (
+    !Number.isFinite(roundedVelocityLoss) ||
+    roundedVelocityLoss < 0 ||
+    !Number.isFinite(threshold) ||
+    threshold <= 0
+  ) {
+    return null;
+  }
+
+  const velocityLoss = roundedVelocityLoss;
   const remaining = Math.max(0, threshold - velocityLoss);
 
   if (velocityLoss >= threshold) {
@@ -294,6 +335,50 @@ export function getLiveVelocityLossDecision(
     status: "fresh",
     message: `VL上限まで${remaining.toFixed(1)}%余裕があります。`,
     nextSetMessage: "速さを保てている間だけバックオフを続けます。",
+  };
+}
+
+export function getFocusVelocityLossState(
+  reps: RepData[],
+  threshold: number,
+): FocusVelocityLossState {
+  const validReps = reps.filter(
+    (rep) =>
+      rep.is_valid_rep &&
+      !rep.is_excluded &&
+      !rep.is_failed &&
+      rep.mean_velocity != null &&
+      Number.isFinite(rep.mean_velocity) &&
+      rep.mean_velocity > 0,
+  );
+  const repCount = validReps.length;
+  const latestAverageVelocity =
+    repCount > 0 ? (validReps[repCount - 1].mean_velocity ?? null) : null;
+
+  if (repCount < 2 || latestAverageVelocity == null) {
+    return {
+      repCount,
+      latestAverageVelocity,
+      velocityLossAverage: null,
+      velocityLossMinimum: null,
+      decision: null,
+    };
+  }
+
+  const velocityLossMetrics = calculateVelocityLossMetrics(reps);
+  const velocityLossAverage = velocityLossMetrics.vlAvg;
+  const velocityLossMinimum = velocityLossMetrics.vlMin;
+  const velocityLossLast = velocityLossMetrics.vlLast;
+
+  return {
+    repCount,
+    latestAverageVelocity,
+    velocityLossAverage,
+    velocityLossMinimum,
+    decision:
+      threshold > 0 && velocityLossLast != null
+        ? getLiveVelocityLossDecisionFromLoss(velocityLossLast, threshold)
+        : null,
   };
 }
 

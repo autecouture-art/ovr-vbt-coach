@@ -16,12 +16,18 @@ import {
 } from "react-native";
 import { useIsFocused } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useLocalSearchParams } from "expo-router";
 import DatabaseService from "@/src/services/DatabaseService";
 import { GarageTheme } from "@/src/constants/garageTheme";
 import VBTGuideService from "@/src/services/VBTGuideService";
 import VBTCalculations, { getVelocityAt1RM } from "@/src/utils/VBTCalculations";
 import {
+  estimateHistoricalMvt,
+  type PersonalVelocityEstimate,
+} from "@/src/utils/LVPEstimation";
+import {
   EXERCISE_SELECTION_GROUPS,
+  formatLoadKg,
   matchesExerciseSelectionGroup,
   type ExerciseSelectionGroupId,
 } from "@/src/constants/exerciseCatalog";
@@ -47,11 +53,6 @@ type ExerciseComparisonPoint = {
   e1rm: number;
   label: string;
   setCount: number;
-};
-
-type PersonalVelocityEstimate = {
-  value: number;
-  source: "履歴MVT" | "保存MVT" | "種目MVT" | "LVP推定";
 };
 
 const DEFAULT_VELOCITY_ZONES = [
@@ -171,31 +172,6 @@ const buildDailyE1rmTrend = (sets: SetData[]): DailyE1rmPoint[] => {
     }));
 };
 
-const estimateHistoricalMvt = (sets: SetData[]): PersonalVelocityEstimate | null => {
-  const validSets = sets.filter(
-    (set) =>
-      !set.is_warmup &&
-      set.load_kg > 0 &&
-      typeof set.avg_velocity === "number" &&
-      set.avg_velocity >= 0.08 &&
-      set.avg_velocity <= 0.6,
-  );
-  if (validSets.length === 0) return null;
-
-  const maxLoad = Math.max(...validSets.map((set) => set.load_kg));
-  const heavySets = validSets.filter((set) => set.load_kg >= maxLoad * 0.9);
-  if (heavySets.length === 0) return null;
-
-  const velocities = heavySets
-    .map((set) => set.avg_velocity!)
-    .sort((a, b) => a - b);
-  const lowVelocity = velocities[Math.floor(velocities.length * 0.15)] ?? velocities[0];
-  return {
-    value: Number(lowVelocity.toFixed(2)),
-    source: "履歴MVT",
-  };
-};
-
 const getPersonalVelocityAt1RM = (
   lvp: LVPData,
   exercise?: Exercise,
@@ -260,11 +236,31 @@ const calculateSmoothedTrend = (points: DailyE1rmPoint[]): number[] => {
 
 type TabType = "lvp" | "trend" | "zones";
 
+/**
+ * focusパラメータからGraphの表示タブを決定する純粋関数
+ * @param focus - focusパラメータ（"strength" | "speed" | undefined | 未知値）
+ * @returns 対応するタブ（strength→trend, speed→lvp, その他→lvp）
+ */
+const getGraphTabFromFocus = (focus?: string): TabType => {
+  if (focus === "strength") {
+    return "trend";
+  }
+  if (focus === "speed") {
+    return "lvp";
+  }
+  return "lvp"; // default: focusなし/未知値の場合は既定値へ
+};
+
 export default function GraphScreen() {
   const insets = useSafeAreaInsets();
   const isFocused = useIsFocused();
   const { width: screenWidth } = useWindowDimensions();
-  const [activeTab, setActiveTab] = useState<TabType>("lvp");
+  const params = useLocalSearchParams<{ focus?: string }>();
+  const focusParam = params.focus;
+
+  const initialTab = useMemo(() => getGraphTabFromFocus(focusParam), [focusParam]);
+
+  const [activeTab, setActiveTab] = useState<TabType>(initialTab);
   const [selectedExercise, setSelectedExercise] = useState("");
   const [selectedGroup, setSelectedGroup] =
     useState<ExerciseSelectionGroupId>("all");
@@ -289,6 +285,11 @@ export default function GraphScreen() {
     // Focus refresh should not re-run just because the loader identity changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isFocused]);
+
+  // Update activeTab when focus parameter changes
+  useEffect(() => {
+    setActiveTab(getGraphTabFromFocus(focusParam));
+  }, [focusParam]);
 
   const loadExercises = async () => {
     try {
@@ -365,7 +366,7 @@ export default function GraphScreen() {
     [filteredDailyE1rmTrend],
   );
 
-  const loadData = async () => {
+  const loadData = async (options: { persistLatestProfile?: boolean } = {}) => {
     setLoading(true);
     try {
       // 最近のセッションをDBから取得
@@ -432,23 +433,52 @@ export default function GraphScreen() {
           load: set.load_kg,
           velocity: set.avg_velocity!,
         }));
+
+      const measuredMvtValue =
+        measuredMvt?.value ??
+        selectedExerciseRecord?.mvt ??
+        savedLvp?.mvt ??
+        undefined;
       const calculatedLvp =
-        !savedLvp && velocityPoints.length >= 2
-          ? VBTCalculations.calculateLVP(
-              velocityPoints,
-              selectedExerciseRecord?.mvt,
-            )
+        velocityPoints.length >= 2
+          ? VBTCalculations.calculateLVP(velocityPoints, measuredMvtValue)
           : null;
-      const resolvedLvp = savedLvp
-        ? savedLvp
-        : calculatedLvp
+      const now = new Date().toISOString();
+      const resolvedLvp = calculatedLvp
+        ? {
+            ...calculatedLvp,
+            lift: selectedExercise,
+            mvt: measuredMvtValue ?? calculatedLvp.mvt,
+            v1rm: measuredMvtValue ?? calculatedLvp.v1rm,
+            last_updated: now,
+            sample_count: velocityPoints.length,
+          }
+        : savedLvp
           ? {
-              ...calculatedLvp,
-              lift: selectedExercise,
-              last_updated: new Date().toISOString(),
-              sample_count: velocityPoints.length,
+              ...savedLvp,
+              mvt: measuredMvtValue ?? savedLvp.mvt,
+              v1rm: measuredMvtValue ?? savedLvp.v1rm,
+              last_updated:
+                options.persistLatestProfile && measuredMvtValue
+                  ? now
+                  : savedLvp.last_updated,
             }
           : null;
+
+      if (options.persistLatestProfile && resolvedLvp) {
+        await DatabaseService.saveLVPProfile(resolvedLvp);
+      }
+
+      if (
+        options.persistLatestProfile &&
+        measuredMvt?.value &&
+        selectedExerciseRecord?.id
+      ) {
+        await DatabaseService.updateExerciseMVT(
+          selectedExerciseRecord.id,
+          measuredMvt.value,
+        );
+      }
 
       setLvpData(resolvedLvp);
       setE1rmEstimate(
@@ -473,7 +503,8 @@ export default function GraphScreen() {
   const handleRefresh = async () => {
     await loadExercises();
     if (selectedExercise) {
-      await loadData();
+      await loadData({ persistLatestProfile: true });
+      await loadExercises();
     }
   };
 
@@ -839,7 +870,7 @@ export default function GraphScreen() {
             <View key={idx} style={styles.trendRow}>
               <Text style={styles.trendSetLabel}>#{set.set_index}</Text>
               <Text style={styles.trendLoad}>
-                {set.load_kg}kg×{set.reps}
+                {formatLoadKg(set.load_kg)}kg×{set.reps}
               </Text>
               <View style={styles.trendZone}>
                 <Text style={[styles.trendZoneText, { color: zone.color }]}>

@@ -22,8 +22,16 @@ import CrashReportService, {
 } from '@/src/services/CrashReportService';
 import DatabaseService from '@/src/services/DatabaseService';
 import { loadAppSettings } from '@/src/services/AppSettingsService';
+import SupervisorProgramPlanService, {
+  getSupervisorProgramPlanExecutionState,
+  type SupervisorProgramPlanState,
+} from '@/src/services/SupervisorProgramPlanService';
 import { GarageTheme } from '@/src/constants/garageTheme';
 import { formatErrorMessage } from '@/src/utils/errorMessages';
+import {
+  getSupervisorRowsForDay,
+  type SupervisorProgramRowV8,
+} from '@/src/utils/SupervisorProgramPlan';
 import type { SessionData } from '@/src/types/index';
 import type { Device } from 'react-native-ble-plx';
 
@@ -42,6 +50,13 @@ export default function HomeScreen() {
     id: null,
     name: null,
   });
+  const [supervisorPlanState, setSupervisorPlanState] =
+    useState<SupervisorProgramPlanState | null>(null);
+  const [selectedSupervisorWeek, setSelectedSupervisorWeek] = useState<number | null>(null);
+  const [selectedSupervisorDay, setSelectedSupervisorDay] = useState('Day1');
+  const [supervisorPlanSyncStatus, setSupervisorPlanSyncStatus] = useState<
+    'idle' | 'updated' | 'current' | 'offline' | 'needs_setup'
+  >('idle');
   const isWeb = Platform.OS === 'web';
 
   useEffect(() => {
@@ -94,6 +109,32 @@ export default function HomeScreen() {
           return;
         }
         setPreviousVbtCrashContext(crashContext);
+        const settings = await loadAppSettings();
+        if (!cancelled && settings.enable_live_share && settings.live_share_url.trim()) {
+          try {
+            const syncResult = await SupervisorProgramPlanService.syncCurrentPlanIfChanged();
+            if (!cancelled) {
+              setSupervisorPlanSyncStatus(
+                syncResult.status === 'applied' ? 'updated' : 'current',
+              );
+            }
+          } catch (error) {
+            console.warn('[HomeScreen] Supervisor plan background sync failed:', error);
+            if (!cancelled) setSupervisorPlanSyncStatus('offline');
+          }
+        } else if (!cancelled) {
+          setSupervisorPlanSyncStatus('needs_setup');
+        }
+        const nextSupervisorPlanState = await SupervisorProgramPlanService.getState();
+        if (cancelled) {
+          return;
+        }
+        setSupervisorPlanState(nextSupervisorPlanState);
+        if (nextSupervisorPlanState.applied) {
+          const weeks = [...new Set(nextSupervisorPlanState.applied.rows.map((row) => row.week))]
+            .sort((a, b) => b - a);
+          setSelectedSupervisorWeek((current) => current ?? weeks[0] ?? null);
+        }
         if (crashContext) {
           const settings = await loadAppSettings();
           if (
@@ -235,6 +276,42 @@ export default function HomeScreen() {
     }
     router.navigate('/(tabs)/session');
   };
+
+  const handleQuickLaunchSupervisorRow = async (row: SupervisorProgramRowV8) => {
+    try {
+      await CrashReportService.saveVBTSessionOpenAttempt({
+        entry_point: 'home_card',
+        is_connected: isConnected,
+      });
+    } catch (error) {
+      console.warn('[HomeScreen] Failed to save supervisor quick-launch marker:', error);
+    }
+    router.push({
+      pathname: '/(tabs)/session',
+      params: {
+        supervisorRowId: row.row_id,
+        supervisorWeekDay: `Week${row.week}-${row.day}`,
+        quickLaunchToken: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        autoOpen: '1',
+      },
+    });
+  };
+
+  const supervisorExecutionState = getSupervisorProgramPlanExecutionState(
+    supervisorPlanState?.applied ?? null,
+  );
+  const supervisorWeeks = [...new Set((supervisorPlanState?.applied?.rows ?? []).map((row) => row.week))]
+    .sort((a, b) => a - b);
+  const supervisorDays = [...new Set(
+    (supervisorPlanState?.applied?.rows ?? [])
+      .filter((row) => row.week === selectedSupervisorWeek)
+      .map((row) => row.day),
+  )].sort();
+  const supervisorRows = getSupervisorRowsForDay(
+    supervisorPlanState?.applied ?? null,
+    selectedSupervisorWeek,
+    selectedSupervisorDay,
+  );
 
   const getVBTScreenCrashReport = async (): Promise<string | null> => {
     const snapshot =
@@ -380,6 +457,114 @@ export default function HomeScreen() {
         </View>
       </View>
 
+      {/* Primary training flow */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>今日のトレーニング</Text>
+
+        {supervisorPlanState?.applied && selectedSupervisorWeek != null ? (
+          <View style={styles.supervisorPlanCard}>
+            <View style={styles.supervisorPlanHeader}>
+              <View>
+                <Text style={styles.supervisorPlanKicker}>監督メニュー</Text>
+                <Text style={styles.supervisorPlanTitle}>
+                  Week {selectedSupervisorWeek} / {selectedSupervisorDay}
+                </Text>
+              </View>
+              <View style={styles.supervisorPlanStatus}>
+                <Text style={styles.supervisorPlanVersion}>
+                  {supervisorPlanState?.applied?.version ?? ''}
+                </Text>
+                <Text style={styles.supervisorPlanSyncText}>
+                  {supervisorPlanSyncStatus === 'updated'
+                    ? '最新版を適用'
+                    : supervisorPlanSyncStatus === 'offline'
+                      ? 'オフライン / 前回版'
+                      : '同期済み'}
+                </Text>
+              </View>
+            </View>
+            {supervisorExecutionState.is_stale ? (
+              <Text style={styles.supervisorPlanWarning}>
+                {supervisorExecutionState.stale_reason}。確認しながら開始できます。
+              </Text>
+            ) : null}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.supervisorSelectorRow}>
+              {supervisorWeeks.map((week) => (
+                <TouchableOpacity
+                  key={week}
+                  style={[styles.supervisorSelector, selectedSupervisorWeek === week && styles.supervisorSelectorActive]}
+                  onPress={() => setSelectedSupervisorWeek(week)}
+                >
+                  <Text style={styles.supervisorSelectorText}>W{week}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <View style={styles.supervisorDayRow}>
+              {supervisorDays.map((day) => (
+                <TouchableOpacity
+                  key={day}
+                  style={[styles.supervisorDayButton, selectedSupervisorDay === day && styles.supervisorDayButtonActive]}
+                  onPress={() => setSelectedSupervisorDay(day)}
+                >
+                  <Text style={styles.supervisorDayButtonText}>{day}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            {supervisorRows.map((row) => (
+              <TouchableOpacity
+                key={row.row_id}
+                style={styles.supervisorRow}
+                onPress={() => void handleQuickLaunchSupervisorRow(row)}
+              >
+                <View style={styles.supervisorRowCopy}>
+                  <Text style={styles.supervisorRowName}>{row.display_name}</Text>
+                  <Text style={styles.supervisorRowPrescription}>
+                    {row.load_kg ?? '-'}kg x {row.reps ?? '-'} x {row.sets ?? '-'}
+                  </Text>
+                  <Text style={styles.supervisorRowMeta}>
+                    RPE {row.rpe_target ?? '任意'} / VL {row.vl_cap ?? row.vl_target ?? '任意'}%
+                  </Text>
+                </View>
+                <Text style={styles.supervisorRowArrow}>›</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        ) : supervisorPlanState ? (
+          <View style={styles.supervisorPlanUnavailable}>
+            <Text style={styles.supervisorPlanUnavailableText}>
+              {supervisorExecutionState.stale_reason ?? '監督メニューを取得・適用してください。'}
+            </Text>
+            <TouchableOpacity onPress={() => router.navigate('/(tabs)/import')}>
+              <Text style={styles.supervisorPlanUnavailableAction}>監督メニューを管理</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
+
+        <TouchableOpacity style={styles.primaryStartButton} onPress={() => void handleOpenSession()}>
+          <View>
+            <Text style={styles.primaryStartKicker}>TODAY</Text>
+            <Text style={styles.primaryStartTitle}>セッション開始</Text>
+            <Text style={styles.primaryStartDesc}>VBT計測、当日判断、チャッピーコーチ相談へ進む</Text>
+          </View>
+          <Text style={styles.primaryStartArrow}>→</Text>
+        </TouchableOpacity>
+
+        <View style={styles.quickActionGrid}>
+          <TouchableOpacity style={styles.quickActionCard} onPress={() => router.navigate('/(tabs)/manual')}>
+            <Text style={styles.quickActionLabel}>手入力</Text>
+            <Text style={styles.quickActionMeta}>補助 / 自重 / スーパーセット</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.quickActionCard} onPress={() => router.navigate('/(tabs)/history')}>
+            <Text style={styles.quickActionLabel}>履歴</Text>
+            <Text style={styles.quickActionMeta}>前回セットを確認</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.quickActionCard} onPress={() => router.navigate('/(tabs)/graph')}>
+            <Text style={styles.quickActionLabel}>分析</Text>
+            <Text style={styles.quickActionMeta}>LVP / MY V@1RM</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
       {previousVbtCrashContext && (
         <View style={styles.crashReportCard}>
           <View style={styles.crashReportHeader}>
@@ -487,56 +672,19 @@ export default function HomeScreen() {
         </View>
       )}
 
-      {/* PREMIUM ACTION CARDS - Tracks */}
+      {/* Management flow */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>TRAINING MODULES</Text>
-
-        <TouchableOpacity style={[styles.premiumCard, styles.premiumCardPrimary]} onPress={() => void handleOpenSession()}>
-          <View style={styles.premiumCardHeader}>
-            <View style={styles.premiumCardLeft}>
-              <Text style={styles.premiumCardCode}>MODULE_01</Text>
-              <Text style={styles.premiumCardStatus}>SENSOR TRAINING</Text>
-            </View>
-            <View style={styles.premiumCardRight}>
-              <Text style={styles.premiumCardArrow}>→</Text>
-            </View>
-          </View>
-          <Text style={styles.premiumCardTitle}>Live Velocity Tracking</Text>
-          <Text style={styles.premiumCardDesc}>Real-time speed measurement during training</Text>
-          <View style={styles.premiumCardFooter}>
-            <View style={styles.premiumCardTag}>
-              <Text style={styles.premiumCardTagText}>RECOMMENDED</Text>
-            </View>
-          </View>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={[styles.premiumCard, styles.premiumCardSecondary]} onPress={() => router.navigate('/(tabs)/manual')}>
-          <View style={styles.premiumCardHeader}>
-            <View style={styles.premiumCardLeft}>
-              <Text style={styles.premiumCardCode}>MODULE_02</Text>
-              <Text style={styles.premiumCardStatus}>MANUAL LOGGING</Text>
-            </View>
-            <View style={styles.premiumCardRight}>
-              <Text style={styles.premiumCardArrow}>→</Text>
-            </View>
-          </View>
-          <Text style={styles.premiumCardTitle}>Manual Entry Mode</Text>
-          <Text style={styles.premiumCardDesc}>Record sets and reps manually</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={[styles.premiumCard, styles.premiumCardTertiary]} onPress={() => router.navigate('/(tabs)/graph')}>
-          <View style={styles.premiumCardHeader}>
-            <View style={styles.premiumCardLeft}>
-              <Text style={styles.premiumCardCode}>MODULE_03</Text>
-              <Text style={styles.premiumCardStatus}>ANALYTICS</Text>
-            </View>
-            <View style={styles.premiumCardRight}>
-              <Text style={styles.premiumCardArrow}>→</Text>
-            </View>
-          </View>
-          <Text style={styles.premiumCardTitle}>Performance Dashboard</Text>
-          <Text style={styles.premiumCardDesc}>View progress trends and graphs</Text>
-        </TouchableOpacity>
+        <Text style={styles.sectionTitle}>管理</Text>
+        <View style={styles.managementRow}>
+          <TouchableOpacity style={styles.managementButton} onPress={() => router.navigate('/(tabs)/import')}>
+            <Text style={styles.managementButtonTitle}>監督メニュー</Text>
+            <Text style={styles.managementButtonMeta}>取得 / 適用 / データ</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.managementButton} onPress={() => router.navigate('/(tabs)/settings')}>
+            <Text style={styles.managementButtonTitle}>設定</Text>
+            <Text style={styles.managementButtonMeta}>音声 / 動画 / 端末</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* RECENT ACTIVITY LIST - Refined Design */}
@@ -695,6 +843,150 @@ const styles = StyleSheet.create({
     backgroundColor: GarageTheme.accent,
     borderRadius: 2,
     minWidth: 20,
+  },
+  supervisorPlanCard: {
+    marginBottom: 12,
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: GarageTheme.accent,
+    backgroundColor: GarageTheme.surface,
+  },
+  supervisorPlanHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 10,
+  },
+  supervisorPlanKicker: {
+    color: GarageTheme.accentSoft,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  supervisorPlanTitle: {
+    color: GarageTheme.textStrong,
+    fontSize: 16,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  supervisorPlanVersion: {
+    color: GarageTheme.textMuted,
+    fontSize: 10,
+    textAlign: 'right',
+  },
+  supervisorPlanStatus: {
+    alignItems: 'flex-end',
+    flex: 1,
+  },
+  supervisorPlanSyncText: {
+    color: GarageTheme.textMuted,
+    fontSize: 10,
+    marginTop: 3,
+  },
+  supervisorPlanWarning: {
+    color: GarageTheme.warning,
+    fontSize: 11,
+    lineHeight: 16,
+    marginBottom: 8,
+  },
+  supervisorSelectorRow: {
+    gap: 6,
+    paddingBottom: 8,
+  },
+  supervisorSelector: {
+    minWidth: 44,
+    minHeight: 34,
+    paddingHorizontal: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: GarageTheme.border,
+    backgroundColor: GarageTheme.panel,
+  },
+  supervisorSelectorActive: {
+    borderColor: GarageTheme.accent,
+    backgroundColor: GarageTheme.accent + '20',
+  },
+  supervisorSelectorText: {
+    color: GarageTheme.textStrong,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  supervisorDayRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginBottom: 8,
+  },
+  supervisorDayButton: {
+    flex: 1,
+    minHeight: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: GarageTheme.border,
+    backgroundColor: GarageTheme.panel,
+  },
+  supervisorDayButtonActive: {
+    borderColor: GarageTheme.accent,
+    backgroundColor: GarageTheme.accent + '20',
+  },
+  supervisorDayButtonText: {
+    color: GarageTheme.textStrong,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  supervisorRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    minHeight: 76,
+    paddingVertical: 9,
+    borderTopWidth: 1,
+    borderTopColor: GarageTheme.border,
+  },
+  supervisorRowCopy: {
+    flex: 1,
+  },
+  supervisorRowName: {
+    color: GarageTheme.textStrong,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  supervisorRowPrescription: {
+    color: GarageTheme.accentSoft,
+    fontSize: 14,
+    fontWeight: '700',
+    marginTop: 3,
+  },
+  supervisorRowMeta: {
+    color: GarageTheme.textMuted,
+    fontSize: 11,
+    marginTop: 3,
+  },
+  supervisorRowArrow: {
+    color: GarageTheme.accent,
+    fontSize: 26,
+    fontWeight: '400',
+  },
+  supervisorPlanUnavailable: {
+    marginBottom: 12,
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: GarageTheme.warning,
+    backgroundColor: GarageTheme.surface,
+  },
+  supervisorPlanUnavailableText: {
+    color: GarageTheme.textMuted,
+    fontSize: 12,
+  },
+  supervisorPlanUnavailableAction: {
+    color: GarageTheme.accent,
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 8,
   },
   crashReportCard: {
     marginTop: 16,
@@ -930,6 +1222,100 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     letterSpacing: 0,
     textTransform: 'uppercase',
+  },
+  primaryStartButton: {
+    minHeight: 112,
+    borderRadius: 10,
+    padding: 18,
+    marginTop: 12,
+    marginBottom: 12,
+    backgroundColor: GarageTheme.panel,
+    borderWidth: 1,
+    borderColor: GarageTheme.accent,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  primaryStartKicker: {
+    color: GarageTheme.accentSoft,
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0,
+    marginBottom: 8,
+  },
+  primaryStartTitle: {
+    color: GarageTheme.textStrong,
+    fontSize: 26,
+    lineHeight: 30,
+    fontWeight: '700',
+    letterSpacing: 0,
+    marginBottom: 6,
+  },
+  primaryStartDesc: {
+    color: GarageTheme.textMuted,
+    fontSize: 13,
+    lineHeight: 18,
+    paddingRight: 18,
+  },
+  primaryStartArrow: {
+    color: GarageTheme.accent,
+    fontSize: 28,
+    fontWeight: '500',
+  },
+  quickActionGrid: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  quickActionCard: {
+    flex: 1,
+    minHeight: 72,
+    borderRadius: 8,
+    padding: 12,
+    backgroundColor: GarageTheme.surface,
+    borderWidth: 1,
+    borderColor: GarageTheme.border,
+    justifyContent: 'center',
+  },
+  quickActionLabel: {
+    color: GarageTheme.textStrong,
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: 0,
+    marginBottom: 6,
+  },
+  quickActionMeta: {
+    color: GarageTheme.textSubtle,
+    fontSize: 10,
+    lineHeight: 14,
+    fontWeight: '600',
+  },
+  managementRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 12,
+  },
+  managementButton: {
+    flex: 1,
+    minHeight: 68,
+    borderRadius: 8,
+    padding: 12,
+    backgroundColor: GarageTheme.surfaceAlt,
+    borderWidth: 1,
+    borderColor: GarageTheme.border,
+    justifyContent: 'center',
+  },
+  managementButtonTitle: {
+    color: GarageTheme.textStrong,
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: 0,
+    marginBottom: 5,
+  },
+  managementButtonMeta: {
+    color: GarageTheme.textMuted,
+    fontSize: 10,
+    lineHeight: 14,
+    fontWeight: '600',
   },
   sectionCount: {
     color: GarageTheme.accentSoft,

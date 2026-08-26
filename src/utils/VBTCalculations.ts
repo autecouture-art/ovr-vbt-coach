@@ -532,6 +532,67 @@ export function estimateCurrentDay1RM(
   return Math.round(estimated1RM * 10) / 10;
 }
 
+export function stabilizeDaily1RMEstimate({
+  rawEstimate,
+  currentLoad,
+  historicalBest1RM,
+  confidence,
+}: {
+  rawEstimate: number | null | undefined;
+  currentLoad: number;
+  historicalBest1RM?: number | null;
+  confidence?: "high" | "medium" | "low";
+}): {
+  estimated1RM: number | null;
+  confidence: "high" | "medium" | "low" | null;
+  source: "raw" | "history_floor" | "history_only";
+} {
+  const raw =
+    rawEstimate != null && Number.isFinite(rawEstimate) && rawEstimate > 0
+      ? rawEstimate
+      : null;
+  const history =
+    historicalBest1RM != null &&
+    Number.isFinite(historicalBest1RM) &&
+    historicalBest1RM > 0
+      ? historicalBest1RM
+      : null;
+
+  if (history == null) {
+    return {
+      estimated1RM: raw == null ? null : Math.round(raw * 10) / 10,
+      confidence: raw == null ? null : (confidence ?? "low"),
+      source: "raw",
+    };
+  }
+
+  const historyFloor = Math.round(history * 0.95 * 10) / 10;
+  const lowLoad = currentLoad > 0 && currentLoad < history * 0.75;
+  const implausiblyLow = raw != null && raw < history * 0.85;
+
+  if (raw == null) {
+    return {
+      estimated1RM: historyFloor,
+      confidence: "low",
+      source: "history_only",
+    };
+  }
+
+  if (lowLoad || implausiblyLow) {
+    return {
+      estimated1RM: Math.max(raw, historyFloor),
+      confidence: "low",
+      source: "history_floor",
+    };
+  }
+
+  return {
+    estimated1RM: Math.round(raw * 10) / 10,
+    confidence: confidence ?? "medium",
+    source: "raw",
+  };
+}
+
 export function checkForPR(
   currentValue: number,
   previousBest: number | null,
@@ -650,6 +711,7 @@ export default {
   checkForPR,
   calculateCNSFatigueScore,
   estimateCurrentDay1RM,
+  stabilizeDaily1RMEstimate,
   getExpectedROM,
   isShortROM,
   proposeNewMVT,

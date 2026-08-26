@@ -12,6 +12,7 @@ import type {
   AppSettings,
   RepVeloData,
 } from "../types/index";
+import { getJstTrainingDayId } from "../utils/SupervisorPlanGuards";
 import { DEFAULT_APP_SETTINGS } from "../services/AppSettingsService";
 
 const nearlyEqual = (
@@ -165,7 +166,7 @@ export const useTrainingStore = createWithEqualityFn<TrainingState>((set, get) =
       currentSession: {
         session_id: sessionId,
         id: sessionId,
-        date: startedAt,
+        date: getJstTrainingDayId(startedAt),
         exercises: [],
         sets: [],
         total_volume: 0,

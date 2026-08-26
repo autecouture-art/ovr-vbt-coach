@@ -1,7 +1,12 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { loadAppSettings } from "./AppSettingsService";
+import CodexDataExportService from "./CodexDataExportService";
 import type { AppSettings } from "../types/index";
+import {
+  buildLiveShareEventsUrl,
+  buildRepVeloCoachSyncUrl,
+} from "../utils/LiveShareEndpoint";
 
 export type LiveShareEventType =
   | "session_started"
@@ -21,6 +26,19 @@ const LIVE_SHARE_QUEUE_KEY = "@repvelo_live_share_queue_v1";
 const SETTINGS_CACHE_TTL_MS = 3000;
 const MAX_QUEUE_LENGTH = 100;
 const REQUEST_TIMEOUT_MS = 2500;
+const FULL_SYNC_TIMEOUT_MS = 10000;
+
+export type RepVeloCoachSyncResult = {
+  synced_at: string;
+  counts: {
+    sessions: number;
+    sets: number;
+    reps: number;
+    exercises: number;
+    lvp_profiles: number;
+    form_videos: number;
+  };
+};
 
 class LiveShareService {
   private settingsCache: AppSettings | null = null;
@@ -52,22 +70,7 @@ class LiveShareService {
   }
 
   private normalizeEndpoint(rawUrl: string): string | null {
-    const trimmed = rawUrl.trim();
-    if (!trimmed) return null;
-
-    try {
-      const url = new URL(trimmed);
-      if (url.protocol !== "http:" && url.protocol !== "https:") {
-        return null;
-      }
-      if (url.pathname.endsWith("/events")) {
-        return url.toString();
-      }
-      url.pathname = `${url.pathname.replace(/\/$/, "")}/events`;
-      return url.toString();
-    } catch {
-      return null;
-    }
+    return buildLiveShareEventsUrl(rawUrl);
   }
 
   private async readQueue(): Promise<LiveShareEvent[]> {
@@ -124,6 +127,49 @@ class LiveShareService {
       if (!response.ok) {
         throw new Error(`Live Share HTTP ${response.status}`);
       }
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  async syncTrainingExport(): Promise<RepVeloCoachSyncResult | null> {
+    const settings = await this.getSettings();
+    if (!settings.enable_live_share) return null;
+
+    const endpoint = buildRepVeloCoachSyncUrl(settings.live_share_url);
+    if (!endpoint) {
+      throw new Error("Mac / MCP同期URLが設定されていません。");
+    }
+
+    const payload = await CodexDataExportService.buildTrainingExport();
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), FULL_SYNC_TIMEOUT_MS);
+
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(settings.live_share_token.trim()
+            ? { "X-RepVelo-Sync-Token": settings.live_share_token.trim() }
+            : {}),
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        throw new Error(`Mac / MCP同期 HTTP ${response.status}`);
+      }
+
+      const result = (await response.json()) as Partial<RepVeloCoachSyncResult>;
+      return {
+        synced_at:
+          typeof result.synced_at === "string"
+            ? result.synced_at
+            : new Date().toISOString(),
+        counts: payload.counts,
+      };
     } finally {
       clearTimeout(timeout);
     }

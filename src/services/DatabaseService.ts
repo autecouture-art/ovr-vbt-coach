@@ -7,6 +7,12 @@ import Constants from "expo-constants";
 import { VBTLogic } from "./VBTLogic";
 import VBTCalculations from "../utils/VBTCalculations";
 import { getSessionDate } from "../utils/session";
+import {
+  getCanonicalExerciseName,
+  isBig3Exercise,
+} from "../constants/exerciseCatalog";
+import { resolveSetE1RMForPersistence } from "../utils/AccessoryRMTarget";
+import { normalizeLoadKg } from "../utils/LoadPrecision";
 import type {
   SessionData,
   SetData,
@@ -15,9 +21,11 @@ import type {
   PRRecord,
   Exercise,
   FormVideoRecord,
+  FormVideoCapture,
 } from "../types/index";
 
 const DB_NAME = "repvelo.db";
+const RECORDED_LOAD_MATCH_TOLERANCE_KG = 0.005;
 
 // Lazy-load expo-sqlite to avoid native module initialization at import time.
 let SQLite: any = null;
@@ -169,6 +177,7 @@ class DatabaseService {
         avg_power_w REAL,
         is_warmup INTEGER DEFAULT 0,
         notes TEXT,
+        gear_json TEXT,
         FOREIGN KEY (session_id) REFERENCES sessions(session_id)
       );
     `);
@@ -271,7 +280,29 @@ class DatabaseService {
         duration_s REAL NOT NULL,
         created_at TEXT NOT NULL,
         notes TEXT,
+        capture_id TEXT,
+        integrity_status TEXT DEFAULT 'legacy_unknown',
+        file_size_bytes INTEGER,
+        file_hash TEXT,
         FOREIGN KEY (session_id) REFERENCES sessions(session_id)
+      );
+    `);
+
+    await this.db.execAsync(`
+      CREATE TABLE IF NOT EXISTS form_video_captures (
+        capture_id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        lift TEXT NOT NULL,
+        set_attempt_id TEXT NOT NULL,
+        set_index INTEGER NOT NULL,
+        load_kg REAL NOT NULL,
+        state TEXT NOT NULL,
+        local_uri TEXT,
+        set_id TEXT,
+        started_at TEXT NOT NULL,
+        ended_at TEXT,
+        updated_at TEXT NOT NULL,
+        error_message TEXT
       );
     `);
 
@@ -303,6 +334,7 @@ class DatabaseService {
       { table: "sets", column: "velocity_loss_avg", type: "REAL" },
       { table: "sets", column: "velocity_loss_last", type: "REAL" },
       { table: "sets", column: "velocity_loss_min", type: "REAL" },
+      { table: "sets", column: "gear_json", type: "TEXT" },
       // Reps 追加カラム
       { table: "reps", column: "is_excluded", type: "INTEGER DEFAULT 0" },
       { table: "reps", column: "exclusion_reason", type: "TEXT" },
@@ -345,6 +377,14 @@ class DatabaseService {
       },
       { table: "lvp_profiles", column: "r_squared", type: "REAL" },
       { table: "lvp_profiles", column: "mvt", type: "REAL" },
+      { table: "form_video_records", column: "capture_id", type: "TEXT" },
+      {
+        table: "form_video_records",
+        column: "integrity_status",
+        type: "TEXT DEFAULT 'legacy_unknown'",
+      },
+      { table: "form_video_records", column: "file_size_bytes", type: "INTEGER" },
+      { table: "form_video_records", column: "file_hash", type: "TEXT" },
     ];
 
     for (const m of migrations) {
@@ -396,6 +436,10 @@ class DatabaseService {
       duration_s: row.duration_s,
       created_at: row.created_at,
       notes: row.notes ?? null,
+      capture_id: row.capture_id ?? null,
+      integrity_status: row.integrity_status ?? "legacy_unknown",
+      file_size_bytes: row.file_size_bytes ?? null,
+      file_hash: row.file_hash ?? null,
     };
   }
 
@@ -405,9 +449,10 @@ class DatabaseService {
     await this.db.runAsync(
       `INSERT OR REPLACE INTO form_video_records (
         id, session_id, lift, set_index, load_kg, local_uri, thumbnail_uri,
-        started_at, ended_at, duration_s, created_at, notes
+        started_at, ended_at, duration_s, created_at, notes, capture_id, integrity_status,
+        file_size_bytes, file_hash
       )
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         record.id,
         record.session_id,
@@ -421,6 +466,82 @@ class DatabaseService {
         record.duration_s,
         record.created_at,
         record.notes ?? null,
+        record.capture_id ?? null,
+        record.integrity_status ?? "legacy_unknown",
+        record.file_size_bytes ?? null,
+        record.file_hash ?? null,
+      ],
+    );
+  }
+
+  async upsertFormVideoCapture(capture: FormVideoCapture): Promise<void> {
+    if (!(await this.ensureReady())) return;
+    await this.db.runAsync(
+      `INSERT OR REPLACE INTO form_video_captures (
+        capture_id, session_id, lift, set_attempt_id, set_index, load_kg, state,
+        local_uri, set_id, started_at, ended_at, updated_at, error_message
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        capture.capture_id,
+        capture.session_id,
+        capture.lift,
+        capture.set_attempt_id,
+        capture.set_index,
+        capture.load_kg,
+        capture.state,
+        capture.local_uri ?? null,
+        capture.set_id ?? null,
+        capture.started_at,
+        capture.ended_at ?? null,
+        capture.updated_at,
+        capture.error_message ?? null,
+      ],
+    );
+  }
+
+  async getRecoverableFormVideoCaptures(): Promise<FormVideoCapture[]> {
+    if (!(await this.ensureReady())) return [];
+    const rows = (await this.db.getAllAsync(
+      `SELECT * FROM form_video_captures
+       WHERE state IN ('preparing', 'armed', 'recording', 'captured', 'persisting', 'recoverable_draft')
+       ORDER BY updated_at DESC`,
+    )) as any[];
+    return rows.map((row) => ({
+      capture_id: row.capture_id,
+      session_id: row.session_id,
+      lift: row.lift,
+      set_attempt_id: row.set_attempt_id,
+      set_index: row.set_index,
+      load_kg: row.load_kg,
+      state: row.state,
+      local_uri: row.local_uri ?? null,
+      set_id: row.set_id ?? null,
+      started_at: row.started_at,
+      ended_at: row.ended_at ?? null,
+      updated_at: row.updated_at,
+      error_message: row.error_message ?? null,
+    }));
+  }
+
+  async updateFormVideoCaptureState(
+    captureId: string,
+    state: FormVideoCapture["state"],
+    details: Pick<FormVideoCapture, "local_uri" | "set_id" | "ended_at" | "error_message"> = {},
+  ): Promise<void> {
+    if (!(await this.ensureReady())) return;
+    await this.db.runAsync(
+      `UPDATE form_video_captures
+       SET state = ?, local_uri = COALESCE(?, local_uri), set_id = COALESCE(?, set_id),
+           ended_at = COALESCE(?, ended_at), error_message = ?, updated_at = ?
+       WHERE capture_id = ?`,
+      [
+        state,
+        details.local_uri ?? null,
+        details.set_id ?? null,
+        details.ended_at ?? null,
+        details.error_message ?? null,
+        new Date().toISOString(),
+        captureId,
       ],
     );
   }
@@ -461,6 +582,18 @@ class DatabaseService {
     if (!(await this.ensureReady())) return;
 
     await this.db.runAsync("DELETE FROM form_video_records WHERE id = ?", [id]);
+  }
+
+  async updateFormVideoRecordNotes(
+    id: string,
+    notes: string | null,
+  ): Promise<void> {
+    if (!(await this.ensureReady())) return;
+
+    await this.db.runAsync(
+      "UPDATE form_video_records SET notes = ? WHERE id = ?",
+      [notes, id],
+    );
   }
 
   /**
@@ -521,13 +654,13 @@ class DatabaseService {
 
     await this.db.runAsync(
       `INSERT INTO sets (session_id, lift, set_index, load_kg, reps, device_type, set_type,
-        avg_velocity, velocity_loss, velocity_loss_avg, velocity_loss_last, velocity_loss_min, avg_rom_cm, rpe, e1rm, timestamp, start_timestamp, end_timestamp, rest_duration_s, avg_hr, peak_hr, hr_recovery_to_120_s, avg_power_w, is_warmup, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        avg_velocity, velocity_loss, velocity_loss_avg, velocity_loss_last, velocity_loss_min, avg_rom_cm, rpe, e1rm, timestamp, start_timestamp, end_timestamp, rest_duration_s, avg_hr, peak_hr, hr_recovery_to_120_s, avg_power_w, is_warmup, notes, gear_json)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         setData.session_id,
         setData.lift,
         setData.set_index,
-        setData.load_kg,
+        normalizeLoadKg(setData.load_kg),
         setData.reps,
         setData.device_type,
         setData.set_type,
@@ -552,6 +685,7 @@ class DatabaseService {
         setData.avg_power_w || null,
         setData.is_warmup ? 1 : 0,
         setData.notes || null,
+        setData.gear_json ?? null,
       ],
     );
   }
@@ -573,7 +707,7 @@ class DatabaseService {
         repData.lift,
         repData.set_index,
         repData.rep_index,
-        repData.load_kg,
+        normalizeLoadKg(repData.load_kg),
         repData.device_type,
         repData.mean_velocity,
         repData.peak_velocity,
@@ -684,6 +818,10 @@ class DatabaseService {
       updateFields.push("e1rm = ?");
       queryParams.push(setData.e1rm);
     }
+    if (setData.gear_json !== undefined) {
+      updateFields.push("gear_json = ?");
+      queryParams.push(setData.gear_json);
+    }
 
     if (updateFields.length === 0) return;
 
@@ -761,8 +899,18 @@ class DatabaseService {
     const vLoss = velocityLossMetrics.vlAvg ?? 0;
 
     // 6. e1RMを計算（reps <= 0の場合はnull）
-    const e1rm =
+    const rawE1RM =
       VBTLogic.calculateE1RM(setData.load_kg, validReps.length) ?? null;
+    const exercises = await this.getExercises();
+    const canonicalLift = getCanonicalExerciseName(setData.lift);
+    const exercise = exercises.find(
+      (item) => getCanonicalExerciseName(item.name) === canonicalLift,
+    );
+    const e1rm = resolveSetE1RMForPersistence({
+      rawE1RM,
+      reps: validReps.length,
+      isAccessory: exercise ? !isBig3Exercise(exercise) : false,
+    }).e1rm;
 
     return {
       reps: validReps.length,
@@ -813,7 +961,7 @@ class DatabaseService {
         prRecord.type,
         prRecord.lift,
         prRecord.value,
-        prRecord.load_kg || null,
+        prRecord.load_kg != null ? normalizeLoadKg(prRecord.load_kg) : null,
         prRecord.reps || null,
         prRecord.date,
         prRecord.previous_value ?? null,
@@ -991,9 +1139,30 @@ class DatabaseService {
     return (await this.db.getAllAsync(query, params)) as SetData[];
   }
 
+  async getHistoricalSetsAtLoad(
+    loadKg: number,
+    toleranceKg: number = RECORDED_LOAD_MATCH_TOLERANCE_KG,
+  ): Promise<SetData[]> {
+    if (!(await this.ensureReady())) return [];
+    if (!Number.isFinite(loadKg) || loadKg <= 0) return [];
+    const normalizedLoadKg = normalizeLoadKg(loadKg);
+    const tolerance =
+      Number.isFinite(toleranceKg) && toleranceKg > 0
+        ? toleranceKg
+        : RECORDED_LOAD_MATCH_TOLERANCE_KG;
+    return (await this.db.getAllAsync(
+      `SELECT * FROM sets
+       WHERE load_kg >= ?
+       AND load_kg <= ?
+       AND COALESCE(is_warmup, 0) = 0
+       ORDER BY timestamp DESC`,
+      [normalizedLoadKg - tolerance, normalizedLoadKg + tolerance],
+    )) as SetData[];
+  }
+
   /**
    * Get best velocity at a specific load for PR display
-   * Returns the fastest average velocity achieved at approximately the given load
+   * Returns the fastest average velocity at the same recorded load.
    */
   async getBestVelocityAtLoad(
     lift: string,
@@ -1001,7 +1170,7 @@ class DatabaseService {
   ): Promise<{ avg_velocity: number; date: string; reps: number } | null> {
     if (!(await this.ensureReady())) return null;
 
-    // Query sets within ±0.5kg of target load to find best velocity
+    const normalizedLoadKg = normalizeLoadKg(loadKg);
     const result = (await this.db.getFirstAsync(
       `SELECT avg_velocity, timestamp, reps
        FROM sets
@@ -1012,7 +1181,11 @@ class DatabaseService {
        AND is_warmup = 0
        ORDER BY avg_velocity DESC
        LIMIT 1`,
-      [lift, loadKg - 0.5, loadKg + 0.5],
+      [
+        lift,
+        normalizedLoadKg - RECORDED_LOAD_MATCH_TOLERANCE_KG,
+        normalizedLoadKg + RECORDED_LOAD_MATCH_TOLERANCE_KG,
+      ],
     )) as { avg_velocity: number; timestamp: string; reps: number } | null;
 
     return result
@@ -1349,11 +1522,18 @@ class DatabaseService {
   /**
    * Get best PR for an exercise
    */
-  async getBestPR(lift: string, type: string): Promise<PRRecord | null> {
+  async getBestPR(
+    lift: string,
+    type: string,
+    accessoryRepRangeOnly = false,
+  ): Promise<PRRecord | null> {
     if (!(await this.ensureReady())) return null;
 
     const result = await (this.db.getFirstAsync(
-      "SELECT * FROM pr_records WHERE lift = ? AND type = ? ORDER BY value DESC LIMIT 1",
+      `SELECT * FROM pr_records
+       WHERE lift = ? AND type = ?
+         ${accessoryRepRangeOnly ? "AND reps BETWEEN 5 AND 15" : ""}
+       ORDER BY value DESC LIMIT 1`,
       [lift, type],
     ) as Promise<PRRecord | null>);
 
@@ -1434,11 +1614,25 @@ class DatabaseService {
    * セッションのお気に入りコメントを更新
    */
   async updateSessionNotes(sessionId: string, notes: string): Promise<void> {
-    if (!(await this.ensureReady())) return;
-    await this.db.runAsync(
+    if (!(await this.ensureReady())) {
+      throw new Error("Database is not ready for session note update.");
+    }
+    const result = await this.db.runAsync(
       "UPDATE sessions SET notes = ? WHERE session_id = ?",
       [notes, sessionId],
     );
+    if (result?.changes !== 1) {
+      throw new Error(
+        `Session note update affected ${result?.changes ?? 0} rows for ${sessionId}.`,
+      );
+    }
+    const verified = (await this.db.getFirstAsync(
+      "SELECT notes FROM sessions WHERE session_id = ?",
+      [sessionId],
+    )) as { notes?: string | null } | null;
+    if (verified?.notes !== notes) {
+      throw new Error(`Session note update verification failed for ${sessionId}.`);
+    }
   }
 
   /**
@@ -1506,14 +1700,21 @@ class DatabaseService {
   async updateSet(
     sessionId: string,
     setIndex: number,
-    updates: { load_kg?: number; rpe?: number; notes?: string; lift?: string },
+    updates: {
+      load_kg?: number;
+      rpe?: number;
+      notes?: string;
+      lift?: string;
+      gear_json?: string | null;
+      whereLift?: string;
+    },
   ): Promise<void> {
     if (!(await this.ensureReady())) return;
     const parts: string[] = [];
     const values: any[] = [];
     if (updates.load_kg !== undefined) {
       parts.push("load_kg = ?");
-      values.push(updates.load_kg);
+      values.push(normalizeLoadKg(updates.load_kg));
     }
     if (updates.rpe !== undefined) {
       parts.push("rpe = ?");
@@ -1523,12 +1724,21 @@ class DatabaseService {
       parts.push("notes = ?");
       values.push(updates.notes);
     }
+    if (updates.lift !== undefined) {
+      parts.push("lift = ?");
+      values.push(updates.lift);
+    }
+    if (updates.gear_json !== undefined) {
+      parts.push("gear_json = ?");
+      values.push(updates.gear_json);
+    }
     if (parts.length === 0) return;
     values.push(sessionId, setIndex);
 
     // liftが指定されている場合はWHERE句に追加（種目切り替え時の更新ミス防止）
-    const liftCondition = updates.lift ? " AND lift = ?" : "";
-    if (updates.lift) values.push(updates.lift);
+    const matchingLift = updates.whereLift ?? updates.lift;
+    const liftCondition = matchingLift ? " AND lift = ?" : "";
+    if (matchingLift) values.push(matchingLift);
 
     await this.db.runAsync(
       `UPDATE sets SET ${parts.join(", ")} WHERE session_id = ? AND set_index = ?${liftCondition}`,
@@ -1559,7 +1769,13 @@ class DatabaseService {
     sessionId: string,
     setIndex: number,
     lift: string,
-    updates: { load_kg: number; lift?: string; rpe?: number; notes?: string },
+    updates: {
+      load_kg: number;
+      lift?: string;
+      rpe?: number;
+      notes?: string;
+      gear_json?: string | null;
+    },
   ): Promise<void> {
     if (!(await this.ensureReady())) return;
 
@@ -1567,10 +1783,12 @@ class DatabaseService {
 
     // setsテーブルを更新
     await this.updateSet(sessionId, setIndex, {
-      load_kg: updates.load_kg,
+      load_kg: normalizeLoadKg(updates.load_kg),
       rpe: updates.rpe,
       notes: updates.notes,
       lift: newLift,
+      whereLift: lift,
+      gear_json: updates.gear_json,
     });
 
     // 種目名が変更された場合は、関連するrepsのliftも更新
@@ -1584,7 +1802,7 @@ class DatabaseService {
     // 重量が変更された場合は、関連するrepsのload_kgも更新
     await this.db.runAsync(
       "UPDATE reps SET load_kg = ?, edited_at = ? WHERE session_id = ? AND set_index = ? AND lift = ?",
-      [updates.load_kg, Date.now(), sessionId, setIndex, newLift],
+      [normalizeLoadKg(updates.load_kg), Date.now(), sessionId, setIndex, newLift],
     );
 
     await this.recalcSessionVolume(sessionId);
@@ -1642,12 +1860,12 @@ class DatabaseService {
 
     await this.db.runAsync(
       "UPDATE sets SET load_kg = ? WHERE session_id = ? AND set_index = ? AND lift = ?",
-      [loadKg, sessionId, setIndex, lift],
+      [normalizeLoadKg(loadKg), sessionId, setIndex, lift],
     );
 
     await this.db.runAsync(
       "UPDATE reps SET load_kg = ?, edited_at = ? WHERE session_id = ? AND set_index = ? AND lift = ?",
-      [loadKg, Date.now(), sessionId, setIndex, lift],
+      [normalizeLoadKg(loadKg), Date.now(), sessionId, setIndex, lift],
     );
 
     await this.recalcSessionVolume(sessionId);
@@ -1660,6 +1878,7 @@ class DatabaseService {
   async recalcSessionVolume(sessionId: string): Promise<void> {
     if (!(await this.ensureReady())) return;
     const sets = await this.getSetsForSession(sessionId);
+    const exercises = await this.getExercises();
 
     // 各セットのe1RMを再計算
     for (const setData of sets) {
@@ -1674,8 +1893,17 @@ class DatabaseService {
       const actualRepsCount = validReps.length;
 
       // e1RMを再計算 (VBTLogic.calculateE1RM使用 - reps <= 0の場合はnull)
-      const recalculatedE1RM =
+      const rawE1RM =
         VBTLogic.calculateE1RM(setData.load_kg, actualRepsCount) ?? null;
+      const canonicalLift = getCanonicalExerciseName(setData.lift);
+      const exercise = exercises.find(
+        (item) => getCanonicalExerciseName(item.name) === canonicalLift,
+      );
+      const recalculatedE1RM = resolveSetE1RMForPersistence({
+        rawE1RM,
+        reps: actualRepsCount,
+        isAccessory: exercise ? !isBig3Exercise(exercise) : false,
+      }).e1rm;
 
       // セットのe1RMとrepsを更新（liftを含めて種目切り替え時の更新ミスを防止）
       await this.updateSetMetrics(
@@ -1798,6 +2026,43 @@ class DatabaseService {
       last_updated: result.last_updated,
       sample_count: result.sample_count,
     };
+  }
+
+  async getBestE1RMForLift(
+    lift: string,
+    accessoryRepRangeOnly = false,
+  ): Promise<number | null> {
+    if (!(await this.ensureReady())) return null;
+
+    const [setBest, prBest] = await Promise.all([
+      this.db.getFirstAsync(
+        `SELECT MAX(e1rm) as value
+         FROM sets
+         WHERE lift = ?
+           AND e1rm IS NOT NULL
+           AND e1rm > 0
+           AND is_warmup = 0
+           ${accessoryRepRangeOnly ? "AND reps BETWEEN 5 AND 15" : ""}`,
+        [lift],
+      ) as Promise<{ value: number | null } | null>,
+      this.db.getFirstAsync(
+        `SELECT MAX(value) as value
+         FROM pr_records
+         WHERE lift = ?
+           AND type = 'e1rm'
+           AND value IS NOT NULL
+           AND value > 0
+           ${accessoryRepRangeOnly ? "AND reps BETWEEN 5 AND 15" : ""}`,
+        [lift],
+      ) as Promise<{ value: number | null } | null>,
+    ]);
+
+    const candidates = [setBest?.value, prBest?.value].filter(
+      (value): value is number =>
+        typeof value === "number" && Number.isFinite(value) && value > 0,
+    );
+
+    return candidates.length > 0 ? Math.max(...candidates) : null;
   }
 
   /**
